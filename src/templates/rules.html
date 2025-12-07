@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+
+{% block title %}Rules - Timesheet{% endblock %}
+
+{% block content %}
+<div class="rules-header">
+    <h1>Classification Rules</h1>
+    <div class="rules-actions">
+        <button class="btn btn-secondary" onclick="applyRules()">Apply Rules</button>
+        <button class="btn btn-primary" onclick="showAddRule()">Add Rule</button>
+    </div>
+</div>
+
+<!-- Add/Edit Rule Form -->
+<div id="rule-form" class="rule-form hidden">
+    <h2 id="rule-form-title">Add Rule</h2>
+    <input type="hidden" id="rule-id">
+
+    <div class="form-row">
+        <label for="rule-name">Name:</label>
+        <input type="text" id="rule-name" placeholder="e.g., Client Acme Meetings">
+    </div>
+
+    <div class="form-row">
+        <label for="rule-project">Project:</label>
+        <select id="rule-project">
+            {% for project in projects %}
+            <option value="{{ project.id }}">{{ project.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-row">
+        <label for="rule-priority">Priority:</label>
+        <input type="number" id="rule-priority" value="50" min="0" max="100">
+        <span class="form-hint">Higher = evaluated first (0-100)</span>
+    </div>
+
+    <div class="form-row">
+        <label>
+            <input type="checkbox" id="rule-enabled" checked>
+            Enabled
+        </label>
+    </div>
+
+    <div class="conditions-section">
+        <h3>Conditions <span class="form-hint">(all must match)</span></h3>
+        <div id="conditions-list"></div>
+        <button type="button" class="btn btn-secondary btn-small" onclick="addCondition()">+ Add Condition</button>
+    </div>
+
+    <div class="form-actions">
+        <button class="btn btn-primary" onclick="saveRule()">Save</button>
+        <button class="btn btn-secondary" onclick="hideRuleForm()">Cancel</button>
+    </div>
+</div>
+
+<!-- Rules List -->
+<div class="rules-list">
+    {% for rule in rules %}
+    <div class="rule-card" data-rule-id="{{ rule.id }}">
+        <div class="rule-header">
+            <div class="rule-info">
+                <span class="rule-name">{{ rule.name }}</span>
+                <span class="rule-project" style="background-color: {{ rule.project_color or '#00aa44' }}">{{ rule.project_name }}</span>
+                <span class="rule-priority">Priority: {{ rule.priority }}</span>
+                {% if not rule.is_enabled %}
+                <span class="rule-disabled">Disabled</span>
+                {% endif %}
+            </div>
+            <div class="rule-actions">
+                <button class="btn-small" onclick="editRule({{ rule.id }})">Edit</button>
+                <button class="btn-small" onclick="toggleRule({{ rule.id }}, {{ 'false' if rule.is_enabled else 'true' }})">
+                    {{ 'Disable' if rule.is_enabled else 'Enable' }}
+                </button>
+                <button class="btn-small btn-danger" onclick="deleteRule({{ rule.id }})">Delete</button>
+            </div>
+        </div>
+        <div class="rule-conditions">
+            {% for condition in rule.conditions %}
+            <span class="condition-chip">
+                <strong>{{ condition.property_name }}</strong>
+                {{ condition.condition_type }}
+                "{{ condition.condition_value }}"
+            </span>
+            {% else %}
+            <span class="no-conditions">No conditions defined</span>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="no-rules">
+        <p>No classification rules yet.</p>
+        <p>Rules automatically classify events based on their properties like title, attendees, or day of week.</p>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Apply Rules Result -->
+<div id="apply-result" class="apply-result hidden"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Available properties and conditions from the API
+let properties = [];
+let conditionTypes = [];
+let allRules = [];
+
+// Load metadata on page load
+document.addEventListener('DOMContentLoaded', async function() {
+    const [propsResponse, condsResponse] = await Promise.all([
+        api.get('/api/properties'),
+        api.get('/api/conditions')
+    ]);
+    properties = propsResponse;
+    conditionTypes = condsResponse;
+});
+
+function showAddRule() {
+    document.getElementById('rule-form').classList.remove('hidden');
+    document.getElementById('rule-form-title').textContent = 'Add Rule';
+    document.getElementById('rule-id').value = '';
+    document.getElementById('rule-name').value = '';
+    document.getElementById('rule-priority').value = '50';
+    document.getElementById('rule-enabled').checked = true;
+    document.getElementById('conditions-list').innerHTML = '';
+    addCondition(); // Start with one empty condition
+}
+
+function hideRuleForm() {
+    document.getElementById('rule-form').classList.add('hidden');
+}
+
+async function editRule(ruleId) {
+    const rule = await api.get(`/api/rules/${ruleId}`);
+
+    document.getElementById('rule-form').classList.remove('hidden');
+    document.getElementById('rule-form-title').textContent = 'Edit Rule';
+    document.getElementById('rule-id').value = rule.id;
+    document.getElementById('rule-name').value = rule.name;
+    document.getElementById('rule-project').value = rule.project_id;
+    document.getElementById('rule-priority').value = rule.priority;
+    document.getElementById('rule-enabled').checked = rule.is_enabled;
+
+    // Populate conditions
+    document.getElementById('conditions-list').innerHTML = '';
+    for (const cond of rule.conditions) {
+        addCondition(cond.property_name, cond.condition_type, cond.condition_value);
+    }
+    if (rule.conditions.length === 0) {
+        addCondition();
+    }
+}
+
+function addCondition(propName = '', condType = '', condValue = '') {
+    const container = document.getElementById('conditions-list');
+    const index = container.children.length;
+
+    const row = document.createElement('div');
+    row.className = 'condition-row';
+    row.innerHTML = `
+        <select class="cond-property" onchange="updateConditionTypes(this)">
+            <option value="">Select property...</option>
+            ${properties.map(p => `<option value="${p.name}" data-type="${p.value_type}" ${p.name === propName ? 'selected' : ''}>${p.display_name}</option>`).join('')}
+        </select>
+        <select class="cond-type">
+            <option value="">Select condition...</option>
+            ${conditionTypes.map(c => `<option value="${c.type}" ${c.type === condType ? 'selected' : ''}>${c.display}</option>`).join('')}
+        </select>
+        <input type="text" class="cond-value" placeholder="Value" value="${escapeHtml(String(condValue || ''))}">
+        <button type="button" class="btn-small btn-danger" onclick="this.parentElement.remove()">x</button>
+    `;
+    container.appendChild(row);
+
+    // Update condition types based on property selection
+    if (propName) {
+        updateConditionTypes(row.querySelector('.cond-property'));
+    }
+}
+
+function updateConditionTypes(select) {
+    const propType = select.options[select.selectedIndex]?.dataset?.type;
+    const condSelect = select.parentElement.querySelector('.cond-type');
+
+    if (!propType) return;
+
+    // Filter condition types based on property type
+    const validTypes = conditionTypes.filter(c => c.applies_to.includes(propType));
+    const currentValue = condSelect.value;
+
+    condSelect.innerHTML = '<option value="">Select condition...</option>' +
+        validTypes.map(c => `<option value="${c.type}" ${c.type === currentValue ? 'selected' : ''}>${c.display}</option>`).join('');
+}
+
+async function saveRule() {
+    const ruleId = document.getElementById('rule-id').value;
+    const name = document.getElementById('rule-name').value.trim();
+    const projectId = parseInt(document.getElementById('rule-project').value);
+    const priority = parseInt(document.getElementById('rule-priority').value);
+    const isEnabled = document.getElementById('rule-enabled').checked;
+
+    if (!name) {
+        alert('Rule name is required');
+        return;
+    }
+
+    // Gather conditions
+    const conditions = [];
+    const rows = document.querySelectorAll('.condition-row');
+    for (const row of rows) {
+        const prop = row.querySelector('.cond-property').value;
+        const type = row.querySelector('.cond-type').value;
+        const value = row.querySelector('.cond-value').value;
+
+        if (prop && type && value) {
+            conditions.push({
+                property_name: prop,
+                condition_type: type,
+                condition_value: value
+            });
+        }
+    }
+
+    if (conditions.length === 0) {
+        alert('At least one condition is required');
+        return;
+    }
+
+    const data = {
+        name,
+        project_id: projectId,
+        priority,
+        is_enabled: isEnabled,
+        conditions
+    };
+
+    try {
+        if (ruleId) {
+            await api.put(`/api/rules/${ruleId}`, data);
+        } else {
+            await api.post('/api/rules', data);
+        }
+        location.reload();
+    } catch (error) {
+        alert('Error saving rule: ' + error.message);
+    }
+}
+
+async function deleteRule(ruleId) {
+    if (!confirm('Delete this rule?')) return;
+
+    try {
+        await api.delete(`/api/rules/${ruleId}`);
+        location.reload();
+    } catch (error) {
+        alert('Error deleting rule: ' + error.message);
+    }
+}
+
+async function toggleRule(ruleId, enable) {
+    try {
+        await api.put(`/api/rules/${ruleId}`, { is_enabled: enable });
+        location.reload();
+    } catch (error) {
+        alert('Error updating rule: ' + error.message);
+    }
+}
+
+async function applyRules() {
+    const resultDiv = document.getElementById('apply-result');
+    resultDiv.classList.remove('hidden');
+    resultDiv.innerHTML = 'Applying rules...';
+
+    try {
+        const result = await api.post('/api/rules/apply', {});
+        if (result.classified === 0) {
+            resultDiv.innerHTML = 'No unclassified events matched any rules.';
+        } else {
+            resultDiv.innerHTML = `Classified ${result.classified} event(s). <a href="/">View calendar</a>`;
+        }
+    } catch (error) {
+        resultDiv.innerHTML = 'Error applying rules: ' + error.message;
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

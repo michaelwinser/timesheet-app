@@ -132,3 +132,38 @@ async def projects_page(request: Request):
             "projects": projects,
         },
     )
+
+
+@router.get("/rules", response_class=HTMLResponse)
+async def rules_page(request: Request):
+    """Rule management page."""
+    credentials = get_stored_credentials()
+    if credentials is None:
+        return RedirectResponse(url="/auth/login")
+
+    db = get_db()
+
+    # Get projects for the dropdown
+    projects = db.execute("SELECT * FROM projects ORDER BY name")
+    projects = [dict(row) for row in projects]
+
+    # Get rules with their conditions and project info
+    from services.classifier import load_rules_with_conditions
+    rules = load_rules_with_conditions(db, enabled_only=False)
+
+    # Add project color to rules
+    project_colors = {p["id"]: p["color"] for p in projects}
+    rules_data = []
+    for rule in rules:
+        rule_dict = rule.to_dict()
+        rule_dict["project_color"] = project_colors.get(rule.project_id, "#00aa44")
+        rules_data.append(rule_dict)
+
+    return templates.TemplateResponse(
+        "rules.html",
+        {
+            "request": request,
+            "rules": rules_data,
+            "projects": projects,
+        },
+    )

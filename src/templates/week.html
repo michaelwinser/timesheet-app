@@ -55,6 +55,7 @@
                             <option value="{{ project.id }}" data-color="{{ project.color or '#00aa44' }}">{{ project.name }}</option>
                             {% endfor %}
                         </select>
+                        <button class="btn-small btn-rule" onclick="showCreateRuleModal({{ event.id }})" title="Create Rule">⚙</button>
                         {% if event.is_classified %}
                         <button class="btn-small" onclick="flipCard({{ event.id }})">Flip</button>
                         {% endif %}
@@ -79,6 +80,7 @@
                     </div>
                     <div class="entry-description">{{ event.entry_description or event.title }}</div>
                     <div class="entry-actions">
+                        <button class="btn-small btn-rule" onclick="showCreateRuleModal({{ event.id }})" title="Create Rule">⚙</button>
                         <button class="btn-small" onclick="flipCard({{ event.id }})">Flip</button>
                     </div>
                 </div>
@@ -89,6 +91,45 @@
         </div>
     </div>
     {% endfor %}
+</div>
+<!-- Create Rule Modal -->
+<div id="rule-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h2>Create Rule from Event</h2>
+        <div id="rule-modal-loading">Loading event properties...</div>
+        <div id="rule-modal-form" class="hidden">
+            <div class="form-row">
+                <label for="modal-rule-name">Rule Name:</label>
+                <input type="text" id="modal-rule-name" placeholder="e.g., Client meetings">
+            </div>
+
+            <div class="form-row">
+                <label for="modal-rule-project">Project:</label>
+                <select id="modal-rule-project">
+                    {% for project in projects %}
+                    <option value="{{ project.id }}">{{ project.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label for="modal-rule-priority">Priority:</label>
+                <input type="number" id="modal-rule-priority" value="50" min="0" max="100">
+                <span class="form-hint">Higher = evaluated first</span>
+            </div>
+
+            <div class="event-properties-section">
+                <h3>Event Properties</h3>
+                <p class="form-hint">Select properties to use as conditions for this rule. The current values from this event will be pre-filled.</p>
+                <div id="modal-properties-list"></div>
+            </div>
+
+            <div class="form-actions">
+                <button class="btn btn-primary" onclick="saveRuleFromModal()">Create Rule</button>
+                <button class="btn btn-secondary" onclick="hideRuleModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -102,6 +143,181 @@
     // Auto-sync on page load
     document.addEventListener('DOMContentLoaded', function() {
         syncEventsQuiet();
+    });
+
+    // Rule creation from event
+    let currentEventId = null;
+    let propertyDefinitions = [];
+    let conditionTypes = [];
+
+    /**
+     * Show the create rule modal for an event.
+     */
+    async function showCreateRuleModal(eventId) {
+        currentEventId = eventId;
+        const modal = document.getElementById('rule-modal');
+        const loading = document.getElementById('rule-modal-loading');
+        const form = document.getElementById('rule-modal-form');
+
+        modal.classList.remove('hidden');
+        loading.classList.remove('hidden');
+        form.classList.add('hidden');
+
+        try {
+            // Fetch property definitions, condition types, and event properties in parallel
+            const [propDefs, condTypes, eventProps] = await Promise.all([
+                api.get('/api/properties'),
+                api.get('/api/conditions'),
+                api.get(`/api/events/${eventId}/properties`)
+            ]);
+
+            propertyDefinitions = propDefs;
+            conditionTypes = condTypes;
+
+            // Pre-fill rule name with event title
+            const eventTitle = eventProps.title || 'Untitled';
+            document.getElementById('modal-rule-name').value = `${eventTitle} Rule`;
+
+            // Build the properties list with checkboxes
+            const listContainer = document.getElementById('modal-properties-list');
+            listContainer.innerHTML = '';
+
+            for (const prop of propertyDefinitions) {
+                const currentValue = eventProps[prop.name];
+                // Skip properties with no value
+                if (currentValue === null || currentValue === undefined || currentValue === '' ||
+                    (Array.isArray(currentValue) && currentValue.length === 0)) {
+                    continue;
+                }
+
+                const row = document.createElement('div');
+                row.className = 'property-row';
+
+                // Get applicable condition types for this property
+                const applicableConditions = conditionTypes.filter(c =>
+                    c.applies_to.includes(prop.value_type)
+                );
+
+                // Format the current value for display
+                let displayValue = currentValue;
+                if (Array.isArray(currentValue)) {
+                    displayValue = currentValue.join(', ');
+                }
+
+                row.innerHTML = `
+                    <label class="property-checkbox">
+                        <input type="checkbox" class="prop-check" data-property="${prop.name}" data-type="${prop.value_type}">
+                        <span class="prop-name">${prop.display_name}</span>
+                    </label>
+                    <select class="prop-condition" disabled>
+                        ${applicableConditions.map(c => `<option value="${c.type}">${c.display}</option>`).join('')}
+                    </select>
+                    <input type="text" class="prop-value" value="${escapeHtml(String(displayValue))}" disabled>
+                `;
+
+                // Enable/disable condition and value when checkbox is toggled
+                const checkbox = row.querySelector('.prop-check');
+                const condSelect = row.querySelector('.prop-condition');
+                const valueInput = row.querySelector('.prop-value');
+
+                checkbox.addEventListener('change', () => {
+                    condSelect.disabled = !checkbox.checked;
+                    valueInput.disabled = !checkbox.checked;
+                });
+
+                listContainer.appendChild(row);
+            }
+
+            loading.classList.add('hidden');
+            form.classList.remove('hidden');
+
+        } catch (error) {
+            alert('Error loading event properties: ' + error.message);
+            hideRuleModal();
+        }
+    }
+
+    /**
+     * Hide the rule creation modal.
+     */
+    function hideRuleModal() {
+        document.getElementById('rule-modal').classList.add('hidden');
+        currentEventId = null;
+    }
+
+    /**
+     * Save the rule from the modal form.
+     */
+    async function saveRuleFromModal() {
+        const name = document.getElementById('modal-rule-name').value.trim();
+        const projectId = parseInt(document.getElementById('modal-rule-project').value);
+        const priority = parseInt(document.getElementById('modal-rule-priority').value);
+
+        if (!name) {
+            alert('Rule name is required');
+            return;
+        }
+
+        // Gather selected conditions
+        const conditions = [];
+        const rows = document.querySelectorAll('.property-row');
+        for (const row of rows) {
+            const checkbox = row.querySelector('.prop-check');
+            if (!checkbox.checked) continue;
+
+            const propertyName = checkbox.dataset.property;
+            const conditionType = row.querySelector('.prop-condition').value;
+            let conditionValue = row.querySelector('.prop-value').value;
+
+            // Convert comma-separated values to array for list types
+            const propType = checkbox.dataset.type;
+            if (propType === 'list' || conditionType === 'in_list') {
+                conditionValue = conditionValue.split(',').map(v => v.trim()).filter(v => v);
+            }
+
+            conditions.push({
+                property_name: propertyName,
+                condition_type: conditionType,
+                condition_value: conditionValue
+            });
+        }
+
+        if (conditions.length === 0) {
+            alert('At least one condition is required. Please select a property.');
+            return;
+        }
+
+        try {
+            await api.post('/api/rules', {
+                name,
+                project_id: projectId,
+                priority,
+                is_enabled: true,
+                conditions
+            });
+
+            alert('Rule created successfully!');
+            hideRuleModal();
+
+        } catch (error) {
+            alert('Error creating rule: ' + error.message);
+        }
+    }
+
+    /**
+     * Escape HTML for safe display.
+     */
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Close modal when clicking outside
+    document.getElementById('rule-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            hideRuleModal();
+        }
     });
 </script>
 {% endblock %}

@@ -497,6 +497,340 @@ body {
     margin-bottom: 0.5rem;
 }
 
+/* Rules page */
+.rules-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.rules-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.rule-form {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.rule-form h2 {
+    margin-bottom: 1rem;
+    font-size: 1.125rem;
+}
+
+.form-row {
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.form-row label {
+    min-width: 80px;
+    font-weight: 500;
+}
+
+.form-row input[type="text"],
+.form-row input[type="number"],
+.form-row select {
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    flex: 1;
+    max-width: 300px;
+}
+
+.form-row input[type="number"] {
+    max-width: 80px;
+}
+
+.form-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.conditions-section {
+    margin: 1.5rem 0;
+    padding: 1rem;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+.conditions-section h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.75rem;
+}
+
+.condition-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.condition-row select,
+.condition-row input[type="text"] {
+    padding: 0.4rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+}
+
+.condition-row .cond-property {
+    min-width: 140px;
+}
+
+.condition-row .cond-type {
+    min-width: 120px;
+}
+
+.condition-row .cond-value {
+    flex: 1;
+    min-width: 150px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.rules-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.rule-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1rem;
+}
+
+.rule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.rule-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.rule-name {
+    font-weight: 600;
+    font-size: 1rem;
+}
+
+.rule-project {
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    color: #fff;
+}
+
+.rule-priority {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+
+.rule-disabled {
+    font-size: 0.75rem;
+    color: var(--accent-danger);
+    font-weight: 500;
+}
+
+.rule-actions {
+    display: flex;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+.rule-conditions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.condition-chip {
+    background: var(--bg-tertiary);
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.condition-chip strong {
+    color: var(--text-primary);
+}
+
+.no-conditions {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.no-rules {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.no-rules p {
+    margin-bottom: 0.5rem;
+}
+
+.apply-result {
+    margin-top: 1rem;
+    padding: 1rem;
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+    color: var(--text-primary);
+}
+
+.apply-result a {
+    color: var(--accent-primary);
+}
+
+/* Modal */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 1.5rem;
+    max-width: 600px;
+    width: 90%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.modal-header h2 {
+    font-size: 1.125rem;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.modal-close:hover {
+    color: var(--text-primary);
+}
+
+/* Event properties section (Create Rule modal) */
+.event-properties-section {
+    margin: 1.5rem 0;
+}
+
+.event-properties-section h3 {
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+}
+
+.property-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.property-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 160px;
+    cursor: pointer;
+}
+
+.property-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+}
+
+.prop-name {
+    font-weight: 500;
+    font-size: 0.875rem;
+}
+
+.prop-condition {
+    padding: 0.4rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    min-width: 120px;
+}
+
+.prop-value {
+    padding: 0.4rem;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    flex: 1;
+    min-width: 150px;
+}
+
+.prop-condition:disabled,
+.prop-value:disabled {
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    cursor: not-allowed;
+}
+
+/* Rule button on event cards */
+.btn-rule {
+    opacity: 0.7;
+}
+
+.btn-rule:hover {
+    opacity: 1;
+}
+
 /* Utilities */
 .hidden {
     display: none !important;
