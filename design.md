@@ -407,7 +407,72 @@ const api = {
 
 **Deliverable:** App runs on TrueNAS.
 
-## 9. Open Design Questions
+## 9. Future Work: Google Cloud Run + Firestore
+
+> **Status:** TODO - Not started. This is a large architectural change.
+
+### Overview
+
+Migrate from local Docker/SQLite deployment to Google Cloud Run with Firestore as the backing database. This enables:
+- Always-on cloud hosting (no TrueNAS dependency)
+- Serverless scaling (pay-per-use)
+- Native Google Cloud integration (simplified OAuth, same ecosystem)
+- Multi-user support potential
+
+### Key Changes Required
+
+#### Database Migration (SQLite → Firestore)
+- Replace `db.py` SQLite wrapper with Firestore client
+- Redesign data model for document database:
+  - Collections: `users`, `events`, `time_entries`, `projects`, `rules`
+  - Denormalize where appropriate for query efficiency
+  - Handle atomic operations differently (transactions)
+- Migrate existing data (export/import tooling)
+- Update all service layer code that uses database
+
+#### Authentication Changes
+- Leverage Google Cloud Identity or Firebase Auth
+- Store OAuth tokens in Firestore or Secret Manager
+- Consider per-user data isolation (multi-tenant)
+
+#### Application Changes
+- Add `google-cloud-firestore` dependency
+- Environment detection (local vs Cloud Run)
+- Handle cold starts gracefully
+- Update health check endpoints
+
+#### Deployment Changes
+- Create `cloudbuild.yaml` or GitHub Actions workflow
+- Configure Cloud Run service
+- Set up Firestore database and indexes
+- Configure environment variables/secrets in Cloud Run
+- Set up custom domain (optional)
+- Implement CI/CD pipeline
+
+#### Development Experience
+- Local Firestore emulator for development
+- Docker Compose option for local Firestore
+- Clear documentation for both deployment targets
+
+### Considerations
+
+- **Cost**: Firestore and Cloud Run have free tiers, but need to estimate usage
+- **Latency**: Cloud Run cold starts may affect UX
+- **Complexity**: Two deployment targets to maintain (or deprecate TrueNAS)
+- **Data model**: Document DB requires different thinking than relational
+
+### Implementation Approach
+
+1. Abstract database layer behind interface
+2. Implement Firestore backend alongside SQLite
+3. Add configuration to switch between backends
+4. Test thoroughly with Firestore emulator
+5. Deploy to Cloud Run staging environment
+6. Migrate data and cut over
+
+---
+
+## 10. Open Design Questions
 
 1. **OAuth token refresh**: How do we handle token expiry gracefully? Background refresh, or prompt user when needed?
 
