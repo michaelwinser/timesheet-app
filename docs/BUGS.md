@@ -6,6 +6,106 @@ Track bugs here. Mark as [FIXED] when resolved.
 
 ## Open Bugs
 
+### BUG-033: Implement user settings system with auto-roundup option
+**Reported:** 2025-12-07
+**Severity:** Medium
+**Description:**
+Add a user settings/preferences system to store configuration options. First setting: auto-roundup hours to nearest 15 minutes when classifying events.
+
+**Settings infrastructure needed:**
+- Settings storage (localStorage, database, or both)
+- Settings UI page/modal accessible from header
+- API endpoints for reading/writing settings
+- Default values for new users
+
+**Initial settings to implement:**
+1. **Auto-roundup hours**: Automatically round event duration to nearest 15 minutes when classifying
+   - Options: Off, Round up, Round nearest, Round down
+   - Default: Off (preserve exact duration)
+
+**Future settings candidates:**
+- Default project for unclassified events
+- Hide weekends by default
+- Auto-sync interval
+- Theme (light/dark/system)
+- Week start day (Sunday/Monday)
+- Working hours per day target (for daily totals coloring)
+- Notification preferences
+
+**UI options:**
+- Dedicated /settings page
+- Modal accessible from user menu or gear icon
+- Inline settings in relevant contexts
+
+**Current behavior:**
+No settings system; all behavior is hardcoded.
+
+---
+
+### BUG-032: Show daily hour totals in week view
+**Reported:** 2025-12-07
+**Severity:** Low
+**Description:**
+Each day column should display a total of classified hours at the bottom or in the header. This helps users quickly see how much time is logged per day and identify days that need attention.
+
+**Expected features:**
+- Total hours displayed per day column (e.g., "6.5 hrs")
+- Visual indicator for days under/over target (e.g., <8 hrs = yellow, >8 hrs = green)
+- Optional: show classified vs unclassified count
+- Updates dynamically as events are classified
+
+**Display options:**
+- In day header next to day name/number
+- At bottom of day column as footer
+- Both header and footer
+
+**Example:**
+```
+Mon 2          Tue 3          Wed 4
+6.5 hrs        8.0 hrs        4.25 hrs
+─────────      ─────────      ─────────
+[events]       [events]       [events]
+```
+
+**Current behavior:**
+No per-day totals shown; only weekly total in sidebar.
+
+---
+
+### BUG-031: Implement global search with event/rule management
+**Reported:** 2025-12-07
+**Severity:** Medium
+**Description:**
+Add a search feature that allows users to find events across all weeks, then take actions on the results like editing, classifying, or creating rules.
+
+**Expected features:**
+- Search input in header or accessible via keyboard shortcut (Cmd+K or /)
+- Search across event titles, descriptions, attendees
+- Results show matching events from any time period
+- Click result to navigate to that week/event
+- Bulk actions on search results:
+  - Classify all matching events to a project
+  - Create a rule from search criteria
+  - Export matching events
+- Filter results by: classified/unclassified, date range, project
+
+**Use cases:**
+- "Find all standups and classify them"
+- "Show me all meetings with alice@example.com"
+- "Find unclassified events with 'client' in title"
+- "Create a rule for all events matching this search"
+
+**UI ideas:**
+- Command palette style (like VS Code, Slack)
+- Modal with search input and results list
+- Keyboard navigation through results
+- Preview panel showing event details
+
+**Current behavior:**
+Only filter within current week view; no cross-week search.
+
+---
+
 ### BUG-028: Persist project visibility filter across week navigations and reloads
 **Reported:** 2025-12-07
 **Severity:** Low
@@ -366,30 +466,6 @@ User must manually type a rule name.
 
 ---
 
-### BUG-018: Consider auto-applying rules when navigating to a different week
-**Reported:** 2025-12-06
-**Severity:** Low
-**Description:**
-When navigating to a different week, existing unclassified events are not automatically classified by rules. Should rule application happen automatically on navigation?
-
-**Considerations:**
-- Pro: Less manual intervention, events get classified as you browse
-- Pro: Rules created on one week would apply to past/future weeks on navigation
-- Con: Could be surprising if classifications appear unexpectedly
-- Con: Performance impact on navigation if many events/rules
-- Con: User might want to review before auto-classifying historical weeks
-
-**Options:**
-1. Auto-apply rules on navigation (silent)
-2. Show notification "X events can be classified" with button to apply
-3. Manual only - user must click Refresh/Sync
-4. Setting to control behavior
-
-**Current behavior:**
-Rules are only applied during sync, not when navigating between weeks.
-
----
-
 ### BUG-017: Add option to hide weekends in week view
 **Reported:** 2025-12-06
 **Severity:** Low
@@ -674,6 +750,18 @@ When creating a rule from the week view modal, a JavaScript `alert()` is used to
 
 **Fix:**
 Implemented a toast notification system with `showToast()` function. Toast notifications appear in the top-right corner with success/error/info styling and auto-dismiss after 3 seconds.
+
+---
+
+### BUG-018: Auto-apply rules when navigating to a different week [FIXED]
+**Reported:** 2025-12-06
+**Fixed:** 2025-12-07
+**Severity:** Low
+**Description:**
+When navigating to a different week, existing unclassified events were not automatically classified by rules. Rules only applied during sync.
+
+**Fix:**
+Added `autoClassifyEvents()` function that calls `/api/rules/apply` on page load for the current week's date range. If any events are classified, the page reloads to show the updated state. Uses sessionStorage to prevent reload loops.
 
 ---
 

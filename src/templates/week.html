@@ -169,11 +169,34 @@
     window.weekStart = "{{ week_start }}";
     window.weekEnd = "{{ week_end }}";
 
-    // Auto-sync on page load and restore visibility preferences
-    document.addEventListener('DOMContentLoaded', function() {
+    // Auto-sync, auto-classify, and restore visibility preferences on page load
+    document.addEventListener('DOMContentLoaded', async function() {
         syncEventsQuiet();
+        await autoClassifyEvents();
         restoreProjectVisibility();
     });
+
+    /**
+     * Auto-classify unclassified events using rules.
+     * Reloads page if any events were classified.
+     */
+    async function autoClassifyEvents() {
+        // Prevent reload loops
+        if (sessionStorage.getItem('justClassified') === window.location.pathname) {
+            sessionStorage.removeItem('justClassified');
+            return;
+        }
+
+        try {
+            const result = await api.applyRules(window.weekStart, window.weekEnd);
+            if (result.classified > 0) {
+                sessionStorage.setItem('justClassified', window.location.pathname);
+                location.reload();
+            }
+        } catch (error) {
+            console.error('Auto-classify failed:', error.message);
+        }
+    }
 
     /**
      * Restore project visibility preferences from sessionStorage.

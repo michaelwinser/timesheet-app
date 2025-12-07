@@ -153,4 +153,14 @@ const api = {
     async setProjectVisibility(projectId, isVisible) {
         return this.put(`/api/projects/${projectId}/visibility`, { is_visible: isVisible });
     },
+
+    /**
+     * Apply rules to unclassified events.
+     */
+    async applyRules(startDate, endDate) {
+        return this.post('/api/rules/apply', {
+            start_date: startDate,
+            end_date: endDate,
+        });
+    },
 };
