@@ -5,6 +5,7 @@ version: "3.8"
 
 services:
   timesheet-app:
+    image: michaelwinser/timesheet-app:latest
     build: .
     container_name: timesheet-app
     ports:

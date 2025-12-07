@@ -13,9 +13,9 @@ version: "3.8"
 services:
   timesheet-app:
     # Use pre-built image from Docker Hub (recommended)
-    # Build and push: docker build -t yourusername/timesheet-app:latest .
-    #                 docker push yourusername/timesheet-app:latest
-    image: yourusername/timesheet-app:latest
+    # Build and push: docker build -t michaelwinser/timesheet-app:latest .
+    #                 docker push michaelwinser/timesheet-app:latest
+    image: michaelwinser/timesheet-app:latest
 
     # Alternatively, build locally on TrueNAS
     # build: .

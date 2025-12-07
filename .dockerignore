@@ -52,11 +52,14 @@ docs/
 # Data directories
 data/
 logs/
+timesheet-data/
 
 # Docker files (don't copy into image)
 Dockerfile*
 docker-compose*.yaml
 .dockerignore
+Makefile
 
 # Conversation and temp files
 conversation.txt
+conversation2.txt

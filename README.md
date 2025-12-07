@@ -98,25 +98,104 @@ Visit http://localhost:8000
 
 ### Docker
 
+#### Local Development
+
 ```bash
 # Create .env file
 cat > .env << EOF
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
+SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
 EOF
 
-# Build and run
+# Build and run with docker-compose
 docker-compose up --build
+
+# Or use the Makefile
+make build
+make run
 ```
 
 Visit http://localhost:8000
 
+#### Building and Pushing to DockerHub
+
+The project is configured to push images to `michaelwinser/timesheet-app` on DockerHub.
+
+**Important for Apple Silicon Users:**
+If you're developing on Apple Silicon (M1/M2/M3 Mac) and deploying to TrueNAS on Intel/AMD, you need to build multi-architecture images:
+
+```bash
+# Login to DockerHub (one-time setup)
+make login
+
+# Build for both architectures and push (RECOMMENDED)
+make build-multiarch VERSION=v1.0.0
+```
+
+This builds a single image that works on both ARM (Apple Silicon) and AMD64 (Intel/AMD) architectures.
+
+**Alternative: Single-platform builds**
+
+```bash
+# Build for specific platform (e.g., for TrueNAS Intel/AMD)
+make build VERSION=v1.0.0 PLATFORM=linux/amd64
+make push VERSION=v1.0.0
+
+# Build for local testing on Apple Silicon (faster)
+make build-local
+
+# Tag an existing image with a new version
+make tag TAG=v1.0.0
+```
+
+**Available Makefile Commands:**
+- `make help` - Show all available commands
+- `make build` - Build Docker image locally
+- `make push` - Push Docker image to DockerHub
+- `make build-push` - Build and push in one command
+- `make login` - Login to DockerHub
+- `make run` - Start container with docker-compose
+- `make stop` - Stop container
+- `make logs` - View container logs
+- `make test` - Run health check
+- `make rebuild` - Rebuild without cache and restart
+
+#### Pulling from DockerHub
+
+To use the pre-built image instead of building locally:
+
+```bash
+# Pull the latest image
+docker pull michaelwinser/timesheet-app:latest
+
+# Or pull a specific version
+docker pull michaelwinser/timesheet-app:v1.0.0
+
+# Run with docker-compose (will use pre-built image)
+docker-compose up
+```
+
 ### TrueNAS Deployment
 
-1. Copy files to TrueNAS
-2. Create a Custom App with docker-compose.yaml
-3. Configure environment variables in TrueNAS UI
-4. Update OAUTH_REDIRECT_URI to match your TrueNAS URL
+**Option 1: Use Pre-built Image from DockerHub (Recommended)**
+
+1. Use `docker-compose.prod.yaml` as your deployment configuration
+2. The image `michaelwinser/timesheet-app:latest` will be pulled automatically
+3. Configure environment variables in TrueNAS Custom App UI:
+   - `GOOGLE_CLIENT_ID`
+   - `GOOGLE_CLIENT_SECRET`
+   - `SECRET_KEY` (generate with: `python -c "import secrets; print(secrets.token_hex(32))"`)
+   - `OAUTH_REDIRECT_URI` (e.g., `https://timesheet.yourdomain.com/auth/callback`)
+4. Set data volume path: `/mnt/pool/apps/timesheet/data:/data`
+5. Deploy and access via your TrueNAS IP or domain
+
+**Option 2: Build Locally on TrueNAS**
+
+1. Copy repository files to TrueNAS
+2. Uncomment the `build: .` line in `docker-compose.prod.yaml`
+3. Comment out the `image:` line
+4. Follow Option 1 steps for configuration
 
 ## Usage
 
