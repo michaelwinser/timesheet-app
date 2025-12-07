@@ -226,6 +226,12 @@ PROPERTY_REGISTRY: list[PropertyDefinition] = [
                        "Color assigned to the event"),
     PropertyDefinition("recurrence_id", "Recurrence ID", PropertyType.STRING, False,
                        "ID linking recurring event instances"),
+    PropertyDefinition("my_response_status", "My Response Status", PropertyType.STRING, False,
+                       "User's RSVP status: accepted, declined, needsAction, tentative"),
+    PropertyDefinition("transparency", "Free/Busy Status", PropertyType.STRING, False,
+                       "Event transparency: opaque (busy) or transparent (free)"),
+    PropertyDefinition("visibility", "Visibility", PropertyType.STRING, False,
+                       "Event visibility: default, public, private, or confidential"),
 
     # Native list properties
     PropertyDefinition("attendees", "Attendees", PropertyType.STRING_LIST, False,

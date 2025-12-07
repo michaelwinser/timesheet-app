@@ -68,12 +68,16 @@ def sync_calendar_events(
             start_time = f"{start['date']}T00:00:00"
             end_time = f"{end['date']}T00:00:00"
 
-        # Extract attendees
+        # Extract attendees and user's response status
         attendees = []
+        my_response_status = None
         for attendee in event.get("attendees", []):
             email = attendee.get("email")
             if email:
                 attendees.append(email)
+            # Check if this is the current user
+            if attendee.get("self"):
+                my_response_status = attendee.get("responseStatus")
 
         # Extract meeting link (Hangouts/Meet)
         meeting_link = None
@@ -92,6 +96,12 @@ def sync_calendar_events(
 
         # Event color
         event_color = event.get("colorId")
+
+        # Transparency (free/busy status) - defaults to opaque if not set
+        transparency = event.get("transparency")  # "opaque" or "transparent"
+
+        # Visibility (who can see the event)
+        visibility = event.get("visibility")  # "default", "public", "private", "confidential"
 
         # Check if event already exists
         existing = db.execute_one(
@@ -113,6 +123,9 @@ def sync_calendar_events(
                     event_color = ?,
                     is_recurring = ?,
                     recurrence_id = ?,
+                    my_response_status = ?,
+                    transparency = ?,
+                    visibility = ?,
                     raw_json = ?,
                     fetched_at = CURRENT_TIMESTAMP
                 WHERE google_event_id = ?
@@ -127,6 +140,9 @@ def sync_calendar_events(
                     event_color,
                     1 if is_recurring else 0,
                     recurrence_id,
+                    my_response_status,
+                    transparency,
+                    visibility,
                     json.dumps(event),
                     google_event_id,
                 ),
@@ -140,8 +156,9 @@ def sync_calendar_events(
                 INSERT INTO events (
                     google_event_id, calendar_id, title, description,
                     start_time, end_time, attendees, meeting_link,
-                    event_color, is_recurring, recurrence_id, raw_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    event_color, is_recurring, recurrence_id, my_response_status,
+                    transparency, visibility, raw_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     google_event_id,
@@ -155,6 +172,9 @@ def sync_calendar_events(
                     event_color,
                     1 if is_recurring else 0,
                     recurrence_id,
+                    my_response_status,
+                    transparency,
+                    visibility,
                     json.dumps(event),
                 ),
             )
@@ -179,6 +199,9 @@ def sync_calendar_events(
                 "event_color": event_color,
                 "is_recurring": 1 if is_recurring else 0,
                 "recurrence_id": recurrence_id,
+                "my_response_status": my_response_status,
+                "transparency": transparency,
+                "visibility": visibility,
             }
 
             matching_rule = matcher.match(event_data)
