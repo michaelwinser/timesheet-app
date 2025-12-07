@@ -197,6 +197,13 @@ Ethical consideration (billing the same hour twice) is left to the user - they c
 
 5. ~~**Week nav link behavior**~~: Resolved. Navigation has "Calendar" link (always goes to current week) plus Prev/Today/Next buttons for date navigation. "Today" button provides quick return to current week from any other week.
 
+6. **Classification timing and control**: When should auto-classification run? Current implementation classifies during sync (tightly coupled). Preference is for more decoupling:
+   - Classification should primarily run on the backend as a batch operation
+   - Avoid per-event classification calls from the frontend
+   - Provide explicit "Reclassify" UI control for user-initiated reclassification of current week or selected events
+   - Need to define: What triggers automatic classification? Just sync? Rule changes? Manual refresh?
+   - Need to define: Should reclassification overwrite existing classifications or only fill in unclassified events?
+
 ## 7. Context for Claude
 
 **Relevant files/directories:**

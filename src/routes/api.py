@@ -13,6 +13,17 @@ from models import (
 )
 from services.calendar import sync_calendar_events
 from services.exporter import export_harvest_csv
+from services.classifier import (
+    load_rules_with_conditions,
+    create_rule,
+    update_rule,
+    delete_rule,
+    get_property_definitions,
+    ConditionEvaluator,
+    test_rules_against_event,
+    get_event_properties,
+    suggest_classification,
+)
 from routes.auth import get_stored_credentials
 
 router = APIRouter()
@@ -380,3 +391,298 @@ async def export_harvest(start_date: str, end_date: str):
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=timesheet_{start_date}_{end_date}.csv"},
     )
+
+
+# --- Classification Rules ---
+
+@router.get("/rules")
+async def list_rules(enabled_only: bool = False):
+    """List all classification rules with their conditions."""
+    db = get_db()
+    rules = load_rules_with_conditions(db, enabled_only=enabled_only)
+    return [r.to_dict() for r in rules]
+
+
+@router.get("/rules/{rule_id}")
+async def get_rule(rule_id: int):
+    """Get a single rule with conditions."""
+    db = get_db()
+    rules = load_rules_with_conditions(db, enabled_only=False)
+    for rule in rules:
+        if rule.id == rule_id:
+            return rule.to_dict()
+    raise HTTPException(status_code=404, detail="Rule not found")
+
+
+@router.post("/rules")
+async def create_classification_rule(request: dict):
+    """Create a new classification rule.
+
+    Request body:
+    {
+        "name": "Rule name",
+        "project_id": 1,
+        "priority": 100,
+        "is_enabled": true,
+        "stop_processing": true,
+        "conditions": [
+            {"property_name": "title", "condition_type": "contains", "condition_value": "standup"},
+            {"property_name": "weekday", "condition_type": "in_list", "condition_value": ["monday", "friday"]}
+        ]
+    }
+    """
+    db = get_db()
+
+    # Validate required fields
+    if "name" not in request:
+        raise HTTPException(status_code=400, detail="Rule name is required")
+    if "project_id" not in request:
+        raise HTTPException(status_code=400, detail="Project ID is required")
+    if "conditions" not in request or not request["conditions"]:
+        raise HTTPException(status_code=400, detail="At least one condition is required")
+
+    # Check project exists
+    project = db.execute_one("SELECT * FROM projects WHERE id = ?", (request["project_id"],))
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    rule_id = create_rule(
+        db=db,
+        name=request["name"],
+        project_id=request["project_id"],
+        conditions=request["conditions"],
+        priority=request.get("priority", 0),
+        is_enabled=request.get("is_enabled", True),
+        stop_processing=request.get("stop_processing", True),
+    )
+
+    # Return the created rule
+    rules = load_rules_with_conditions(db, enabled_only=False)
+    for rule in rules:
+        if rule.id == rule_id:
+            return rule.to_dict()
+
+    return {"id": rule_id}
+
+
+@router.put("/rules/{rule_id}")
+async def update_classification_rule(rule_id: int, request: dict):
+    """Update a classification rule.
+
+    Request body (all fields optional):
+    {
+        "name": "New name",
+        "project_id": 2,
+        "priority": 50,
+        "is_enabled": false,
+        "stop_processing": true,
+        "conditions": [...]  // If provided, replaces all conditions
+    }
+    """
+    db = get_db()
+
+    # Check rule exists
+    existing = db.execute_one("SELECT * FROM classification_rules WHERE id = ?", (rule_id,))
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    # Check project exists if changing
+    if "project_id" in request:
+        project = db.execute_one("SELECT * FROM projects WHERE id = ?", (request["project_id"],))
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+    update_rule(
+        db=db,
+        rule_id=rule_id,
+        name=request.get("name"),
+        project_id=request.get("project_id"),
+        priority=request.get("priority"),
+        is_enabled=request.get("is_enabled"),
+        stop_processing=request.get("stop_processing"),
+        conditions=request.get("conditions"),
+    )
+
+    # Return the updated rule
+    rules = load_rules_with_conditions(db, enabled_only=False)
+    for rule in rules:
+        if rule.id == rule_id:
+            return rule.to_dict()
+
+    raise HTTPException(status_code=404, detail="Rule not found")
+
+
+@router.delete("/rules/{rule_id}")
+async def delete_classification_rule(rule_id: int):
+    """Delete a classification rule."""
+    db = get_db()
+
+    existing = db.execute_one("SELECT * FROM classification_rules WHERE id = ?", (rule_id,))
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    delete_rule(db, rule_id)
+    return {"status": "deleted"}
+
+
+@router.post("/rules/{rule_id}/test")
+async def test_rule(rule_id: int, request: dict):
+    """Test a rule against an event.
+
+    Request body:
+    {"event_id": 123}
+    """
+    event_id = request.get("event_id")
+    if not event_id:
+        raise HTTPException(status_code=400, detail="event_id is required")
+
+    results = test_rules_against_event(event_id)
+
+    # Find the specific rule in results
+    for result in results:
+        if result["rule"]["id"] == rule_id:
+            return result
+
+    raise HTTPException(status_code=404, detail="Rule not found")
+
+
+# --- Properties and Conditions (metadata) ---
+
+@router.get("/properties")
+async def list_properties():
+    """List available properties for rule conditions."""
+    return get_property_definitions()
+
+
+@router.get("/conditions")
+async def list_conditions():
+    """List available condition types."""
+    return ConditionEvaluator.get_available_conditions()
+
+
+# --- Event Analysis (debugging) ---
+
+@router.get("/events/{event_id}/properties")
+async def get_event_props(event_id: int):
+    """Get all computed properties for an event."""
+    props = get_event_properties(event_id)
+    if props is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return props
+
+
+@router.get("/events/{event_id}/test-rules")
+async def test_event_rules(event_id: int):
+    """Test all rules against an event."""
+    results = test_rules_against_event(event_id)
+    if not results:
+        # Check if event exists
+        db = get_db()
+        event = db.execute_one("SELECT * FROM events WHERE id = ?", (event_id,))
+        if event is None:
+            raise HTTPException(status_code=404, detail="Event not found")
+    return results
+
+
+@router.get("/events/{event_id}/suggest")
+async def get_suggestion(event_id: int):
+    """Get classification suggestion for an event."""
+    suggestion = suggest_classification(event_id)
+    if suggestion is None:
+        return {"suggestion": None}
+    return {"suggestion": suggestion}
+
+
+@router.post("/rules/apply")
+async def apply_rules_to_events(request: dict = None):
+    """Apply rules to unclassified events.
+
+    Request body (optional):
+    {
+        "start_date": "2025-01-01",  // Optional: filter by date range
+        "end_date": "2025-12-31",
+        "dry_run": false  // If true, only return what would be classified
+    }
+    """
+    from services.classifier import RuleMatcher, EventProperties
+    import json
+
+    db = get_db()
+    request = request or {}
+
+    # Build query for unclassified events
+    query = """
+        SELECT e.* FROM events e
+        LEFT JOIN time_entries te ON e.id = te.event_id
+        WHERE te.id IS NULL
+    """
+    params = []
+
+    if request.get("start_date"):
+        query += " AND date(e.start_time) >= ?"
+        params.append(request["start_date"])
+    if request.get("end_date"):
+        query += " AND date(e.start_time) <= ?"
+        params.append(request["end_date"])
+
+    query += " ORDER BY e.start_time"
+
+    events = db.execute(query, tuple(params))
+
+    # Load rules
+    rules = load_rules_with_conditions(db, enabled_only=True)
+    matcher = RuleMatcher(rules)
+
+    dry_run = request.get("dry_run", False)
+    classified = []
+    matched = []
+
+    for event in events:
+        event_dict = dict(event)
+        matching_rule = matcher.match(event_dict)
+
+        if matching_rule:
+            match_info = {
+                "event_id": event["id"],
+                "event_title": event["title"],
+                "rule_id": matching_rule.id,
+                "rule_name": matching_rule.name,
+                "project_id": matching_rule.project_id,
+                "project_name": matching_rule.project_name,
+            }
+
+            if dry_run:
+                matched.append(match_info)
+            else:
+                # Calculate hours from event duration
+                start = datetime.fromisoformat(event["start_time"].replace("Z", "+00:00"))
+                end = datetime.fromisoformat(event["end_time"].replace("Z", "+00:00"))
+                hours = (end - start).total_seconds() / 3600
+
+                db.execute_insert(
+                    """
+                    INSERT INTO time_entries (event_id, project_id, hours, description, classification_source, rule_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event["id"],
+                        matching_rule.project_id,
+                        hours,
+                        event["title"],
+                        "rule",
+                        matching_rule.id,
+                    ),
+                )
+                classified.append(match_info)
+
+    if dry_run:
+        return {
+            "dry_run": True,
+            "would_classify": len(matched),
+            "matches": matched,
+        }
+
+    return {
+        "classified": len(classified),
+        "entries": classified,
+    }

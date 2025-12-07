@@ -6,6 +6,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 from db import get_db
+from services.classifier import load_rules_with_conditions, RuleMatcher
 
 
 def sync_calendar_events(
@@ -45,6 +46,11 @@ def sync_calendar_events(
     db = get_db()
     events_new = 0
     events_updated = 0
+    events_classified = 0
+
+    # Load rules for auto-classification
+    rules = load_rules_with_conditions(db, enabled_only=True)
+    matcher = RuleMatcher(rules)
 
     for event in events:
         google_event_id = event["id"]
@@ -126,9 +132,10 @@ def sync_calendar_events(
                 ),
             )
             events_updated += 1
+            event_db_id = existing["id"]
         else:
             # Insert new event
-            db.execute_insert(
+            event_db_id = db.execute_insert(
                 """
                 INSERT INTO events (
                     google_event_id, calendar_id, title, description,
@@ -153,8 +160,53 @@ def sync_calendar_events(
             )
             events_new += 1
 
+        # Auto-classify if not already classified
+        already_classified = db.execute_one(
+            "SELECT id FROM time_entries WHERE event_id = ?",
+            (event_db_id,),
+        )
+
+        if not already_classified:
+            # Build event dict for matcher (use DB column names)
+            event_data = {
+                "id": event_db_id,
+                "title": event.get("summary", ""),
+                "description": event.get("description", ""),
+                "start_time": start_time,
+                "end_time": end_time,
+                "attendees": json.dumps(attendees),
+                "meeting_link": meeting_link,
+                "event_color": event_color,
+                "is_recurring": 1 if is_recurring else 0,
+                "recurrence_id": recurrence_id,
+            }
+
+            matching_rule = matcher.match(event_data)
+            if matching_rule:
+                # Calculate hours from start/end time
+                start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                hours = (end_dt - start_dt).total_seconds() / 3600
+
+                db.execute_insert(
+                    """
+                    INSERT INTO time_entries (event_id, project_id, hours, description, classification_source, rule_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        event_db_id,
+                        matching_rule.project_id,
+                        hours,
+                        event.get("summary", ""),
+                        "rule",
+                        matching_rule.id,
+                    ),
+                )
+                events_classified += 1
+
     return {
         "events_fetched": len(events),
         "events_new": events_new,
         "events_updated": events_updated,
+        "events_classified": events_classified,
     }

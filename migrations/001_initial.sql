@@ -46,16 +46,31 @@ CREATE TABLE IF NOT EXISTS time_entries (
     description TEXT,
     classified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     classification_source TEXT,
+    rule_id INTEGER REFERENCES classification_rules(id),
     UNIQUE(event_id)
 );
 
--- Classification rules
+-- Classification rules (extensible with conditions)
 CREATE TABLE IF NOT EXISTS classification_rules (
     id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
     project_id INTEGER NOT NULL REFERENCES projects(id),
-    rule_type TEXT NOT NULL,
-    rule_value TEXT NOT NULL,
+    rule_type TEXT,  -- Legacy field for backwards compatibility
+    rule_value TEXT, -- Legacy field for backwards compatibility
     priority INTEGER DEFAULT 0,
+    is_enabled INTEGER DEFAULT 1,
+    stop_processing INTEGER DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Rule conditions (multiple conditions per rule, AND logic)
+CREATE TABLE IF NOT EXISTS rule_conditions (
+    id INTEGER PRIMARY KEY,
+    rule_id INTEGER NOT NULL REFERENCES classification_rules(id) ON DELETE CASCADE,
+    property_name TEXT NOT NULL,
+    condition_type TEXT NOT NULL,
+    condition_value TEXT NOT NULL,  -- JSON-encoded value
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -75,3 +90,5 @@ CREATE INDEX IF NOT EXISTS idx_events_google_id ON events(google_event_id);
 CREATE INDEX IF NOT EXISTS idx_events_recurrence ON events(recurrence_id);
 CREATE INDEX IF NOT EXISTS idx_time_entries_event ON time_entries(event_id);
 CREATE INDEX IF NOT EXISTS idx_classification_rules_project ON classification_rules(project_id);
+CREATE INDEX IF NOT EXISTS idx_rules_priority ON classification_rules(priority DESC, id);
+CREATE INDEX IF NOT EXISTS idx_conditions_rule ON rule_conditions(rule_id);
