@@ -3,6 +3,7 @@
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 import io
 
 from db import get_db
@@ -686,3 +687,115 @@ async def apply_rules_to_events(request: dict = None):
         "classified": len(classified),
         "entries": classified,
     }
+
+
+# =============================================================================
+# LLM Classification Endpoints (Experimental)
+# =============================================================================
+
+
+@router.get("/llm/examples")
+async def get_llm_examples():
+    """Get the examples that would be used for LLM classification."""
+    from services.llm_classifier import get_classified_examples, get_available_projects
+
+    db = get_db()
+    examples = get_classified_examples(db, limit=50)
+    projects = get_available_projects(db)
+
+    # Group examples by project
+    by_project: dict[str, list[str]] = {}
+    for ex in examples:
+        if ex["project"] not in by_project:
+            by_project[ex["project"]] = []
+        by_project[ex["project"]].append(ex["title"])
+
+    return {
+        "total_examples": len(examples),
+        "manual_count": sum(1 for e in examples if e["source"] == "manual"),
+        "rule_count": sum(1 for e in examples if e["source"] == "rule"),
+        "projects": [p["name"] for p in projects],
+        "examples_by_project": by_project,
+    }
+
+
+@router.get("/llm/preview/{event_id}")
+async def preview_llm_classification(event_id: int):
+    """Preview what prompt would be sent to Claude for an event."""
+    from services.llm_classifier import preview_classification_prompt
+
+    db = get_db()
+    result = preview_classification_prompt(event_id, db)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    return result
+
+
+@router.post("/llm/classify/{event_id}")
+async def classify_event_with_llm(event_id: int):
+    """Classify a single event using Claude API.
+
+    Requires ANTHROPIC_API_KEY environment variable to be set.
+    """
+    from services.llm_classifier import classify_event_with_llm as do_classify
+
+    db = get_db()
+    try:
+        suggestion = await do_classify(event_id, db)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if suggestion is None:
+        raise HTTPException(status_code=404, detail="Event not found or classification failed")
+
+    return {
+        "event_id": event_id,
+        "project_id": suggestion.project_id,
+        "project_name": suggestion.project_name,
+        "confidence": suggestion.confidence,
+        "reasoning": suggestion.reasoning,
+    }
+
+
+class LLMClassifyBatchRequest(BaseModel):
+    event_ids: list[int]
+
+
+@router.post("/llm/classify")
+async def classify_events_batch_with_llm(request: LLMClassifyBatchRequest):
+    """Classify multiple events using Claude API.
+
+    Requires ANTHROPIC_API_KEY environment variable to be set.
+    """
+    from services.llm_classifier import classify_events_batch
+
+    db = get_db()
+    try:
+        results = await classify_events_batch(request.event_ids, db)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "results": results,
+        "total": len(results),
+        "successful": sum(1 for r in results if r["suggestion"] is not None),
+    }
+
+
+@router.post("/llm/infer-rules")
+async def infer_rules_with_llm():
+    """Ask the LLM to infer classification rules from past classifications.
+
+    This analyzes the classified examples (without seeing existing rules)
+    and suggests rules that could automate future classifications.
+    """
+    from services.llm_classifier import infer_rules_from_classifications
+
+    db = get_db()
+    try:
+        result = await infer_rules_from_classifications(db)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return result
