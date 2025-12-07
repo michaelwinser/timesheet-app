@@ -1,0 +1,99 @@
+# Docker Compose configuration for TrueNAS production deployment
+#
+# Usage:
+#   1. Copy this file to your TrueNAS system
+#   2. Create a .env file with your production credentials
+#   3. Create the data directory: mkdir -p /mnt/pool/apps/timesheet/data
+#   4. Deploy: docker-compose -f docker-compose.prod.yaml up -d
+#
+# Note: You can also use TrueNAS Scale's Custom App UI instead of docker-compose
+
+version: "3.8"
+
+services:
+  timesheet-app:
+    # Use pre-built image from Docker Hub (recommended)
+    # Build and push: docker build -t yourusername/timesheet-app:latest .
+    #                 docker push yourusername/timesheet-app:latest
+    image: yourusername/timesheet-app:latest
+
+    # Alternatively, build locally on TrueNAS
+    # build: .
+
+    container_name: timesheet-app
+
+    ports:
+      # Map to a specific port on TrueNAS host
+      # Access via: http://truenas-ip:8000
+      # Or configure reverse proxy for HTTPS access
+      - "8000:8000"
+
+    environment:
+      # =====================================================================
+      # REQUIRED ENVIRONMENT VARIABLES
+      # =====================================================================
+      # Set these in your .env file or TrueNAS environment variable settings
+
+      # Google OAuth credentials
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+
+      # OAuth redirect URI - MUST match your Google Cloud Console configuration
+      # Example with reverse proxy: https://timesheet.yourdomain.com/auth/callback
+      # Example with direct access: http://truenas-ip:8000/auth/callback
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI}
+
+      # Application secret key (generate with: python -c "import secrets; print(secrets.token_hex(32))")
+      - SECRET_KEY=${SECRET_KEY}
+
+      # =====================================================================
+      # OPTIONAL ENVIRONMENT VARIABLES
+      # =====================================================================
+
+      # Anthropic API for LLM classification features
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # Database location (inside container, mapped to host path below)
+      - DATABASE_PATH=/data/timesheet.db
+
+      # Production settings
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+
+    volumes:
+      # Host path volume for data persistence
+      # Replace /mnt/pool/apps/timesheet/data with your actual TrueNAS path
+      # This allows easy backups via TrueNAS snapshots
+      - /mnt/pool/apps/timesheet/data:/data
+
+      # Alternative: Use named volume (less flexible for backups)
+      # - timesheet-prod-data:/data
+
+    # Restart policy - always restart unless explicitly stopped
+    restart: unless-stopped
+
+    # Resource limits (adjust based on your TrueNAS resources)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'        # Allow up to 2 CPU cores
+          memory: 1G         # Maximum 1GB RAM
+        reservations:
+          cpus: '0.5'        # Reserve 0.5 CPU cores
+          memory: 256M       # Reserve 256MB RAM
+
+    # Health check monitoring
+    # TrueNAS will automatically restart container if health check fails
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+# Optional: Named volume configuration
+# Uncomment if using named volume instead of host path
+# volumes:
+#   timesheet-prod-data:
+#     driver: local

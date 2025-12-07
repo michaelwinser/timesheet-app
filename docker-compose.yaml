@@ -1,19 +1,64 @@
+# Docker Compose configuration for local development
+# For TrueNAS deployment, see docker-compose.prod.yaml
+
 version: "3.8"
 
 services:
-  timesheet:
+  timesheet-app:
     build: .
+    container_name: timesheet-app
     ports:
       - "8000:8000"
-    volumes:
-      - timesheet-data:/app/data
+
     environment:
+      # Google OAuth credentials (REQUIRED)
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+
+      # OAuth redirect URI (REQUIRED)
+      # For local dev: http://localhost:8000/auth/callback
+      # For production: https://timesheet.yourdomain.com/auth/callback
       - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:8000/auth/callback}
-      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
-      - DATABASE_PATH=/app/data/timesheet.db
+
+      # Application secret key (REQUIRED)
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-change-in-production}
+
+      # Anthropic API for LLM classification (OPTIONAL)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # Database location (inside container)
+      - DATABASE_PATH=/data/timesheet.db
+
+      # Application settings
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+    volumes:
+      # Persistent data volume
+      - ./timesheet-data:/data
+
+      # Optional: Mount source code for hot reload during development
+      # Uncomment the lines below to enable live code reloading:
+      # - ./src:/app/src:ro
+
+    # Restart policy
     restart: unless-stopped
 
+    # Resource limits (adjust based on your needs)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+    # Health check (uses built-in Docker HEALTHCHECK in Dockerfile)
+    # View status: docker inspect --format='{{.State.Health.Status}}' timesheet-app
+
+# Named volume for data persistence
 volumes:
   timesheet-data:
+    driver: local

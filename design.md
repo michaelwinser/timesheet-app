@@ -407,7 +407,652 @@ const api = {
 
 **Deliverable:** App runs on TrueNAS.
 
-## 9. Future Work: Google Cloud Run + Firestore
+## 9. Docker Deployment & TrueNAS Hosting
+
+### 9.1 Overview
+
+The application is packaged as a Docker container for deployment on TrueNAS Scale using the Custom App feature. This provides:
+- Isolated runtime environment
+- Easy updates via container image replacement
+- Persistent data storage via volumes
+- Portable deployment (can run anywhere Docker runs)
+
+**Deployment targets:**
+1. **TrueNAS Scale** (primary) - Self-hosted on local infrastructure
+2. **Local development** - Docker Compose for testing
+3. **Cloud VM** (future) - Any Docker host (DigitalOcean, Linode, etc.)
+
+### 9.2 Dockerfile Design
+
+**Strategy**: Multi-stage build to minimize image size and separate build dependencies from runtime.
+
+```dockerfile
+# --- Stage 1: Builder ---
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only requirements first (layer caching)
+COPY requirements.txt .
+RUN pip install --user --no-cache-dir -r requirements.txt
+
+# --- Stage 2: Runtime ---
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy Python packages from builder
+COPY --from=builder /root/.local /root/.local
+
+# Copy application code
+COPY src/ ./src/
+COPY migrations/ ./migrations/
+
+# Ensure Python packages are in PATH
+ENV PATH=/root/.local/bin:$PATH
+
+# Create non-root user for security
+RUN useradd -m -u 1000 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+
+# Run migrations on startup, then start server
+CMD python src/db.py && uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+
+**Key decisions:**
+- **Base image**: `python:3.11-slim` - smaller than full Python, includes essentials
+- **Multi-stage**: Separates build tools from runtime (smaller final image)
+- **Non-root user**: Security best practice
+- **Health check**: TrueNAS can monitor container health
+- **Port 8000**: Standard for FastAPI/uvicorn
+
+### 9.3 docker-compose.yaml
+
+For local development and TrueNAS deployment template:
+
+```yaml
+version: '3.8'
+
+services:
+  timesheet-app:
+    build: .
+    container_name: timesheet-app
+    ports:
+      - "8000:8000"
+    environment:
+      # Google OAuth credentials (REQUIRED)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+
+      # OAuth redirect URI (adjust for your deployment)
+      - OAUTH_REDIRECT_URI=http://localhost:8000/auth/callback
+
+      # Anthropic API for LLM classification (OPTIONAL)
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # Database location
+      - DATABASE_PATH=/data/timesheet.db
+
+      # Production settings
+      - ENVIRONMENT=production
+
+    volumes:
+      # Persistent SQLite database
+      - ./data:/data
+
+      # Optional: Mount source for development
+      # - ./src:/app/src
+
+    restart: unless-stopped
+
+    # Resource limits (adjust based on usage)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+# Named volumes for easier management
+volumes:
+  data:
+    driver: local
+```
+
+**Environment variable strategy:**
+- **Secrets via .env file** - Not committed to git
+- **Override at runtime** - TrueNAS can inject environment variables
+- **Defaults where sensible** - `DATABASE_PATH` has a default
+
+### 9.4 Data Persistence
+
+**SQLite Volume Mounting:**
+
+The SQLite database must persist across container restarts. Three options:
+
+1. **Bind mount** (docker-compose development):
+   ```yaml
+   volumes:
+     - ./data:/data
+   ```
+   Database file lives in `./data/timesheet.db` on host.
+
+2. **Named volume** (TrueNAS Custom App):
+   ```yaml
+   volumes:
+     - timesheet-data:/data
+   ```
+   TrueNAS manages the volume; accessible via TrueNAS shell.
+
+3. **Host path** (TrueNAS alternative):
+   ```yaml
+   volumes:
+     - /mnt/pool/timesheet:/data
+   ```
+   Explicit path on TrueNAS pool for backups.
+
+**Recommendation**: Use named volume for simplicity, but configure TrueNAS backups.
+
+**Data directory structure:**
+```
+/data/
+├── timesheet.db          # SQLite database
+└── logs/                 # Optional: application logs
+```
+
+**Backup strategy:**
+- SQLite database can be backed up with `sqlite3 .backup`
+- TrueNAS can snapshot the volume
+- Export time entries to CSV regularly as additional backup
+
+### 9.5 Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GOOGLE_CLIENT_ID` | Yes | - | OAuth 2.0 client ID from Google Cloud Console |
+| `GOOGLE_CLIENT_SECRET` | Yes | - | OAuth 2.0 client secret |
+| `OAUTH_REDIRECT_URI` | Yes | - | Full URL for OAuth callback (e.g., `https://timesheet.example.com/auth/callback`) |
+| `ANTHROPIC_API_KEY` | No | - | For LLM classification features |
+| `DATABASE_PATH` | No | `/data/timesheet.db` | SQLite database file location |
+| `ENVIRONMENT` | No | `development` | `production` or `development` |
+| `LOG_LEVEL` | No | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| `SESSION_SECRET` | Yes | - | Secret key for session encryption (generate random string) |
+
+**Generating secrets:**
+```bash
+# Session secret (32 bytes, hex-encoded)
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### 9.6 OAuth Configuration for Docker/TrueNAS
+
+**Critical consideration**: OAuth redirect URI must match exactly.
+
+**For local development:**
+```
+Redirect URI: http://localhost:8000/auth/callback
+Access URL: http://localhost:8000
+```
+
+**For TrueNAS with reverse proxy (recommended):**
+```
+Redirect URI: https://timesheet.yourdomain.com/auth/callback
+Access URL: https://timesheet.yourdomain.com
+```
+
+**For TrueNAS direct access (IP only):**
+```
+Redirect URI: http://192.168.1.100:8000/auth/callback
+Access URL: http://192.168.1.100:8000
+```
+
+**Google Cloud Console setup:**
+1. Go to APIs & Services → Credentials
+2. Create OAuth 2.0 Client ID (Web application)
+3. Add authorized redirect URI(s) from above
+4. Note: Cannot use `localhost` or IP addresses for production OAuth
+
+**Workaround for IP-only access**: Use a service like nip.io for DNS:
+```
+http://timesheet.192.168.1.100.nip.io:8000/auth/callback
+```
+
+### 9.7 TrueNAS Scale Deployment
+
+**Prerequisites:**
+- TrueNAS Scale 22.x or later
+- Docker image built and pushed to registry OR built on TrueNAS
+- Google OAuth credentials configured
+
+**Deployment steps:**
+
+1. **Build and push Docker image** (from development machine):
+   ```bash
+   docker build -t yourusername/timesheet-app:latest .
+   docker push yourusername/timesheet-app:latest
+   ```
+
+2. **Create Custom App in TrueNAS**:
+   - Navigate to Apps → Discover Apps → Custom App
+   - Fill in configuration:
+     - **Application Name**: `timesheet-app`
+     - **Image Repository**: `yourusername/timesheet-app`
+     - **Image Tag**: `latest`
+     - **Container Port**: `8000`
+     - **Node Port**: Choose available port (e.g., `30000`)
+
+3. **Configure Environment Variables**:
+   Add each variable from section 9.5 in the TrueNAS UI.
+
+4. **Configure Storage**:
+   - Add Host Path Volume:
+     - **Host Path**: `/mnt/pool/apps/timesheet/data`
+     - **Mount Path**: `/data`
+   - TrueNAS will create directory if it doesn't exist
+
+5. **Deploy and verify**:
+   - Click Deploy
+   - Check logs: Apps → timesheet-app → Logs
+   - Access: `http://truenas-ip:30000`
+
+**Alternative: docker-compose on TrueNAS**:
+
+TrueNAS Scale supports docker-compose via SSH:
+
+```bash
+# SSH to TrueNAS
+ssh admin@truenas-ip
+
+# Create app directory
+mkdir -p /mnt/pool/apps/timesheet
+cd /mnt/pool/apps/timesheet
+
+# Copy docker-compose.yaml and .env
+# ... (upload files)
+
+# Deploy
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+```
+
+### 9.8 Health Checks and Monitoring
+
+**Health check endpoint** (`src/main.py`):
+
+```python
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for container orchestration."""
+    try:
+        # Check database connectivity
+        db = Database()
+        db.execute("SELECT 1")
+
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": "connected"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Unhealthy: {str(e)}")
+```
+
+**Monitoring in TrueNAS:**
+- View container status in Apps dashboard
+- Check logs for errors
+- Set up notifications for container failures
+
+**External monitoring** (optional):
+- UptimeRobot or similar service pinging `/health`
+- Grafana + Prometheus for metrics (future)
+
+### 9.9 Logging
+
+**Log to stdout/stderr** (Docker best practice):
+
+```python
+import logging
+import sys
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+```
+
+**View logs:**
+```bash
+# Docker Compose
+docker-compose logs -f
+
+# TrueNAS Custom App
+# Use TrueNAS UI: Apps → timesheet-app → Logs
+
+# Direct Docker
+docker logs -f timesheet-app
+```
+
+**Log rotation**: Docker handles this automatically with default settings.
+
+### 9.10 Security Considerations
+
+1. **Secrets management**:
+   - Never commit `.env` file to git
+   - Use TrueNAS secrets or environment variable injection
+   - Rotate OAuth credentials periodically
+
+2. **File permissions**:
+   - SQLite database should be readable only by app user
+   - Container runs as non-root user (UID 1000)
+
+3. **Network isolation**:
+   - Container only exposes port 8000
+   - Use reverse proxy (nginx, Traefik) for HTTPS
+   - Firewall rules to restrict access if needed
+
+4. **HTTPS/TLS**:
+   - **Do not** expose HTTP publicly
+   - Use reverse proxy (TrueNAS nginx, Cloudflare Tunnel, etc.)
+   - Let's Encrypt for free certificates
+
+5. **OAuth security**:
+   - Validate redirect URIs strictly
+   - Use HTTPS for production OAuth
+   - Store tokens encrypted in database (future enhancement)
+
+### 9.11 Development vs. Production
+
+**Development configuration**:
+```yaml
+# docker-compose.dev.yaml
+services:
+  timesheet-app:
+    build: .
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=DEBUG
+      - OAUTH_REDIRECT_URI=http://localhost:8000/auth/callback
+    volumes:
+      - ./src:/app/src  # Hot reload
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+**Production configuration**:
+```yaml
+# docker-compose.yaml
+services:
+  timesheet-app:
+    image: yourusername/timesheet-app:latest  # Pre-built image
+    environment:
+      - ENVIRONMENT=production
+      - LOG_LEVEL=INFO
+    # No source volume mount
+    restart: unless-stopped
+```
+
+### 9.12 Troubleshooting
+
+**Container won't start:**
+- Check logs: `docker logs timesheet-app`
+- Verify environment variables are set
+- Check database path is writable
+
+**OAuth redirect mismatch:**
+- Ensure `OAUTH_REDIRECT_URI` exactly matches Google Cloud Console
+- Check for trailing slashes, http vs https
+- Verify port numbers match
+
+**Database locked errors:**
+- SQLite doesn't support multiple writers well
+- Ensure only one container instance is running
+- Check file permissions on `/data`
+
+**Port already in use:**
+- Change host port in docker-compose: `"8001:8000"`
+- Or stop conflicting service
+
+**Slow performance:**
+- Check resource limits in docker-compose
+- SQLite may need tuning for concurrent access
+- Consider migrating to Postgres for multi-user
+
+### 9.13 Future Enhancements
+
+- **CI/CD pipeline**: Automated builds on GitHub push
+- **Multi-architecture images**: Support ARM for Raspberry Pi
+- **Kubernetes deployment**: Helm chart for k8s clusters
+- **Secrets management**: Integration with Vault or sealed secrets
+- **Observability**: OpenTelemetry tracing, Prometheus metrics
+
+### 9.14 Multi-User Support (Temporary Solution)
+
+> **Status:** Documented workaround. Not yet implemented.
+> **Related Bug:** BUG-034 in BUGS.md
+
+**Problem:**
+
+The application architecture is fundamentally single-user. When multiple users log in via OAuth:
+- All users share the same `auth_tokens` table entry
+- Second user's login overwrites first user's tokens
+- All calendar operations use whichever tokens were stored last
+- Users can inadvertently access each other's calendar data
+
+**Root Cause:**
+
+The schema has no `user_id` concept:
+```sql
+CREATE TABLE auth_tokens (
+    id INTEGER PRIMARY KEY,
+    access_token TEXT NOT NULL,
+    refresh_token TEXT NOT NULL,
+    -- Missing: user_id, email, etc.
+    ...
+);
+```
+
+**Current Workaround:**
+
+Deploy separate Docker container instances per user. Each user gets:
+- Their own container
+- Their own database file
+- Complete isolation
+
+**Proposed Temporary Solution: Email-Based Database Paths**
+
+Instead of one shared database, create a separate database file per user based on their email address:
+
+```
+/data/
+├── timesheet-alice_at_example_com.db
+├── timesheet-bob_at_example_com.db
+└── timesheet-charlie_at_work_net.db
+```
+
+**Implementation approach:**
+
+1. **Add session management** to track logged-in user:
+   ```python
+   # main.py
+   from starlette.middleware.sessions import SessionMiddleware
+
+   app.add_middleware(
+       SessionMiddleware,
+       secret_key=config.SECRET_KEY,
+       max_age=7 * 24 * 60 * 60  # 7 days
+   )
+   ```
+
+2. **Store user email in session after OAuth**:
+   ```python
+   # routes/auth.py - in auth_callback()
+
+   # After successful OAuth, fetch user profile
+   from googleapiclient.discovery import build
+
+   service = build('oauth2', 'v2', credentials=credentials)
+   user_info = service.userinfo().get().execute()
+
+   # Store in session
+   request.session["user_email"] = user_info["email"]
+   request.session["user_name"] = user_info.get("name", "")
+   ```
+
+3. **Dynamic database path based on session**:
+   ```python
+   # db.py
+
+   def get_user_db_path(email: str | None) -> Path:
+       """Get database path for a specific user."""
+       if not email:
+           # Fallback for unauthenticated requests
+           return Path(os.environ.get("DATABASE_PATH", "/data/timesheet.db"))
+
+       # Sanitize email for use in filename
+       safe_email = email.replace("@", "_at_").replace(".", "_")
+       return Path(f"/data/timesheet-{safe_email}.db")
+
+   # Modify Database class to accept path per-request
+   class Database:
+       def __init__(self, db_path: Path | None = None):
+           self.db_path = db_path or get_default_path()
+   ```
+
+4. **Request-scoped database initialization**:
+   ```python
+   # main.py or middleware
+
+   from starlette.middleware.base import BaseHTTPMiddleware
+
+   class DatabaseMiddleware(BaseHTTPMiddleware):
+       async def dispatch(self, request, call_next):
+           email = request.session.get("user_email")
+           db_path = get_user_db_path(email)
+
+           # Initialize database for this user
+           request.state.db = Database(db_path)
+
+           response = await call_next(request)
+           return response
+   ```
+
+5. **Update route handlers to use request-scoped DB**:
+   ```python
+   # routes/api.py
+
+   @router.post("/sync")
+   async def sync_events(request: Request):
+       db = request.state.db  # User-specific database
+       # ... rest of sync logic
+   ```
+
+**Benefits:**
+
+- ✅ No schema changes required
+- ✅ Complete data isolation between users
+- ✅ Each user has independent projects, rules, classifications
+- ✅ Works with existing single-user codebase
+- ✅ Relatively simple implementation (~100 lines of code)
+- ✅ Can support unlimited users in single container
+
+**Limitations:**
+
+- ⚠️ Cannot share projects or rules between users
+- ⚠️ Storage grows linearly with number of users
+- ⚠️ No centralized user management
+- ⚠️ Database file proliferation
+- ⚠️ Still requires OAuth per user
+- ⚠️ No admin interface to manage users
+
+**Migration Path:**
+
+This solution is a stepping stone, not a permanent architecture:
+
+1. **Short-term** (this solution): Email-based database files
+   - Enables multi-user support quickly
+   - Isolated data per user
+   - Minimal code changes
+
+2. **Medium-term**: Add users table, keep SQLite
+   - Add `users` table with email, name, settings
+   - Add `user_id` foreign keys to all tables
+   - Single shared database with proper isolation
+   - Enables features like shared projects
+
+3. **Long-term**: Migrate to Google Cloud Run + Firestore
+   - Proper multi-tenant architecture
+   - Scalable cloud infrastructure
+   - See section 10 for details
+
+**Dependencies:**
+
+```txt
+# requirements.txt additions
+itsdangerous>=2.1.0  # For session signing (already included via Starlette)
+```
+
+**Environment Variables:**
+
+```bash
+# .env additions
+SESSION_MAX_AGE=604800  # 7 days in seconds (optional)
+```
+
+**Testing Multi-User:**
+
+1. Open browser in normal mode, log in as user1@example.com
+2. Open browser in incognito mode, log in as user2@example.com
+3. Each should see their own calendar and classifications
+4. Verify separate database files created:
+   ```bash
+   docker exec timesheet-app ls -lh /data/
+   # Should show:
+   # timesheet-user1_at_example_com.db
+   # timesheet-user2_at_example_com.db
+   ```
+
+**Security Considerations:**
+
+- Session cookies must be HTTP-only and secure (HTTPS in production)
+- Database file names contain sanitized emails (no special chars)
+- Each user can only access their own database (enforced by session)
+- Logout should clear session completely
+
+**Implementation Checklist:**
+
+- [ ] Add SessionMiddleware to main.py
+- [ ] Update auth callback to fetch and store user email
+- [ ] Implement `get_user_db_path()` function
+- [ ] Add DatabaseMiddleware for request-scoped DB
+- [ ] Update all route handlers to use `request.state.db`
+- [ ] Add logout endpoint that clears session
+- [ ] Test with multiple users
+- [ ] Update DOCKER.md with multi-user instructions
+- [ ] Add migration guide if upgrading from single-user deployment
+
+**Related Issues:**
+
+- **BUG-034**: Documents the original multi-user collision problem
+- **Section 10**: Long-term proper multi-user architecture via Cloud Run
+
+## 10. Future Work: Google Cloud Run + Firestore
 
 > **Status:** TODO - Not started. This is a large architectural change.
 
@@ -472,7 +1117,7 @@ Migrate from local Docker/SQLite deployment to Google Cloud Run with Firestore a
 
 ---
 
-## 10. Open Design Questions
+## 11. Open Design Questions
 
 1. **OAuth token refresh**: How do we handle token expiry gracefully? Background refresh, or prompt user when needed?
 
@@ -482,7 +1127,7 @@ Migrate from local Docker/SQLite deployment to Google Cloud Run with Firestore a
 
 4. **Mobile responsiveness**: Not in PRD, but week view will need thought for narrow screens. Defer or design now?
 
-## 10. Context for Claude
+## 12. Context for Claude
 
 ### File Structure
 

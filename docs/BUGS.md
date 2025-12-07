@@ -6,6 +6,45 @@ Track bugs here. Mark as [FIXED] when resolved.
 
 ## Open Bugs
 
+### BUG-034: Application is single-user only - multi-user auth breaks
+**Reported:** 2025-12-07
+**Severity:** High
+**Description:**
+The application architecture is single-user only. When multiple users log in, the application uses the first user's calendar access tokens for all subsequent users.
+
+**Root cause:**
+- `auth_tokens` table has no `user_id` column
+- No user session management
+- OAuth tokens are stored globally without user association
+- All calendar operations use the single set of stored tokens
+
+**Impact:**
+- User A logs in and syncs their calendar → works correctly
+- User B logs in on a different device/browser → sees User A's calendar data
+- Security issue: Users can access other users' calendar data
+- Data integrity issue: Classifications from different users get mixed
+
+**Current workaround:**
+- Deploy separate instances per user (TrueNAS, Docker, etc.)
+- Or, only use the app with one Google account
+
+**Proper fix requires:**
+1. Add user authentication system (sessions, cookies, JWT)
+2. Add `users` table with user identification
+3. Add `user_id` foreign key to `auth_tokens`, `events`, `time_entries`, `projects`, `classification_rules`
+4. Update all queries to filter by `user_id`
+5. Add user login/logout flows
+6. Add user context middleware to track current user per request
+
+**Related to:**
+- Future work: Multi-user support (see design.md section 10)
+- Google Cloud Run migration would naturally require multi-user support
+
+**Note:**
+This is a fundamental architectural limitation, not a bug per se. The PRD explicitly states "single user" but this documents the observed multi-user collision behavior for future reference.
+
+---
+
 ### BUG-033: Implement user settings system with auto-roundup option
 **Reported:** 2025-12-07
 **Severity:** Medium

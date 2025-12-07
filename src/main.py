@@ -46,5 +46,27 @@ app.include_router(ui_router, tags=["ui"])
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
-    return {"status": "ok"}
+    """Health check endpoint for container orchestration.
+
+    Returns:
+        200 OK if healthy (database is accessible)
+        503 Service Unavailable if unhealthy
+    """
+    from datetime import datetime
+    from fastapi import HTTPException
+
+    try:
+        # Check database connectivity
+        db.execute("SELECT 1")
+
+        return {
+            "status": "healthy",
+            "timestamp": datetime.utcnow().isoformat(),
+            "database": "connected",
+            "version": app.version
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Unhealthy: {str(e)}"
+        )
