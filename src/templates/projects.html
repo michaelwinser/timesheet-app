@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Projects - Timesheet{% endblock %}
+
+{% block content %}
+<div class="projects-header">
+    <h1>Projects</h1>
+    <button class="btn btn-primary" onclick="showAddProject()">Add Project</button>
+</div>
+
+<div id="add-project-form" class="project-form hidden">
+    <input type="text" id="new-project-name" placeholder="Project name">
+    <input type="text" id="new-project-client" placeholder="Client (optional)">
+    <div class="color-picker-group">
+        <label for="new-project-color">Color:</label>
+        <input type="color" id="new-project-color" value="#00aa44">
+    </div>
+    <button class="btn btn-primary" onclick="addProject()">Save</button>
+    <button class="btn btn-secondary" onclick="hideAddProject()">Cancel</button>
+</div>
+
+<table class="projects-table">
+    <thead>
+        <tr>
+            <th>Color</th>
+            <th>Name</th>
+            <th>Client</th>
+            <th>Visible</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for project in projects %}
+        <tr data-project-id="{{ project.id }}"
+            data-name="{{ project.name }}"
+            data-client="{{ project.client or '' }}"
+            data-color="{{ project.color or '#00aa44' }}">
+            <td class="color-cell">
+                <input type="color"
+                       value="{{ project.color or '#00aa44' }}"
+                       onchange="updateProjectColor({{ project.id }}, this.value)"
+                       class="project-color-picker">
+            </td>
+            <td class="name-cell">
+                <span class="display-value">{{ project.name }}</span>
+                <input type="text" class="edit-input hidden" value="{{ project.name }}">
+            </td>
+            <td class="client-cell">
+                <span class="display-value">{{ project.client or '-' }}</span>
+                <input type="text" class="edit-input hidden" value="{{ project.client or '' }}" placeholder="(none)">
+            </td>
+            <td>
+                <input type="checkbox"
+                       {% if project.is_visible %}checked{% endif %}
+                       onchange="toggleVisibility({{ project.id }}, this.checked)">
+            </td>
+            <td class="actions-cell">
+                <button class="btn-small edit-btn" onclick="editProject({{ project.id }})">Edit</button>
+                <button class="btn-small btn-primary save-btn hidden" onclick="saveProject({{ project.id }})">Save</button>
+                <button class="btn-small cancel-btn hidden" onclick="cancelEdit({{ project.id }})">Cancel</button>
+                <button class="btn-small btn-danger delete-btn" onclick="deleteProject({{ project.id }})">Delete</button>
+            </td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="5" class="no-projects">No projects yet. Add one to get started.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="import-export">
+    <h2>Import / Export</h2>
+    <a href="/api/projects/export" class="btn btn-secondary">Export CSV</a>
+    <input type="file" id="import-file" accept=".csv" style="display: none" onchange="importProjects(this)">
+    <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">Import CSV</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showAddProject() {
+    document.getElementById('add-project-form').classList.remove('hidden');
+}
+
+function hideAddProject() {
+    document.getElementById('add-project-form').classList.add('hidden');
+    document.getElementById('new-project-name').value = '';
+    document.getElementById('new-project-client').value = '';
+    document.getElementById('new-project-color').value = '#00aa44';
+}
+
+async function addProject() {
+    const name = document.getElementById('new-project-name').value.trim();
+    const client = document.getElementById('new-project-client').value.trim();
+    const color = document.getElementById('new-project-color').value;
+
+    if (!name) {
+        alert('Project name is required');
+        return;
+    }
+
+    await api.post('/api/projects', { name, client: client || null, color });
+    location.reload();
+}
+
+async function updateProjectColor(projectId, color) {
+    await api.put(`/api/projects/${projectId}`, { color });
+}
+
+async function toggleVisibility(projectId, isVisible) {
+    await api.put(`/api/projects/${projectId}/visibility`, { is_visible: isVisible });
+}
+
+async function deleteProject(projectId) {
+    if (!confirm('Delete this project? Time entries will be orphaned.')) return;
+    await api.delete(`/api/projects/${projectId}`);
+    location.reload();
+}
+
+function editProject(projectId) {
+    const row = document.querySelector(`tr[data-project-id="${projectId}"]`);
+
+    // Show edit inputs, hide display values
+    row.querySelectorAll('.display-value').forEach(el => el.classList.add('hidden'));
+    row.querySelectorAll('.edit-input').forEach(el => el.classList.remove('hidden'));
+
+    // Toggle buttons
+    row.querySelector('.edit-btn').classList.add('hidden');
+    row.querySelector('.delete-btn').classList.add('hidden');
+    row.querySelector('.save-btn').classList.remove('hidden');
+    row.querySelector('.cancel-btn').classList.remove('hidden');
+
+    // Focus the name input
+    row.querySelector('.name-cell .edit-input').focus();
+}
+
+function cancelEdit(projectId) {
+    const row = document.querySelector(`tr[data-project-id="${projectId}"]`);
+
+    // Restore original values
+    row.querySelector('.name-cell .edit-input').value = row.dataset.name;
+    row.querySelector('.client-cell .edit-input').value = row.dataset.client;
+
+    // Hide edit inputs, show display values
+    row.querySelectorAll('.display-value').forEach(el => el.classList.remove('hidden'));
+    row.querySelectorAll('.edit-input').forEach(el => el.classList.add('hidden'));
+
+    // Toggle buttons
+    row.querySelector('.edit-btn').classList.remove('hidden');
+    row.querySelector('.delete-btn').classList.remove('hidden');
+    row.querySelector('.save-btn').classList.add('hidden');
+    row.querySelector('.cancel-btn').classList.add('hidden');
+}
+
+async function saveProject(projectId) {
+    const row = document.querySelector(`tr[data-project-id="${projectId}"]`);
+    const name = row.querySelector('.name-cell .edit-input').value.trim();
+    const client = row.querySelector('.client-cell .edit-input').value.trim();
+
+    if (!name) {
+        alert('Project name is required');
+        return;
+    }
+
+    try {
+        await api.put(`/api/projects/${projectId}`, {
+            name,
+            client: client || null
+        });
+
+        // Update display values and data attributes
+        row.dataset.name = name;
+        row.dataset.client = client;
+        row.querySelector('.name-cell .display-value').textContent = name;
+        row.querySelector('.client-cell .display-value').textContent = client || '-';
+
+        // Exit edit mode
+        cancelEdit(projectId);
+    } catch (error) {
+        alert('Save failed: ' + error.message);
+    }
+}
+
+function importProjects(input) {
+    // TODO: CSV import
+    alert('Import not yet implemented');
+}
+</script>
+{% endblock %}

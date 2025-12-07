@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Timesheet{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <header class="header">
+        <nav class="nav">
+            <a href="/" class="nav-brand">Timesheet</a>
+            <div class="nav-links">
+                <a href="/">Calendar</a>
+                <a href="/projects">Projects</a>
+                <a href="/docs" target="_blank">API</a>
+            </div>
+        </nav>
+    </header>
+
+    <main class="main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="/static/js/api.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

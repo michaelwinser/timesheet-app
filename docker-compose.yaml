@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  timesheet:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - timesheet-data:/app/data
+    environment:
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:8000/auth/callback}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - DATABASE_PATH=/app/data/timesheet.db
+    restart: unless-stopped
+
+volumes:
+  timesheet-data:

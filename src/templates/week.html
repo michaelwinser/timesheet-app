@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Week of {{ week_start.strftime('%b %d') }} - Timesheet{% endblock %}
+
+{% block content %}
+<div class="week-header">
+    <div class="week-nav">
+        <a href="/week/{{ prev_week }}" class="btn btn-secondary">&larr; Prev</a>
+        <a href="/" class="btn btn-secondary">Today</a>
+        <a href="/week/{{ next_week }}" class="btn btn-secondary">Next &rarr;</a>
+    </div>
+    <h1 class="week-title">Week of {{ week_start.strftime('%B %d') }} - {{ week_end.strftime('%B %d, %Y') }}</h1>
+    <div class="week-actions">
+        <button id="sync-btn" class="btn btn-secondary" onclick="refreshEvents()">↻ Refresh</button>
+        <a href="/api/export/harvest?start_date={{ week_start }}&end_date={{ week_end }}" class="btn btn-primary">Export CSV</a>
+    </div>
+</div>
+
+<div class="filter-bar">
+    <input type="text" id="filter-input" placeholder="Filter events..." onkeyup="filterEvents()">
+</div>
+
+<div class="week-grid">
+    {% for day in days %}
+    <div class="day-column {% if day.is_today %}today{% endif %}">
+        <div class="day-header">
+            <span class="day-name">{{ day.day_name }}</span>
+            <span class="day-number">{{ day.day_number }}</span>
+        </div>
+        <div class="day-events">
+            {% for event in day.events %}
+            <div class="event-card {% if event.is_classified %}classified{% else %}unclassified{% endif %}"
+                 data-event-id="{{ event.id }}"
+                 data-title="{{ event.title }}"
+                 data-project="{{ event.project_name or '' }}">
+
+                <!-- Event side (unclassified view) -->
+                <div class="card-side card-event {% if event.is_classified %}hidden{% endif %}">
+                    <div class="event-title">{{ event.title }}</div>
+                    <div class="event-time">
+                        {{ event.start_time[11:16] }} - {{ event.end_time[11:16] }}
+                    </div>
+                    {% if event.attendees %}
+                    <div class="event-attendees">
+                        {{ event.attendees | length }} attendee(s)
+                    </div>
+                    {% endif %}
+                    {% if event.meeting_link %}
+                    <a href="{{ event.meeting_link }}" target="_blank" class="event-link">Join</a>
+                    {% endif %}
+                    <div class="event-actions">
+                        <select class="project-select" onchange="classifyEvent({{ event.id }}, this.value, this.options[this.selectedIndex].dataset.color)">
+                            <option value="">Classify...</option>
+                            {% for project in projects %}
+                            <option value="{{ project.id }}" data-color="{{ project.color or '#00aa44' }}">{{ project.name }}</option>
+                            {% endfor %}
+                        </select>
+                        {% if event.is_classified %}
+                        <button class="btn-small" onclick="flipCard({{ event.id }})">Flip</button>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Time entry side (classified view) -->
+                <div class="card-side card-entry {% if not event.is_classified %}hidden{% endif %}"
+                     data-entry-id="{{ event.entry_id }}"
+                     style="background-color: {{ event.project_color }}">
+                    <div class="entry-header">
+                        <select class="project-select entry-project-select" onchange="reclassifyEvent({{ event.id }}, {{ event.entry_id }}, this.value, this.options[this.selectedIndex].dataset.color)">
+                            <option value="">— Unclassify —</option>
+                            {% for project in projects %}
+                            <option value="{{ project.id }}" data-color="{{ project.color or '#00aa44' }}" {% if project.id == event.project_id %}selected{% endif %}>{{ project.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="entry-hours">
+                        <span class="hours-value">{{ "%.2f"|format(event.hours or 0) }}</span> hrs
+                        <button class="btn-small" onclick="roundUp({{ event.id }}, {{ event.entry_id }})">+15m</button>
+                    </div>
+                    <div class="entry-description">{{ event.entry_description or event.title }}</div>
+                    <div class="entry-actions">
+                        <button class="btn-small" onclick="flipCard({{ event.id }})">Flip</button>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="no-events">No events</div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/app.js"></script>
+<script>
+    // Initialize with current week dates
+    window.weekStart = "{{ week_start }}";
+    window.weekEnd = "{{ week_end }}";
+
+    // Auto-sync on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        syncEventsQuiet();
+    });
+</script>
+{% endblock %}
