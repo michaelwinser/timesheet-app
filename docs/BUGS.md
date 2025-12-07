@@ -45,6 +45,544 @@ This is a fundamental architectural limitation, not a bug per se. The PRD explic
 
 ---
 
+### BUG-035: Migration system lacks tracking - migrations not idempotent
+**Reported:** 2025-12-07
+**Severity:** Medium
+**Description:**
+The migration system runs all SQL files on application startup but doesn't track which migrations have been applied. Migrations must be idempotent (using `CREATE TABLE IF NOT EXISTS`) or they will fail on restart.
+
+**Current behavior:**
+- Migrations run once on application startup (`main.py`)
+- All `.sql` files in `/migrations/` directory are executed in sorted order
+- No tracking of which migrations have been applied
+- Migrations must be idempotent or app won't restart
+
+**Impact:**
+- Cannot write non-idempotent migrations (e.g., `ALTER TABLE ADD COLUMN` fails on second run)
+- No visibility into which migrations have been applied
+- No rollback capability
+- Cannot safely add columns or modify schema incrementally
+
+**Example failure:**
+```
+sqlite3.OperationalError: duplicate column name: my_response_status
+```
+This occurs when a migration adds a column, the app restarts, and the migration tries to add the same column again.
+
+**Proposed solution:**
+1. Create `schema_migrations` table to track applied migrations
+2. Only run migrations that haven't been applied yet
+3. Record migration name and timestamp when applied
+4. Optional: Add rollback support
+
+Example tracking table:
+```sql
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    version TEXT PRIMARY KEY,
+    applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Workaround:**
+Only write idempotent migrations using `IF NOT EXISTS` clauses.
+
+**Related:**
+- See `docs/ABANDONED-multi-user-per-db.md` for lessons learned from previous migration approach
+- Would be critical for multi-user support where each user has their own database
+
+---
+
+### BUG-036: Add serialized event text property for simpler rule matching
+**Reported:** 2025-12-07
+**Severity:** Low
+**Description:**
+Add a computed property on events that serializes all event properties into a single searchable text string. This would make rule writing simpler by allowing a single "contains" condition instead of multiple separate conditions.
+
+**Current behavior:**
+To match an event based on multiple properties, users must create separate rule conditions:
+- Title contains "standup"
+- OR Attendees contains "team@company.com"
+- OR Description contains "daily sync"
+
+**Proposed solution:**
+Add a computed `event_text` property that concatenates relevant event properties:
+```
+event_text = f"{title} {description} {attendees_joined} {meeting_link} {calendar_id}"
+```
+
+Example serialized text:
+```
+"Daily Standup Discuss sprint progress alice@company.com,bob@company.com https://meet.google.com/abc-defg-hij user@gmail.com"
+```
+
+**Benefits:**
+- Simpler rules: Single "text contains" condition instead of multiple OR conditions
+- Better for fuzzy matching and LLM-based classification
+- Easier to test rules (can see all searchable text at once)
+- More intuitive for users ("search for any event mentioning X")
+
+**Implementation:**
+1. Add `event_text` computed property to EventProperties class in `classifier.py`
+2. Add "text_contains" or "text_matches" condition type to rules
+3. Update rule matching logic to check against event_text
+4. Consider caching event_text in database for performance (optional)
+
+**Example use cases:**
+- Rule: "text contains 'client name'" matches any event related to that client
+- Rule: "text contains 'zoom.us'" matches all Zoom meetings
+- Rule: "text contains '@contractor.com'" matches all meetings with contractor attendees
+
+**Alternative approach:**
+Instead of a single text blob, could provide structured search across all fields simultaneously (e.g., Elasticsearch-style query). But simple text concatenation is easier to implement and understand.
+
+**Priority:**
+Low - current multi-condition rules work, this is a convenience improvement
+
+---
+
+### BUG-037: Add regular expression support to rule conditions
+**Reported:** 2025-12-07
+**Severity:** Low
+**Description:**
+Allow regular expressions in rule conditions to enable flexible pattern matching and OR-style patterns within a single property. This would simplify rules that need to match multiple variants of similar text.
+
+**Current behavior:**
+To match multiple patterns in a single property, users must create separate rule conditions:
+- Title contains "standup"
+- OR Title contains "sync"
+- OR Title contains "daily meeting"
+- OR Title contains "scrum"
+
+**Proposed solution:**
+Add a new condition type "matches_regex" or "regex" that accepts regular expression patterns:
+```
+Title matches_regex "standup|sync|daily meeting|scrum"
+```
+
+**Benefits:**
+- Fewer rule conditions needed for OR-style matching
+- More powerful pattern matching (e.g., case-insensitive, word boundaries, wildcards)
+- Better for complex patterns like email domains, phone numbers, dates
+- Familiar syntax for technical users
+
+**Implementation:**
+1. Add `matches_regex` condition type to classification rules
+2. Use Python's `re` module for pattern matching
+3. Add regex flags support (case-insensitive, multiline, etc.)
+4. Validate regex patterns when creating/updating rules (catch syntax errors)
+5. Consider performance implications (regex can be slower than simple string contains)
+6. Add UI indicator for regex conditions (e.g., "Regex:" label)
+
+**Example use cases:**
+- Match any standup variant: `title matches_regex "stand[ -]?up|daily sync|scrum"`
+- Match email domains: `attendees matches_regex "@(company|contractor|client)\.com"`
+- Case-insensitive matching: `title matches_regex "(?i)client name"` (case-insensitive flag)
+- Word boundaries: `title matches_regex "\bproject\b"` (match "project" but not "projects")
+- Date patterns: `title matches_regex "\d{4}-\d{2}-\d{2}"` (YYYY-MM-DD dates)
+
+**UI considerations:**
+- Provide regex help/examples in rule creation UI
+- Show validation errors for invalid regex patterns
+- Consider a "test regex" feature to preview matches
+- Maybe provide regex builder/assistant for non-technical users
+
+**Security/Safety:**
+- Validate regex patterns to prevent ReDoS (Regular Expression Denial of Service)
+- Set regex timeout to prevent hanging on pathological patterns
+- Limit regex complexity (max length, nesting depth)
+
+**Performance:**
+- Regex matching can be slower than simple string operations
+- Consider caching compiled regex patterns
+- Maybe add performance warning for complex patterns
+
+**Alternative approaches:**
+- Use glob patterns instead (simpler, but less powerful): `title matches "standup*"`
+- Provide pre-built pattern library (common patterns like email, URL, etc.)
+
+**Priority:**
+Low - current multi-condition rules work, but regex would significantly improve power users' experience
+
+**Related:**
+- Works well with BUG-036 (event_text property) - could regex search across all properties
+
+---
+
+### BUG-038: Add keywords and contacts fields to Projects for classification
+**Reported:** 2025-12-07
+**Severity:** Medium
+**Description:**
+Allow users to specify keywords and contact emails directly on Project definitions. These serve as classification hints that can be used by LLM classifiers or automatically converted into classification rules.
+
+**Current behavior:**
+Projects only have name, color, and visibility fields. To classify events to a project, users must:
+1. Manually classify individual events, or
+2. Create separate classification rules with attendee/title conditions
+
+There's no natural place to specify "what makes an event belong to this project" in simple terms.
+
+**Proposed solution:**
+Add two optional fields to the Projects table/UI:
+1. **Keywords**: Comma-separated list of keywords/phrases that indicate this project
+2. **Contacts**: Comma-separated list of email addresses or domains associated with this project
+
+**Example Project definition:**
+```
+Project: Alpha-Omega Security Initiative
+Keywords: alpha-omega, security, vulnerability, OSS security
+Contacts: alice@example.com, bob@contractor.com, @alpha-omega.dev
+```
+
+**Use cases:**
+
+1. **LLM Classification Context:**
+   - When using LLM to classify events, include project keywords/contacts in the prompt
+   - "This project is about: alpha-omega, security, vulnerability..."
+   - "Key people: alice@example.com, bob@contractor.com"
+   - Gives LLM better context to make accurate classifications
+
+2. **Auto-generate Rules:**
+   - Button: "Generate rules from keywords/contacts"
+   - Automatically creates rules like:
+     - `title contains "alpha-omega"` → Alpha-Omega project
+     - `attendees list_contains alice@example.com` → Alpha-Omega project
+     - `attendee_domain = alpha-omega.dev` → Alpha-Omega project
+   - Saves users from manually creating these obvious rules
+
+3. **Simpler Project Setup:**
+   - Natural place to define project characteristics during setup
+   - More intuitive than immediately jumping to rule creation
+   - Useful for users who don't understand rule syntax
+
+**Benefits:**
+- Centralizes project classification information in one place
+- Simpler mental model: "define what the project is about"
+- Useful for both manual (LLM) and automatic (rules) classification
+- Can be gradually enhanced (start with keywords, add rules later)
+- Good foundation for future ML/AI classification features
+
+**Implementation:**
+
+Database schema changes:
+```sql
+ALTER TABLE projects ADD COLUMN keywords TEXT;
+ALTER TABLE projects ADD COLUMN contacts TEXT;
+```
+
+UI changes:
+1. Add Keywords and Contacts fields to project creation/edit form
+2. Show keywords/contacts on project detail/list views
+3. Add "Generate Rules" button next to these fields
+4. Provide inline help/examples for both fields
+
+Backend changes:
+1. Store keywords and contacts as comma-separated text (or JSON array)
+2. API endpoint to auto-generate rules from project keywords/contacts
+3. Include keywords/contacts in LLM classification prompts (future)
+
+**UI mockup:**
+```
+Project Name: [Alpha-Omega Security Initiative    ]
+Color:        [🎨 #6366f1                         ]
+Keywords:     [alpha-omega, security, OSS         ] ℹ️ Words/phrases in event titles
+Contacts:     [alice@, @alpha-omega.dev           ] ℹ️ Emails or domains of attendees
+              [Generate Rules from Keywords/Contacts]
+
+Visibility:   ☑ Show in dropdowns
+```
+
+**Keywords field format:**
+- Comma-separated list of keywords or phrases
+- Case-insensitive matching
+- Examples: "standup, daily sync", "client name", "project-code-123"
+
+**Contacts field format:**
+- Comma-separated list of:
+  - Full email addresses: `alice@example.com`
+  - Email domains (prefix with @): `@clientcorp.com`
+- Examples: "alice@company.com, bob@contractor.com, @client.com"
+
+**Auto-generate rules logic:**
+For each keyword:
+- Create rule: `title contains "{keyword}"` → Project
+
+For each full email:
+- Create rule: `attendees list_contains "{email}"` → Project
+
+For each domain:
+- Create rule: `attendee_domain = "{domain}"` → Project
+
+**Future enhancements:**
+- Use keywords/contacts as training data for ML classification
+- Suggest keywords based on already-classified events
+- Highlight events that match keywords but aren't classified yet
+- Scoring: events matching more keywords = higher classification confidence
+
+**Related bugs:**
+- BUG-015: Organize rules by project (keywords/contacts are project-level metadata)
+- BUG-016: Email domain as rule property (contacts field can specify domains)
+- BUG-036: Event text property (keywords would search this text field)
+- BUG-010: Confidence levels (matching multiple keywords = higher confidence)
+
+**Priority:**
+Medium - this would significantly simplify project setup and classification, and provides foundation for future LLM/ML features
+
+---
+
+### BUG-039: Improve project show/hide feature with persistent visibility and UI controls
+**Reported:** 2025-12-07
+**Severity:** Medium
+**Description:**
+The current project show/hide feature in the week view sidebar uses sessionStorage and is not editable from the Projects page. The visibility state should be persisted in the database with the project, and users should be able to edit it from the Projects management page.
+
+**Current behavior:**
+- Project visibility is toggled via checkboxes in the week view sidebar
+- Visibility state is stored in sessionStorage (see BUG-028 for related issue)
+- Projects table has `is_visible` field but it's not used for show/hide filtering
+- No way to edit visibility from the Projects page
+- Projects list is sorted alphabetically only
+
+**Issues with current implementation:**
+1. SessionStorage is volatile - doesn't persist across browser close/reload
+2. Visibility settings are per-week, not global
+3. No UI to manage visibility outside of week view
+4. Unclear relationship between `is_visible` database field and sessionStorage
+5. Projects list doesn't group by visibility status
+
+**Proposed solution:**
+Change the implementation so that:
+1. **Database-backed visibility**: Use the existing `is_visible` field in projects table as the source of truth
+2. **Edit on Projects page**: Add UI controls on `/projects` to toggle visibility for each project
+3. **Organized list**: Sort projects by visibility status first (shown → hidden), then alphabetically within each group
+
+**Implementation:**
+
+Database changes:
+- `is_visible` field already exists, just need to use it properly
+- Default to `true` for new projects
+
+Week view changes:
+- Replace sessionStorage logic with database-backed visibility
+- When toggling visibility in sidebar, update database via API call
+- Remove week-specific visibility keys from sessionStorage
+- Filter projects in backend query based on `is_visible` field
+
+Projects page changes:
+- Add visibility toggle UI for each project (checkbox, toggle switch, or eye icon)
+- Show/hide status clearly (e.g., "👁 Shown" vs "🚫 Hidden")
+- Group projects: "Shown Projects" section, then "Hidden Projects" section
+- Each section sorted alphabetically
+
+API changes:
+- PATCH `/api/projects/{id}` to update `is_visible` field
+- Backend filtering honors `is_visible` for dropdowns
+- Week view can include all projects in sidebar (for toggling) but filter event display
+
+**UI mockup for Projects page:**
+```
+Projects
+
+Shown Projects (5)
+─────────────────────────────────────────────────
+[👁] Alpha-Omega         #6366f1  [Edit] [Hide]
+[👁] Client Work         #10b981  [Edit] [Hide]
+[👁] FreeBSD             #f59e0b  [Edit] [Hide]
+[👁] Internal            #f43f5e  [Edit] [Hide]
+[👁] Research            #06b6d4  [Edit] [Hide]
+
+Hidden Projects (2)
+─────────────────────────────────────────────────
+[🚫] Archived Project    #8b5cf6  [Edit] [Show]
+[🚫] Junk               #cbd5e1  [Edit] [Show]
+
+[+ Create New Project]
+```
+
+**UI mockup for Week view sidebar:**
+```
+Week of Dec 2-8, 2024
+Total: 32.5 hours
+
+☑ Alpha-Omega      8.5h  ████████░
+☑ Client Work      12h   ████████████░
+☑ FreeBSD          6h    ██████░
+☑ Internal         4h    ████░
+☑ Research         2h    ██░
+☐ Junk            0h    ░
+
+[Toggle: ☑ Show hidden projects]
+```
+
+**Benefits:**
+- Persistent visibility settings across sessions
+- Centralized project management on Projects page
+- Clearer organization: shown vs hidden projects
+- Consistent with user expectations (database-backed, not browser storage)
+- Removes dependency on sessionStorage for important data
+
+**Related to:**
+- BUG-028: Persist project visibility filter (this bug addresses root cause)
+- BUG-029: Sort project lists alphabetically (extends to group by visibility first)
+
+**Migration considerations:**
+- Existing projects with `is_visible=true` continue to work
+- Remove sessionStorage visibility keys (or migrate them to database updates)
+- May want to preserve user's current sessionStorage preferences on first load
+
+**Priority:**
+Medium - affects organization and persistence of project visibility, which is a core feature
+
+---
+
+### BUG-040: Add "Don't track hours" option for pseudo-projects
+**Reported:** 2025-12-07
+**Severity:** Medium
+**Description:**
+Add an option on projects to mark them as non-tracked, meaning events classified to these projects don't accumulate hours in summaries, reports, or timesheets. This is useful for pseudo-projects like "Junk" that classify away unwanted calendar events (synchronized busy blocks, declined meetings, personal events) without inflating work hour totals.
+
+**Current behavior:**
+- All classified events contribute to hour totals
+- "Junk" or "Did Not Attend" projects show up in weekly summaries
+- No way to distinguish between billable/trackable work and administrative classifications
+- Users must manually subtract non-work hours from totals
+
+**Use cases:**
+
+1. **Junk/Noise project**: Classify away calendar noise without it counting as work
+   - Synchronized busy blocks from personal calendar
+   - Placeholder events
+   - Cancelled meetings that weren't removed
+   - Calendar spam
+
+2. **Did Not Attend**: Mark meetings that were skipped (see BUG-014)
+   - Still on calendar, but didn't participate
+   - Shouldn't count toward work hours
+
+3. **Personal/Administrative**: Non-billable overhead that shouldn't count
+   - Lunch blocks
+   - Personal appointments
+   - Admin tasks that aren't tracked
+
+4. **Out of Office**: Vacation, sick days, holidays
+   - Blocks time on calendar
+   - Shouldn't count as working hours
+
+**Proposed solution:**
+Add a `track_hours` boolean field to projects (default: `true`). When `false`, events classified to this project:
+- Are NOT included in hour totals (weekly summary, daily totals, reports)
+- Still appear in the week view (optionally dimmed/styled differently)
+- Still count as "classified" (not shown as needing classification)
+- Are excluded from timesheet exports
+
+**Implementation:**
+
+Database schema changes:
+```sql
+ALTER TABLE projects ADD COLUMN track_hours BOOLEAN DEFAULT TRUE;
+```
+
+Projects page UI:
+```
+Project: Junk
+Color:   #cbd5e1
+☐ Track hours in summaries and reports
+   (Uncheck for pseudo-projects like "Junk", "Did Not Attend", etc.)
+
+Visibility: ☐ Show in dropdowns
+```
+
+Week view changes:
+- Filter hour calculations to exclude `track_hours=false` projects
+- Optionally dim/gray out non-tracked event cards
+- Maybe add subtle indicator (e.g., "⊗" icon) on non-tracked entries
+
+Backend query changes:
+```python
+# Week view hour totals
+project_hours = db.execute("""
+    SELECT p.id, p.name, SUM(te.hours) as total_hours
+    FROM time_entries te
+    JOIN projects p ON te.project_id = p.id
+    WHERE p.track_hours = TRUE  -- ← Filter here
+    AND date(te.event_start_time) >= ? AND date(te.event_start_time) <= ?
+    GROUP BY p.id
+""")
+
+# Total hours calculation
+total_hours = db.execute("""
+    SELECT SUM(te.hours)
+    FROM time_entries te
+    JOIN projects p ON te.project_id = p.id
+    WHERE p.track_hours = TRUE  -- ← Filter here
+    AND date(te.event_start_time) >= ? AND date(te.event_start_time) <= ?
+""").fetchone()[0]
+```
+
+API changes:
+- PATCH `/api/projects/{id}` accepts `track_hours` field
+- GET `/api/export` filters to `track_hours=true` projects only
+
+**UI mockup for project summary sidebar:**
+```
+Week of Dec 2-8, 2024
+Total: 32.5 hours  (tracked only)
+
+☑ Alpha-Omega      8.5h  ████████░
+☑ Client Work      12h   ████████████░
+☑ FreeBSD          6h    ██████░
+☑ Internal         4h    ████░
+☑ Research         2h    ██░
+
+Non-tracked:
+☑ Junk            8.5h   (not counted)
+☐ Did Not Attend  2h     (not counted)
+```
+
+**Alternative UI: Toggle to show/hide non-tracked:**
+```
+Week of Dec 2-8, 2024
+Total: 32.5 hours
+
+[Tracked Projects]
+Alpha-Omega      8.5h
+Client Work      12h
+FreeBSD          6h
+
+[Show non-tracked projects ▼]  ← Collapsible section
+```
+
+**Visual styling for non-tracked events:**
+- Lighter opacity (0.6)
+- Gray border or muted colors
+- Small "⊗" icon in corner
+- Tooltip: "Hours not tracked"
+
+**Benefits:**
+- Cleaner, more accurate hour totals
+- Enables proper "Junk" classification workflow
+- Supports "Did Not Attend" use case (BUG-014)
+- Reports reflect actual work, not calendar noise
+- Users can classify everything without inflating totals
+
+**Edge cases:**
+- Export: Should non-tracked entries appear? (Probably not, or separate section)
+- Daily totals (BUG-032): Show both tracked and total? Or only tracked?
+- Search/filter: Should be able to see non-tracked events when needed
+
+**Related to:**
+- BUG-014: "Did not attend" option (this enables that use case)
+- BUG-032: Daily hour totals (need to decide what to show)
+- BUG-039: Project visibility (similar database-backed project metadata)
+
+**Migration:**
+- Set `track_hours=true` for all existing projects
+- Optionally prompt user to set `track_hours=false` for projects named "Junk", "Did Not Attend", "Personal", etc.
+
+**Priority:**
+Medium - improves accuracy of reports and enables important workflows for filtering calendar noise
+
+---
+
 ### BUG-033: Implement user settings system with auto-roundup option
 **Reported:** 2025-12-07
 **Severity:** Medium

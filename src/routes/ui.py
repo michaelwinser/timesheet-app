@@ -14,24 +14,32 @@ router = APIRouter()
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
 
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, next: str = None):
+    """Login page with 'Login with Google' button."""
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "next": next,
+        },
+    )
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    """Redirect to current week."""
+    """Show current week (same as clicking Today button)."""
     today = datetime.now().date()
     # Find Monday of current week
     monday = today - timedelta(days=today.weekday())
-    return RedirectResponse(url=f"/week/{monday.isoformat()}")
+    # Forward to week view with current week's Monday
+    return await week_view(request, monday.isoformat())
 
 
 @router.get("/week/{date}", response_class=HTMLResponse)
 async def week_view(request: Request, date: str):
     """Display week view centered on the given date."""
-    credentials = get_stored_credentials()
-    if credentials is None:
-        return templates.TemplateResponse(
-            "login.html",
-            {"request": request},
-        )
+    # Authentication is enforced by middleware, no need to check here
 
     # Parse date and find Monday of that week
     try:
@@ -147,9 +155,7 @@ async def week_view(request: Request, date: str):
 @router.get("/projects", response_class=HTMLResponse)
 async def projects_page(request: Request):
     """Project management page."""
-    credentials = get_stored_credentials()
-    if credentials is None:
-        return RedirectResponse(url="/auth/login")
+    # Authentication is enforced by middleware, no need to check here
 
     db = get_db()
     projects = db.execute("SELECT * FROM projects ORDER BY name")
@@ -167,9 +173,7 @@ async def projects_page(request: Request):
 @router.get("/rules", response_class=HTMLResponse)
 async def rules_page(request: Request):
     """Rule management page."""
-    credentials = get_stored_credentials()
-    if credentials is None:
-        return RedirectResponse(url="/auth/login")
+    # Authentication is enforced by middleware, no need to check here
 
     db = get_db()
 

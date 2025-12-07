@@ -63,9 +63,10 @@ A web application that:
 
 **Key user flows:**
 
-1. **Initial setup**: User authenticates with Google, defines projects (or imports via CSV)
-2. **Weekly review**: User opens the week view, sees unclassified events, classifies them one by one (or in bulk)
-3. **Export**: User exports the week's time entries as CSV for Harvest import
+1. **Login**: User visits dedicated login page, clicks "Login with Google", completes OAuth flow, and is returned to their original page (or current week if coming from login page directly)
+2. **Initial setup**: User authenticates with Google, defines projects (or imports via CSV)
+3. **Weekly review**: User opens the week view, sees unclassified events, classifies them one by one (or in bulk)
+4. **Export**: User exports the week's time entries as CSV for Harvest import
 
 **Core concepts and terminology:**
 - **Event**: A calendar entry from Google Calendar (meeting, work block, etc.)
@@ -81,6 +82,31 @@ A web application that:
 ## 5. Detailed Requirements
 
 ### Functional Requirements
+
+**Authentication & Session Management:**
+- Dedicated login page at `/login` with "Login with Google" button
+- OAuth 2.0 flow for Google Calendar access (initiated from login page)
+- Session-based authentication with 24-hour session expiry
+- All application pages require authentication:
+  - Unauthenticated requests redirect to `/login?next=<original-url>`
+  - After successful OAuth login, redirect to `next` parameter URL (or `/` if not provided)
+  - This allows users to resume where they left off after session expiry or server restart
+- Home page `/` displays the current week (same as "Today" button behavior)
+- Logout functionality:
+  - Clears OAuth tokens and session
+  - Redirects to `/login` (not directly to OAuth flow)
+- User email displayed in header when authenticated
+- Session persists across browser sessions (using secure HTTP-only cookies)
+
+**Route structure:**
+- `/login` - Login page with "Login with Google" button (public)
+- `/auth/login` - OAuth redirect endpoint (internal, initiates Google OAuth flow)
+- `/auth/callback` - OAuth callback handler (internal, processes OAuth response)
+- `/auth/logout` - Logout endpoint (clears session)
+- `/` - Home page showing current week calendar (requires auth)
+- `/week/<date>` - Specific week view (requires auth)
+- `/projects` - Project management (requires auth)
+- `/rules` - Classification rules (requires auth)
 
 **Google Calendar Integration:**
 - OAuth 2.0 authentication flow

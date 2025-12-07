@@ -18,6 +18,10 @@
                 <a href="/rules">Rules</a>
                 <a href="/docs" target="_blank">API</a>
             </div>
+            <div class="nav-user" id="nav-user" style="display: none;">
+                <span class="user-email" id="user-email"></span>
+                <button class="btn-logout" id="btn-logout">Logout</button>
+            </div>
         </nav>
     </header>
 
@@ -26,6 +30,56 @@
     </main>
 
     <script src="/static/js/api.js?v=2"></script>
+    <script>
+        // Load user info and setup logout
+        async function initUserInfo() {
+            try {
+                const response = await fetch('/auth/status');
+                const data = await response.json();
+
+                if (data.authenticated && data.email) {
+                    const navUser = document.getElementById('nav-user');
+                    const userEmail = document.getElementById('user-email');
+
+                    userEmail.textContent = data.email;
+                    navUser.style.display = 'flex';
+                }
+            } catch (error) {
+                console.error('Failed to load user info:', error);
+            }
+        }
+
+        // Handle logout
+        async function handleLogout() {
+            try {
+                const response = await fetch('/auth/logout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    window.location.href = '/auth/login';
+                } else {
+                    alert('Logout failed. Please try again.');
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                alert('Logout failed. Please try again.');
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            initUserInfo();
+
+            const logoutBtn = document.getElementById('btn-logout');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', handleLogout);
+            }
+        });
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

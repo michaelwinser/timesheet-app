@@ -33,6 +33,9 @@ class Config:
 
     # Google Calendar API scopes
     GOOGLE_SCOPES: list[str] = [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
         "https://www.googleapis.com/auth/calendar.readonly",
     ]
 

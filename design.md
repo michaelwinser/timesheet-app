@@ -173,12 +173,29 @@ CREATE TABLE classification_history (
 
 ### Authentication
 
+**Authentication Flow:**
+
+1. User visits any protected route → Redirect to `/login?next=<original-url>` if not authenticated
+2. User clicks "Login with Google" button on login page → Navigate to `/auth/login`
+3. `/auth/login` redirects to Google OAuth consent screen
+4. User approves, Google redirects to `/auth/callback`
+5. Callback stores OAuth tokens and user email in session
+6. Redirect to `next` parameter URL (or `/` if none)
+7. Subsequent requests use session cookie for authentication
+
+**Session Management:**
+- 24-hour session expiry (configurable via `SESSION_MAX_AGE` environment variable)
+- Session stored in secure, HTTP-only cookies
+- Session contains: user email, user name
+- OAuth tokens stored in database
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/auth/login` | GET | Redirect to Google OAuth |
-| `/auth/callback` | GET | OAuth callback, store tokens |
-| `/auth/logout` | POST | Clear tokens |
-| `/auth/status` | GET | Return auth state |
+| `/login` | GET | Login page with "Login with Google" button (public, no auth required) |
+| `/auth/login` | GET | Initiate OAuth flow, redirect to Google (internal, triggered by login button) |
+| `/auth/callback` | GET | OAuth callback handler, stores tokens and user email in session, redirects to `next` parameter |
+| `/auth/logout` | POST | Clear OAuth tokens from database and session, redirect to `/login` |
+| `/auth/status` | GET | Return authentication status (authenticated boolean, user email) |
 
 ### Calendar
 
@@ -218,13 +235,20 @@ CREATE TABLE classification_history (
 
 ### UI Routes
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Redirect to current week |
-| `/week/{date}` | GET | Week view centered on date |
-| `/projects` | GET | Project management page |
+| Endpoint | Method | Description | Auth Required |
+|----------|--------|-------------|---------------|
+| `/login` | GET | Login page with "Login with Google" button | No (public) |
+| `/` | GET | Current week view (same as clicking "Today" button) | Yes |
+| `/week/{date}` | GET | Week view centered on date | Yes |
+| `/projects` | GET | Project management page | Yes |
+| `/rules` | GET | Classification rules management page | Yes |
 
-**Navigation:** Header includes "Calendar" link (goes to current week), "Projects" link, and "API" link (opens /docs).
+**Authentication enforcement:**
+- All routes except `/login` and `/auth/*` require authentication
+- Unauthenticated requests redirect to `/login?next=<requested-url>`
+- After successful login, redirect to `next` parameter (or `/` if not provided)
+
+**Navigation:** Header includes "Calendar" link (goes to current week), "Projects" link, "Rules" link, and "API" link (opens /docs). When authenticated, header also displays user email and logout button.
 
 ### Built-in API Explorer
 
@@ -241,12 +265,39 @@ CREATE TABLE classification_history (
 
 ### Screen Inventory
 
-| Screen | Purpose |
-|--------|---------|
-| Week View | Main screen: calendar grid, event cards, classification |
-| Project List | CRUD projects, toggle visibility |
-| Settings | Calendar selection, preferences |
-| Auth | Login/logout flow |
+| Screen | Purpose | Auth Required |
+|--------|---------|---------------|
+| Login | Display "Login with Google" button, handle `next` parameter for post-login redirect | No |
+| Week View | Main screen: calendar grid, event cards, classification | Yes |
+| Project List | CRUD projects, toggle visibility | Yes |
+| Rules | Manage classification rules | Yes |
+| Settings | Calendar selection, preferences (future) | Yes |
+
+### Login Page
+
+Simple centered layout with minimal UI:
+
+```
+┌─────────────────────────────────────────┐
+│                                         │
+│                                         │
+│              Timesheet App              │
+│                                         │
+│     ┌─────────────────────────────┐     │
+│     │  Login with Google          │     │
+│     │  [G] Sign in with Google    │     │
+│     └─────────────────────────────┘     │
+│                                         │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Behavior:**
+- No header/navigation (user not authenticated yet)
+- Centered card with app title and login button
+- Clicking button navigates to `/auth/login` which redirects to Google OAuth
+- After successful OAuth, redirects to `next` query parameter (or `/` if not provided)
+- Accessible without authentication
 
 ### Week View Layout
 
@@ -591,7 +642,8 @@ The SQLite database must persist across container restarts. Three options:
 | `DATABASE_PATH` | No | `/data/timesheet.db` | SQLite database file location |
 | `ENVIRONMENT` | No | `development` | `production` or `development` |
 | `LOG_LEVEL` | No | `INFO` | Logging verbosity: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
-| `SESSION_SECRET` | Yes | - | Secret key for session encryption (generate random string) |
+| `SECRET_KEY` | Yes | - | Secret key for session encryption (generate random 64+ char string) |
+| `SESSION_MAX_AGE` | No | `86400` (24 hours) | Session expiry time in seconds |
 
 **Generating secrets:**
 ```bash
@@ -1149,10 +1201,11 @@ timesheet-app/
 │   │   ├── classifier.py    # Classification logic
 │   │   └── exporter.py      # CSV export
 │   ├── templates/
-│   │   ├── base.html
-│   │   ├── login.html
-│   │   ├── week.html
-│   │   └── projects.html
+│   │   ├── base.html        # Base template with header/footer, user email, logout button
+│   │   ├── login.html       # Login page with "Login with Google" button
+│   │   ├── week.html        # Week view with event cards
+│   │   ├── projects.html    # Project management UI
+│   │   └── rules.html       # Classification rules UI
 │   └── static/
 │       ├── css/
 │       │   └── style.css

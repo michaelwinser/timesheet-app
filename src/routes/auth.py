@@ -66,13 +66,17 @@ def store_credentials(credentials: Credentials) -> None:
 
 
 @router.get("/login")
-async def login():
+async def login(request: Request, next: str = None):
     """Redirect to Google OAuth consent screen."""
     if not config.GOOGLE_CLIENT_ID or not config.GOOGLE_CLIENT_SECRET:
         raise HTTPException(
             status_code=500,
             detail="Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.",
         )
+
+    # Store the next parameter in session to redirect after OAuth
+    if next:
+        request.session["next_url"] = next
 
     flow = get_oauth_flow()
     auth_url, _ = flow.authorization_url(
@@ -84,7 +88,7 @@ async def login():
 
 
 @router.get("/callback")
-async def callback(code: str = None, error: str = None):
+async def callback(request: Request, code: str = None, error: str = None):
     """Handle OAuth callback from Google."""
     if error:
         raise HTTPException(status_code=400, detail=f"OAuth error: {error}")
@@ -96,25 +100,50 @@ async def callback(code: str = None, error: str = None):
     flow.fetch_token(code=code)
     credentials = flow.credentials
 
+    # Get user email from ID token
+    import google.auth.transport.requests
+    from google.oauth2 import id_token
+
+    # Verify and decode the ID token to get user info
+    id_info = id_token.verify_oauth2_token(
+        credentials.id_token,
+        google.auth.transport.requests.Request(),
+        config.GOOGLE_CLIENT_ID
+    )
+
+    # Store user email in session
+    request.session["user_email"] = id_info["email"]
+    request.session["user_name"] = id_info.get("name", "")
+
+    # Store credentials in database
     store_credentials(credentials)
 
-    return RedirectResponse(url="/")
+    # Redirect to next_url from session, or home page if not set
+    next_url = request.session.pop("next_url", "/")
+    return RedirectResponse(url=next_url)
 
 
 @router.post("/logout")
-async def logout():
-    """Clear stored OAuth tokens."""
+async def logout(request: Request):
+    """Clear stored OAuth tokens and session."""
+    # Clear OAuth tokens from database
     db = get_db()
     db.execute("DELETE FROM auth_tokens")
-    return {"status": "logged_out"}
+
+    # Clear session
+    request.session.clear()
+
+    # Redirect to login page
+    return RedirectResponse(url="/login", status_code=303)
 
 
 @router.get("/status", response_model=AuthStatus)
-async def status():
+async def status(request: Request):
     """Check authentication status."""
     credentials = get_stored_credentials()
-    if credentials is None:
-        return AuthStatus(authenticated=False)
+    user_email = request.session.get("user_email")
 
-    # Could fetch user info here if we add email scope
-    return AuthStatus(authenticated=True)
+    if credentials is None:
+        return AuthStatus(authenticated=False, email=None)
+
+    return AuthStatus(authenticated=True, email=user_email)
