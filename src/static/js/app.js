@@ -83,13 +83,24 @@ async function classifyEvent(eventId, projectId, projectColor) {
 
         // Add flip button to event side if not present
         const eventActions = eventSide.querySelector('.event-actions');
-        if (!eventActions.querySelector('.btn-small')) {
+        if (!eventActions.querySelector('button.btn-small:not(.btn-rule)')) {
             const flipBtn = document.createElement('button');
             flipBtn.className = 'btn-small';
             flipBtn.textContent = 'Flip';
             flipBtn.onclick = () => flipCard(eventId);
             eventActions.appendChild(flipBtn);
         }
+
+        // Add project badge to event side
+        if (!eventSide.querySelector('.project-badge')) {
+            const badge = document.createElement('div');
+            badge.className = 'project-badge';
+            badge.style.backgroundColor = projectColor || '#00aa44';
+            eventSide.insertBefore(badge, eventSide.firstChild);
+        } else {
+            eventSide.querySelector('.project-badge').style.backgroundColor = projectColor || '#00aa44';
+        }
+        eventSide.dataset.projectColor = projectColor || '#00aa44';
 
         // Flip to entry side
         eventSide.classList.add('hidden');
@@ -125,9 +136,14 @@ async function reclassifyEvent(eventId, entryId, projectId, projectColor) {
             // Reset event side dropdown
             eventSide.querySelector('.project-select').value = '';
 
-            // Remove flip button from event side
-            const flipBtn = eventSide.querySelector('.event-actions .btn-small');
+            // Remove flip button from event side (but keep the rule button)
+            const flipBtn = eventSide.querySelector('.event-actions button.btn-small:not(.btn-rule)');
             if (flipBtn) flipBtn.remove();
+
+            // Remove project badge from event side
+            const badge = eventSide.querySelector('.project-badge');
+            if (badge) badge.remove();
+            eventSide.dataset.projectColor = '';
 
         } catch (error) {
             alert('Unclassify failed: ' + error.message);
@@ -140,6 +156,13 @@ async function reclassifyEvent(eventId, entryId, projectId, projectColor) {
             const entry = await api.updateEntry(entryId, { project_id: parseInt(projectId) });
             card.dataset.project = entry.project_name;
             entrySide.style.backgroundColor = projectColor || '#00aa44';
+
+            // Update project badge on event side
+            const badge = eventSide.querySelector('.project-badge');
+            if (badge) {
+                badge.style.backgroundColor = projectColor || '#00aa44';
+            }
+            eventSide.dataset.projectColor = projectColor || '#00aa44';
         } catch (error) {
             alert('Reclassify failed: ' + error.message);
             location.reload();

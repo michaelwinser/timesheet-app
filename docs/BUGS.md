@@ -6,42 +6,6 @@ Track bugs here. Mark as [FIXED] when resolved.
 
 ## Open Bugs
 
-### BUG-001: Week view layout clipped with long event descriptions
-**Reported:** 2025-12-06
-**Severity:** Low
-**Description:**
-The week view layout gets clipped when the descriptive text of an event is too long. This appears to affect the time entry (classified) view only, not the unclassified event view.
-
-**Steps to reproduce:**
-1. Classify an event that has a long title/description
-2. View the time entry card (classified side)
-
-**Expected behavior:**
-Long text should be truncated or wrapped properly without breaking the card layout.
-
-**Actual behavior:**
-Layout is clipped/broken when description text is too long.
-
----
-
-### BUG-002: Classified event card doesn't show project association on event side
-**Reported:** 2025-12-06
-**Severity:** Low
-**Description:**
-When an event is classified, the time entry side shows the project color as the background. However, when you flip to the event side (calendar view), there's no visual indication that this event has been classified or which project it belongs to.
-
-**Steps to reproduce:**
-1. Classify an event with a project
-2. Click "Flip" to view the calendar event side
-
-**Expected behavior:**
-The event side should retain some visual indication of its classification - either the project color as background, a colored corner banner, or similar visual cue.
-
-**Actual behavior:**
-The event side looks identical whether classified or not (aside from the Flip button being present).
-
----
-
 ### BUG-003: Projects need short names or codes for compact UI labels
 **Reported:** 2025-12-06
 **Severity:** Low
@@ -57,25 +21,6 @@ Projects should have an optional short_name or code field (e.g., "AO" or "A-O") 
 
 **Actual behavior:**
 Only the full project name is available, which may be too long for compact displays.
-
----
-
-### BUG-004: Rule creation uses JavaScript alert for confirmation
-**Reported:** 2025-12-06
-**Severity:** Low
-**Description:**
-When creating a rule from the week view modal, a JavaScript `alert()` is used to confirm successful save. This is clunky and breaks the UX flow.
-
-**Steps to reproduce:**
-1. Click the gear icon on an event card
-2. Select properties and create a rule
-3. Click "Create Rule"
-
-**Expected behavior:**
-Use an inline toast notification, success message within the modal, or simply close the modal and show a brief status indicator.
-
-**Actual behavior:**
-A browser `alert("Rule created successfully!")` pops up, requiring user to click OK.
 
 ---
 
@@ -117,6 +62,540 @@ Only the Google Meet "Join" link is shown. No way to access the full event or vi
 
 ---
 
+### BUG-026: Implement change log with per-item undo
+**Reported:** 2025-12-06
+**Severity:** Medium
+**Description:**
+Users need visibility into what changes they've made and the ability to undo individual changes without affecting others.
+
+**Change log features:**
+- List of recent actions (classify, reclassify, unclassify, edit description, adjust hours)
+- Timestamp for each action
+- Link to the affected event/entry (navigates to correct week if needed)
+- Persist across page navigation (session or longer)
+
+**Per-item undo features:**
+- Each change log entry has an "Undo" button
+- Restores that specific item to its previous state
+- Does not affect other changes made before or after
+- Works even after multiple subsequent changes to same item
+
+**UI options:**
+- Collapsible panel or drawer showing recent changes
+- Keyboard shortcut (Cmd+Z) for most recent undo
+- Toast notifications with inline "Undo" link after each action
+
+**Example change log entries:**
+- `12:34` - Classified "Standup" → Project A [Undo]
+- `12:32` - Changed hours on "Client call" from 0.50 to 1.00 [Undo]
+- `12:30` - Unclassified "Lunch break" [Undo]
+
+**Current behavior:**
+No change history; no undo capability.
+
+---
+
+### BUG-025: Add navigation to next/previous week with unclassified events
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+When catching up on timesheets, users need to quickly jump to weeks that have unclassified events rather than navigating week-by-week through fully classified weeks.
+
+**Expected behavior:**
+- "Jump to next week with unclassified events" button/shortcut
+- "Jump to previous week with unclassified events" button/shortcut
+- Visual indicator showing how many weeks back have unclassified items
+- Maybe: badge on nav showing total unclassified count
+
+**UI options:**
+- Additional nav buttons: `<< Prev Unclassified | Prev | Today | Next | Next Unclassified >>`
+- Keyboard shortcuts (e.g., `Shift+←` / `Shift+→`)
+- Dropdown showing weeks with pending items
+
+**Use cases:**
+- Weekly timesheet catch-up after vacation
+- Finding missed classifications from weeks ago
+- Quick audit of historical data
+
+**Current behavior:**
+Must navigate week-by-week to find unclassified events.
+
+---
+
+### BUG-024: Preserve filter text across page navigation
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+When filtering events in the week view, navigating to a different week clears the filter. The filter text should persist across navigation.
+
+**Steps to reproduce:**
+1. Enter text in the filter input (e.g., "standup")
+2. Navigate to previous or next week
+3. Filter is cleared
+
+**Expected behavior:**
+- Filter text persists when navigating between weeks
+- Filtered view applies to the new week's events
+- Clear button or easy way to reset filter
+
+**Implementation options:**
+- Store filter in URL query parameter (`?filter=standup`)
+- Store in sessionStorage
+- Store in app state
+
+**Current behavior:**
+Filter is cleared on page navigation, requiring user to re-enter it.
+
+---
+
+### BUG-023: Add option to search email for event contacts
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+When viewing an event, provide an option to search email for conversations with the attendees. This helps with context recall - "What was this meeting about?" or "What did we discuss last time?"
+
+**Expected behavior:**
+- Button or link on event card: "Search email for [attendee]"
+- Opens Gmail/email client with search query for that contact
+- Could search for all attendees or specific ones
+- Optionally filter by date range around the meeting
+
+**Search query examples:**
+- `from:alice@example.com OR to:alice@example.com`
+- `{from:alice@example.com to:alice@example.com} after:2024/01/01`
+
+**Use cases:**
+- Recall context before a meeting
+- Find related documents/attachments
+- Verify what project a meeting relates to
+- Find follow-up action items
+
+**Current behavior:**
+No way to search email for event participants from the timesheet app.
+
+---
+
+### BUG-022: Prompt to create rule for 1:1 meetings or single-domain meetings
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+When classifying a meeting that has only one other attendee (1:1) or only attendees from a single external domain, prompt the user to create a contact/domain-based rule for future meetings.
+
+**Trigger conditions:**
+1. **1:1 meeting**: Only one attendee besides the user
+2. **Single external domain**: All external attendees share the same domain (e.g., all @clientcorp.com)
+
+**Expected behavior:**
+After classifying such an event, show a prompt like:
+- "Create a rule for all 1:1s with alice@example.com?"
+- "Create a rule for all meetings with @clientcorp.com?"
+
+With options:
+- "Yes, create rule" → Opens pre-filled rule creation
+- "Not now" → Dismisses for this event
+- "Don't ask again for this contact/domain" → Remembers preference
+
+**Benefits:**
+- Teaches users about rules through contextual prompts
+- Captures obvious high-confidence classification patterns
+- Reduces future manual classification work
+
+**Current behavior:**
+No prompts; user must manually think to create rules.
+
+---
+
+### BUG-021: Auto-generate unique colors for projects from a refined palette
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+Projects should be assigned unique, visually distinct colors automatically from a curated palette. This saves users from picking colors and ensures good contrast/readability.
+
+**Expected behavior:**
+- Auto-assign color when creating a new project
+- Use a pre-defined palette of refined, professional colors
+- Ensure colors are distinct from existing projects
+- Colors should work well on both light and dark backgrounds
+- Allow manual override if desired
+
+**Palette considerations:**
+- Avoid harsh/neon colors
+- Ensure sufficient contrast for text readability
+- Consider colorblind-friendly options
+- Maybe 12-16 distinct hues that cycle
+
+**Example palette (refined):**
+- Slate blue: #6366f1
+- Emerald: #10b981
+- Amber: #f59e0b
+- Rose: #f43f5e
+- Cyan: #06b6d4
+- Violet: #8b5cf6
+- Orange: #f97316
+- Teal: #14b8a6
+- Pink: #ec4899
+- Indigo: #4f46e5
+- Lime: #84cc16
+- Sky: #0ea5e9
+
+**Current behavior:**
+User must manually pick a color, often resulting in inconsistent or hard-to-read choices.
+
+---
+
+### BUG-020: Add keyboard navigation for weeks and events
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+Power users should be able to navigate the app using keyboard shortcuts for faster workflow.
+
+**Expected keyboard shortcuts:**
+- `←` / `→` or `h` / `l`: Navigate to previous/next week
+- `t`: Jump to today/current week
+- `j` / `k`: Move between events in a day
+- `Tab`: Move between days
+- `Enter` or `Space`: Select/expand current event
+- `1-9`: Quick-assign to project by number
+- `Esc`: Close modal/deselect
+
+**Additional ideas:**
+- Visual focus indicator on selected event
+- Vim-style navigation (`hjkl`)
+- Command palette (`Cmd+K` or `/`) for quick actions
+
+**Current behavior:**
+All navigation requires mouse clicks.
+
+---
+
+### BUG-019: Auto-generate rule names from conditions
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+Rule names should be auto-generated as a human-readable summary of the conditions. This saves time and ensures names stay accurate as conditions change.
+
+**Examples:**
+- Conditions: `title contains "standup"` → Name: "Title contains 'standup'"
+- Conditions: `attendees list_contains alice@example.com` → Name: "Meetings with alice@example.com"
+- Conditions: `organizer = bob@example.com AND title contains "1:1"` → Name: "1:1s organized by bob@"
+- Conditions: `attendee_domain = clientcorp.com` → Name: "Meetings with @clientcorp.com"
+
+**Expected behavior:**
+- Auto-suggest name based on conditions when creating rule
+- Update suggestion as conditions change
+- Allow manual override
+- Option to regenerate name from conditions
+
+**Current behavior:**
+User must manually type a rule name.
+
+---
+
+### BUG-018: Consider auto-applying rules when navigating to a different week
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+When navigating to a different week, existing unclassified events are not automatically classified by rules. Should rule application happen automatically on navigation?
+
+**Considerations:**
+- Pro: Less manual intervention, events get classified as you browse
+- Pro: Rules created on one week would apply to past/future weeks on navigation
+- Con: Could be surprising if classifications appear unexpectedly
+- Con: Performance impact on navigation if many events/rules
+- Con: User might want to review before auto-classifying historical weeks
+
+**Options:**
+1. Auto-apply rules on navigation (silent)
+2. Show notification "X events can be classified" with button to apply
+3. Manual only - user must click Refresh/Sync
+4. Setting to control behavior
+
+**Current behavior:**
+Rules are only applied during sync, not when navigating between weeks.
+
+---
+
+### BUG-017: Add option to hide weekends in week view
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+Most users don't have work events on weekends. The week view should have an option to hide Saturday and Sunday columns to give more space to weekday events.
+
+**Expected behavior:**
+- Toggle or setting to show/hide weekends
+- When hidden, only Mon-Fri columns are displayed
+- Columns can be wider with more room for event cards
+- Preference should persist
+
+**Actual behavior:**
+All 7 days are always shown, including empty weekend columns.
+
+---
+
+### BUG-016: Add email domain as a rule property for easy classification
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+Email domain is a natural classification signal. Meetings with external attendees from a specific domain (e.g., @clientcorp.com) are almost always for that client's project.
+
+**Expected properties:**
+- `attendee_domains`: list of domains from attendee emails
+- `organizer_domain`: domain of the meeting organizer
+- `external_domains`: domains excluding user's own domain
+
+**Example rules:**
+- "Any meeting with @alpha-omega.dev attendees → Alpha-Omega project"
+- "Any meeting with @freebsd.org attendees → FreeBSD project"
+- "Meetings organized by someone @clientcorp.com → ClientCorp project"
+
+**Benefits:**
+- Very easy to set up client/organization-based rules
+- High confidence - domain usually maps 1:1 to project
+- Works well for external consultants/contractors
+
+**Current behavior:**
+Must match on full email addresses; no domain-level matching.
+
+---
+
+### BUG-015: Organize rules by project and support contact-to-project mapping
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+Rules could be better organized by associating them with projects. Additionally, a common pattern is mapping a list of contacts/attendees to a project, which could be simplified with "magic" rules.
+
+**Ideas:**
+1. **Rules organized by project**: View/manage rules grouped under their target project
+2. **Contact-to-project mapping**: Associate a list of email addresses with a project
+   - "Meetings with any of [alice@, bob@, carol@] → Project X"
+   - Simpler than creating individual attendee rules
+3. **Magic rules**: Pre-built rule templates for common patterns:
+   - "1:1 with [person] → [project]"
+   - "Any meeting organized by [person] → [project]"
+   - "Meetings with only internal attendees → [internal project]"
+   - "External meetings with [domain] → [client project]"
+
+**Benefits:**
+- Easier to see "what rules apply to Project X?"
+- Faster setup for contact-based classification
+- Reduces manual rule creation for common patterns
+
+**Current behavior:**
+Rules are flat list, no project grouping. Contact-based rules require manual creation of individual conditions.
+
+---
+
+### BUG-014: Add "did not attend" option to hide events from view
+**Reported:** 2025-12-06
+**Severity:** Medium
+**Description:**
+Users need a simple way to mark calendar events they didn't actually attend. These should be hidden from the week view to reduce clutter.
+
+**Possible implementations:**
+1. Special "Did Not Attend" pseudo-project that hides classified events
+2. Dedicated "skip" or "hide" action on event cards
+3. Swipe-to-dismiss gesture
+4. Right-click context menu option
+
+**Expected behavior:**
+- Quick action to mark event as "did not attend"
+- Event disappears from view (or shown in collapsed/dimmed state)
+- Optionally: ability to see/restore hidden events
+- These events should NOT appear in exports
+
+**Actual behavior:**
+No way to dismiss events that were on the calendar but not attended.
+
+---
+
+### BUG-013: Add calendar response status to rule properties
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+Rules should be able to match on calendar event response status (accepted, declined, tentative) and free/busy status. This allows filtering out declined meetings or treating tentative responses differently.
+
+**Expected properties:**
+- `response_status`: accepted, declined, tentative, needsAction
+- `free_busy_status`: busy, free, tentative, outOfOffice
+
+**Use cases:**
+- Skip declined meetings: `response_status != declined`
+- Flag tentative meetings for review
+- Treat "free" time blocks differently from "busy" meetings
+
+**Actual behavior:**
+Response status and free/busy status are not available as rule properties.
+
+---
+
+### BUG-012: Time entry description should be editable
+**Reported:** 2025-12-06
+**Severity:** Medium
+**Description:**
+The time entry card displays the description (derived from the calendar event title) but doesn't allow editing it. Users need to customize descriptions for timesheet clarity.
+
+**Steps to reproduce:**
+1. Classify an event
+2. Try to edit the description on the time entry card
+
+**Expected behavior:**
+- Click on description to edit inline, or
+- Small edit icon to enable editing
+- Save on blur or Enter key
+
+**Actual behavior:**
+Description is read-only, cannot be modified.
+
+---
+
+### BUG-011: Time entry card layout needs redesign - title should be prominent
+**Reported:** 2025-12-06
+**Severity:** Medium
+**Description:**
+The time entry (classified) card layout makes it hard to see the event description/title. The project dropdown is at the top, pushing the title down. The layout of both card views (event side and entry side) needs more intentional design.
+
+**Current layout (entry side):**
+1. Project dropdown (top)
+2. Hours + round up button
+3. Description (often truncated)
+4. Actions
+
+**Expected layout (entry side):**
+1. Title/description (prominent, at top)
+2. Hours display
+3. Project dropdown (can be lower priority)
+4. Actions
+
+**More generally:**
+- Both card views need consistent, intentional layout
+- Key information (what the meeting is) should be immediately visible
+- Project selection is a one-time action, shouldn't dominate the view
+- Consider visual hierarchy: title > time/hours > project > actions
+
+**Actual behavior:**
+Project dropdown dominates the card, title is buried and truncated.
+
+---
+
+### BUG-010: Rules should support confidence levels for ambiguous classifications
+**Reported:** 2025-12-06
+**Severity:** Medium
+**Description:**
+Rules should be able to indicate classification confidence, especially for ambiguous cases. For example, "meetings with Deb from FreeBSD" are usually Alpha-Omega work but sometimes FreeBSD board business. These need manual review.
+
+**Use cases:**
+1. Single rule with inherent ambiguity (e.g., person works on multiple projects)
+2. Multiple conflicting rules match → lower confidence
+3. Multiple agreeing rules match → higher confidence
+4. Future: LLM-based classification with probability scores
+5. Future: automatic rule generation from user behavior
+
+**Expected behavior:**
+- Rules can specify a confidence level (high/medium/low or percentage)
+- Time entries show confidence indicator (e.g., color coding, icon)
+- Low-confidence entries are flagged for manual review
+- Priority system could be replaced/augmented by confidence aggregation
+
+**Current behavior:**
+Priority only determines which rule wins when multiple match; no concept of classification confidence or need-for-review flagging.
+
+---
+
+### BUG-009: Show indicator for rule-classified entries with link to rule
+**Reported:** 2025-12-06
+**Severity:** Low
+**Description:**
+Time entries that were automatically classified by a rule should have a visual indicator (badge/icon) showing they were rule-classified, with a tooltip indicating which rule. Clicking the indicator should link to that rule in the Rules UI.
+
+**Steps to reproduce:**
+1. Create a rule that matches an event
+2. Sync or trigger rule application
+3. View the classified time entry
+
+**Expected behavior:**
+- Small badge/icon (e.g., gear or automation symbol) on the entry card
+- Tooltip on hover showing "Classified by: [Rule Name]"
+- Click to navigate to the rule in the Rules page
+
+**Actual behavior:**
+No distinction between manually classified and rule-classified entries.
+
+---
+
+### BUG-008: Rules should auto-classify unclassified events when updated
+**Reported:** 2025-12-06
+**Severity:** Medium
+**Description:**
+When rules are created or updated, they should automatically be applied to any unclassified events in the current week. Currently, rules only apply to newly synced events, not existing unclassified ones.
+
+**Steps to reproduce:**
+1. Have unclassified events in the current week
+2. Create a rule that matches one of those events
+3. Go back to the week view
+
+**Expected behavior:**
+The matching unclassified events should be automatically classified according to the new/updated rule.
+
+**Actual behavior:**
+Existing unclassified events remain unclassified until manually classified or the next sync.
+
+---
+
+### BUG-007: Attendees matching and count behavior is unclear
+**Reported:** 2025-12-06
+**Severity:** Medium
+**Description:**
+The attendees property matching is confusing:
+1. The current user is almost always included in the attendees list, making rules like "list_contains user@example.com" match nearly every event
+2. The attendee count includes the user, so "1 attendee" often means just the user themselves
+3. It's unclear whether rules should match "other attendees" vs "all attendees including self"
+
+**Steps to reproduce:**
+1. Create a rule with attendees list_contains condition
+2. Notice it matches more events than expected because user is always an attendee
+
+**Expected behavior:**
+- Consider separating "attendees" from "other_attendees" (excluding self)
+- Clarify attendee count display (e.g., "1 other" vs "2 total")
+- Document the behavior clearly
+
+**Actual behavior:**
+User is included in attendees list, making attendee-based rules overly broad.
+
+---
+
 ## Fixed Bugs
 
-(none yet)
+### BUG-001: Week view layout clipped with long event descriptions [FIXED]
+**Reported:** 2025-12-06
+**Fixed:** 2025-12-06
+**Severity:** Low
+**Description:**
+The week view layout gets clipped when the descriptive text of an event is too long. This appears to affect the time entry (classified) view only, not the unclassified event view.
+
+**Fix:**
+Changed `.entry-description` CSS from single-line truncation to multi-line with `-webkit-line-clamp: 2` and `word-break: break-word`.
+
+---
+
+### BUG-002: Classified event card doesn't show project association on event side [FIXED]
+**Reported:** 2025-12-06
+**Fixed:** 2025-12-06
+**Severity:** Low
+**Description:**
+When an event is classified, the time entry side shows the project color as the background. However, when you flip to the event side (calendar view), there's no visual indication that this event has been classified or which project it belongs to.
+
+**Fix:**
+Added a colored corner triangle badge (`.project-badge`) to the event side of classified cards. The badge uses the project color and updates dynamically when classifying/unclassifying.
+
+---
+
+### BUG-004: Rule creation uses JavaScript alert for confirmation [FIXED]
+**Reported:** 2025-12-06
+**Fixed:** 2025-12-06
+**Severity:** Low
+**Description:**
+When creating a rule from the week view modal, a JavaScript `alert()` is used to confirm successful save. This is clunky and breaks the UX flow.
+
+**Fix:**
+Implemented a toast notification system with `showToast()` function. Toast notifications appear in the top-right corner with success/error/info styling and auto-dismiss after 3 seconds.

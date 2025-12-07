@@ -3,6 +3,27 @@
  * Thin wrapper around fetch providing domain methods.
  */
 
+/**
+ * Show a toast notification.
+ * @param {string} message - The message to display
+ * @param {string} type - 'success', 'error', or 'info'
+ * @param {number} duration - Duration in ms (default 3000)
+ */
+function showToast(message, type = 'info', duration = 3000) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+        setTimeout(() => toast.remove(), 300);
+    }, duration);
+}
+
 const api = {
     /**
      * Make a GET request.

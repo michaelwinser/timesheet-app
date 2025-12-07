@@ -8,6 +8,7 @@
     {% block head %}{% endblock %}
 </head>
 <body>
+    <div id="toast-container" class="toast-container"></div>
     <header class="header">
         <nav class="nav">
             <a href="/" class="nav-brand">Timesheet</a>
@@ -24,7 +25,7 @@
         {% block content %}{% endblock %}
     </main>
 
-    <script src="/static/js/api.js"></script>
+    <script src="/static/js/api.js?v=2"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
