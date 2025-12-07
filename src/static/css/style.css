@@ -194,6 +194,12 @@ body {
     color: var(--text-primary);
 }
 
+/* Week container with sidebar */
+.week-container {
+    display: flex;
+    gap: 1rem;
+}
+
 /* Week grid */
 .week-grid {
     display: grid;
@@ -203,6 +209,8 @@ body {
     border: 1px solid var(--border-color);
     border-radius: 4px;
     overflow: hidden;
+    flex: 1;
+    min-width: 0;
 }
 
 @media (max-width: 900px) {
@@ -262,6 +270,114 @@ body {
     font-size: 0.875rem;
     text-align: center;
     padding: 1rem;
+}
+
+/* Project summary sidebar */
+.project-summary-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1rem;
+    height: fit-content;
+    position: sticky;
+    top: 1rem;
+}
+
+.project-summary-sidebar h3 {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.summary-total {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--accent-primary);
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.summary-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.summary-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.summary-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.summary-toggle input[type="checkbox"] {
+    width: 14px;
+    height: 14px;
+    cursor: pointer;
+}
+
+.summary-color {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.summary-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
+.summary-hours {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-align: right;
+    margin-left: auto;
+}
+
+.summary-bar {
+    height: 4px;
+    background: var(--bg-tertiary);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.summary-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+@media (max-width: 1100px) {
+    .week-container {
+        flex-direction: column-reverse;
+    }
+
+    .project-summary-sidebar {
+        width: 100%;
+        position: static;
+    }
+
+    .summary-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 0.5rem;
+    }
 }
 
 /* Event cards */

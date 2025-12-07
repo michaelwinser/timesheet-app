@@ -225,3 +225,28 @@ function filterEvents() {
         card.style.display = matches ? '' : 'none';
     });
 }
+
+/**
+ * Toggle project visibility in the week view (client-side filter only).
+ * This does NOT affect the database or rule matching - it's purely visual.
+ */
+function toggleProjectVisibility(projectId, isVisible) {
+    // Get project name from the sidebar item
+    const summaryItem = document.querySelector(`.summary-item[data-project-id="${projectId}"]`);
+    const projectName = summaryItem ? summaryItem.querySelector('.summary-name').textContent : '';
+
+    // Update event card visibility based on project
+    const cards = document.querySelectorAll('.event-card');
+    cards.forEach(card => {
+        const cardProject = card.dataset.project || '';
+        if (cardProject === projectName) {
+            card.style.display = isVisible ? '' : 'none';
+        }
+    });
+
+    // Store visibility preferences in sessionStorage for this week
+    const visibilityKey = `projectVisibility_${window.weekStart}`;
+    let visibility = JSON.parse(sessionStorage.getItem(visibilityKey) || '{}');
+    visibility[projectId] = isVisible;
+    sessionStorage.setItem(visibilityKey, JSON.stringify(visibility));
+}

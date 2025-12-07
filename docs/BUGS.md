@@ -6,6 +6,81 @@ Track bugs here. Mark as [FIXED] when resolved.
 
 ## Open Bugs
 
+### BUG-028: Persist project visibility filter across week navigations and reloads
+**Reported:** 2025-12-07
+**Severity:** Low
+**Description:**
+The project visibility toggle in the week view sidebar currently stores preferences per-week in sessionStorage. This means visibility settings are lost when navigating to a different week or reloading the page.
+
+**Current behavior:**
+- Visibility stored with week-specific key (`projectVisibility_${weekStart}`)
+- Settings lost on browser close (sessionStorage)
+- Each week has independent visibility settings
+
+**Expected behavior:**
+- Visibility settings should persist across all weeks (global preference)
+- Settings should survive browser close (use localStorage instead of sessionStorage)
+- When hiding "Junk" project, it should stay hidden on all weeks
+
+**Implementation options:**
+1. Use localStorage with a single key (not week-specific)
+2. Add a "Remember" checkbox to make persistence optional
+3. Store in database as user preference
+
+---
+
+### BUG-029: Sort project lists alphabetically for consistent UX
+**Reported:** 2025-12-07
+**Severity:** Low
+**Description:**
+Project dropdowns and lists should be sorted alphabetically for a consistent user experience. Currently, projects may appear in different orders in different contexts (by ID, by hours, etc.), making it harder to find a specific project.
+
+**Affected areas:**
+- Project dropdown in event cards (classify dropdown)
+- Project dropdown in time entry cards (reclassify dropdown)
+- Project dropdown in rule creation modal
+- Project summary sidebar (currently sorted by hours)
+
+**Expected behavior:**
+- All project dropdowns sorted alphabetically by name
+- Sidebar could offer sort options: by name, by hours, by recent use
+- Consistent ordering across all UI elements
+
+**Current behavior:**
+- Dropdowns sorted by database order (insertion order / ID)
+- Sidebar sorted by hours descending
+
+---
+
+### BUG-030: Week view layout too compressed on wide screens
+**Reported:** 2025-12-07
+**Severity:** Medium
+**Description:**
+The week view layout feels compressed and doesn't take advantage of available screen width on larger monitors. There's significant unused space on wide screens that could be used to display more event information.
+
+**Current issues:**
+- Fixed/constrained max-width limits horizontal expansion
+- Day columns are narrow even when space is available
+- Event cards truncate text unnecessarily on wide screens
+- Layout doesn't scale well from laptop to desktop monitor
+
+**Expected behavior:**
+- Week grid should expand to use available screen width
+- Day columns should grow proportionally on wider screens
+- Event cards should show more content when space allows
+- Responsive breakpoints for ultra-wide displays (1920px+, 2560px+)
+
+**Potential improvements:**
+- Remove or increase max-width constraints on week container
+- Use CSS grid with flexible column sizing (minmax, fr units)
+- Allow event cards to show full titles on wider screens
+- Consider multi-row event layout within day columns on very wide screens
+
+**Current behavior:**
+Layout has constrained width, leaving empty margins on wide displays.
+
+---
+
 ### BUG-003: Projects need short names or codes for compact UI labels
 **Reported:** 2025-12-06
 **Severity:** Low
@@ -599,3 +674,23 @@ When creating a rule from the week view modal, a JavaScript `alert()` is used to
 
 **Fix:**
 Implemented a toast notification system with `showToast()` function. Toast notifications appear in the top-right corner with success/error/info styling and auto-dismiss after 3 seconds.
+
+---
+
+### BUG-027: Show project hours summary sidebar in week view [FIXED]
+**Reported:** 2025-12-07
+**Fixed:** 2025-12-07
+**Severity:** Medium
+**Description:**
+Add a sidebar or panel next to the week view showing total hours per project for the current week. This provides at-a-glance visibility into time allocation and serves as the control for showing/hiding projects in the week view.
+
+**Fix:**
+Added a right sidebar (`<aside class="project-summary-sidebar">`) to the week view with:
+- Total hours display at the top
+- List of projects with checkbox toggles to show/hide
+- Color indicator and project name
+- Hours per project
+- Visual progress bar showing relative allocation
+- Responsive design (stacks below grid on narrow screens)
+
+Backend changes in `routes/ui.py` to calculate `project_summary` and `total_hours` from classified events. JavaScript `toggleProjectVisibility()` function added to show/hide event cards by project.

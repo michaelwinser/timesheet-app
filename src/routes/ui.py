@@ -92,9 +92,37 @@ async def week_view(request: Request, date: str):
             "events": day_events,
         })
 
-    # Get projects for classification dropdown
-    projects = db.execute("SELECT * FROM projects WHERE is_visible = 1 ORDER BY name")
-    projects = [dict(row) for row in projects]
+    # Get all projects (visible and hidden) for summary
+    all_projects = db.execute("SELECT * FROM projects ORDER BY name")
+    all_projects = [dict(row) for row in all_projects]
+
+    # Filter to visible for dropdown
+    projects = [p for p in all_projects if p["is_visible"]]
+
+    # Calculate project hours summary for this week
+    project_hours = {}
+    total_hours = 0.0
+    for day in days:
+        for event in day["events"]:
+            if event["is_classified"] and event["hours"]:
+                pid = event["project_id"]
+                project_hours[pid] = project_hours.get(pid, 0.0) + event["hours"]
+                total_hours += event["hours"]
+
+    # Build project summary list
+    project_summary = []
+    for p in all_projects:
+        hours = project_hours.get(p["id"], 0.0)
+        project_summary.append({
+            "id": p["id"],
+            "name": p["name"],
+            "color": p["color"] or "#00aa44",
+            "hours": hours,
+            "is_visible": p["is_visible"],
+        })
+
+    # Sort by hours descending, then by name
+    project_summary.sort(key=lambda x: (-x["hours"], x["name"]))
 
     # Calculate prev/next week dates
     prev_week = (monday - timedelta(days=7)).isoformat()
@@ -110,6 +138,8 @@ async def week_view(request: Request, date: str):
             "projects": projects,
             "prev_week": prev_week,
             "next_week": next_week,
+            "project_summary": project_summary,
+            "total_hours": total_hours,
         },
     )
 
