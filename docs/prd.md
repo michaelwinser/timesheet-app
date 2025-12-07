@@ -242,6 +242,8 @@ CSS: Consider a calendar/scheduling component library to accelerate week view de
 - Direct Harvest API integration (simple API, natural fast-follow once core flow works)
 - Scheduled sync with auto-classification (e.g., 6am daily batch: fetch previous day's events, classify, have ready for review)
 - Google Calendar add-on via Apps Script (sideband classification from within Calendar UI)
+- Create rule from event: User can create a classification rule directly from an event card. UI shows the event's available properties and current values (title, attendees, weekday, etc.), letting the user select which properties to use as conditions and choose appropriate condition types (contains, equals, list_contains). Pre-populates condition values from the event. Quick path from "I want all events like this one to be classified the same way" to a working rule.
+- Week totals summary: Display per-project total hours for the current week view. Shows at a glance how time is distributed across projects, helping users verify their timesheet before export. Could include total classified hours, total unclassified hours, and breakdown by project (using project colors for visual consistency).
 - LLM-assisted classification:
   - Batch mode: feed events + rules + history to LLM for classification suggestions and rule generation
   - Interactive mode: natural language commands (e.g., "classify all meetings with user@example.com to ProjectA and make a rule")
