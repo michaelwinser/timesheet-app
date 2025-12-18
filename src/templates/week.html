@@ -306,6 +306,22 @@
         </div>
     </div>
 </div>
+
+<!-- Keyboard Shortcuts Help Modal -->
+<div id="shortcuts-modal" class="modal-overlay hidden">
+    <div class="modal-content modal-small">
+        <h2>Keyboard Shortcuts</h2>
+        <table class="shortcuts-table">
+            <tr><td><kbd>j</kbd></td><td>Next week</td></tr>
+            <tr><td><kbd>k</kbd></td><td>Previous week</td></tr>
+            <tr><td><kbd>t</kbd></td><td>Today</td></tr>
+            <tr><td><kbd>?</kbd></td><td>Show this help</td></tr>
+        </table>
+        <div class="form-actions">
+            <button class="btn btn-secondary" onclick="hideShortcutsModal()">Close</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -315,6 +331,11 @@
     window.weekStart = "{{ week_start }}";
     window.weekEnd = "{{ week_end }}";
 
+    // Navigation URLs
+    window.nextWeekUrl = "/week/{{ next_week }}";
+    window.prevWeekUrl = "/week/{{ prev_week }}";
+    window.todayUrl = "/";
+
     // Auto-sync, auto-classify, and restore visibility preferences on page load
     document.addEventListener('DOMContentLoaded', async function() {
         applyInitialTextColors();
@@ -322,6 +343,47 @@
         await autoClassifyEvents();
         restoreProjectVisibility();
     });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+        // Ignore if typing in an input field
+        if (e.target.matches('input, textarea, select')) return;
+        // Ignore if a modal is open (except shortcuts modal for Escape)
+        const ruleModal = document.getElementById('rule-modal');
+        const shortcutsModal = document.getElementById('shortcuts-modal');
+
+        if (!shortcutsModal.classList.contains('hidden')) {
+            if (e.key === 'Escape' || e.key === '?') {
+                hideShortcutsModal();
+            }
+            return;
+        }
+
+        if (!ruleModal.classList.contains('hidden')) return;
+
+        switch (e.key) {
+            case 'j':
+                window.location.href = window.nextWeekUrl;
+                break;
+            case 'k':
+                window.location.href = window.prevWeekUrl;
+                break;
+            case 't':
+                window.location.href = window.todayUrl;
+                break;
+            case '?':
+                showShortcutsModal();
+                break;
+        }
+    });
+
+    function showShortcutsModal() {
+        document.getElementById('shortcuts-modal').classList.remove('hidden');
+    }
+
+    function hideShortcutsModal() {
+        document.getElementById('shortcuts-modal').classList.add('hidden');
+    }
 
     /**
      * Apply appropriate text color classes to all entry cards based on their background color.

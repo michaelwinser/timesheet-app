@@ -1168,6 +1168,10 @@ body {
     overflow-y: auto;
 }
 
+.modal-content.modal-small {
+    max-width: 320px;
+}
+
 .modal-header {
     display: flex;
     justify-content: space-between;
@@ -1951,6 +1955,34 @@ body {
 
 .card-entry.dark-text .badge-billed:hover {
     background: rgba(0, 0, 0, 0.3);
+}
+
+/* Keyboard shortcuts */
+kbd {
+    display: inline-block;
+    padding: 0.2rem 0.5rem;
+    font-family: monospace;
+    font-size: 0.875rem;
+    font-weight: 600;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    min-width: 1.5rem;
+    text-align: center;
+}
+
+.shortcuts-table {
+    width: 100%;
+    margin-bottom: 1rem;
+}
+
+.shortcuts-table td {
+    padding: 0.5rem 0.25rem;
+}
+
+.shortcuts-table td:first-child {
+    width: 3rem;
+    text-align: center;
 }
 
 /* Utilities */
