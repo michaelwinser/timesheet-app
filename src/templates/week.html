@@ -30,10 +30,16 @@
         </div>
         <div class="day-events">
             {% for event in day.events %}
-            <div class="event-card {% if event.is_classified %}classified{% else %}unclassified{% endif %}"
+            <div class="event-card {% if event.is_classified %}classified{% else %}unclassified{% endif %} {% if event.did_not_attend %}did-not-attend{% endif %}"
                  data-event-id="{{ event.id }}"
                  data-title="{{ event.title }}"
-                 data-project="{{ event.project_name or '' }}">
+                 data-project="{{ event.project_name or '' }}"
+                 data-did-not-attend="{{ 'true' if event.did_not_attend else 'false' }}">
+
+                <!-- Did Not Attend Badge -->
+                {% if event.did_not_attend %}
+                <div class="did-not-attend-badge" title="Did not attend">✗</div>
+                {% endif %}
 
                 <!-- Event side (unclassified view) -->
                 <div class="card-side card-event {% if event.is_classified %}hidden{% endif %}"
@@ -44,6 +50,11 @@
                     <div class="event-title">{{ event.title }}</div>
                     <div class="event-time">
                         {{ event.start_time[11:16] }} - {{ event.end_time[11:16] }}
+                        {% if event.my_response_status and event.my_response_status != 'accepted' %}
+                        <span class="response-status" title="Response: {{ event.my_response_status }}">
+                            {% if event.my_response_status == 'declined' %}✗{% elif event.my_response_status == 'tentative' %}?{% elif event.my_response_status == 'needsAction' %}•{% endif %}
+                        </span>
+                        {% endif %}
                     </div>
                     {% if event.attendees %}
                     <div class="event-attendees">
@@ -54,12 +65,17 @@
                     <a href="{{ event.meeting_link }}" target="_blank" class="event-link">Join</a>
                     {% endif %}
                     <div class="event-actions">
-                        <select class="project-select" onchange="classifyEvent({{ event.id }}, this.value, this.options[this.selectedIndex].dataset.color)">
+                        <select class="project-select" onchange="classifyEvent({{ event.id }}, this.value, this.options[this.selectedIndex].dataset.color)" {% if event.did_not_attend %}disabled{% endif %}>
                             <option value="">Classify...</option>
                             {% for project in projects %}
                             <option value="{{ project.id }}" data-color="{{ project.color or '#00aa44' }}">{{ project.name }}</option>
                             {% endfor %}
                         </select>
+                        <button class="btn-small btn-attendance {% if event.did_not_attend %}active{% endif %}"
+                                onclick="toggleDidNotAttend({{ event.id }})"
+                                title="{% if event.did_not_attend %}Mark as attended{% else %}Mark as did not attend{% endif %}">
+                            {% if event.did_not_attend %}✓{% else %}✗{% endif %}
+                        </button>
                         <button class="btn-small btn-rule" onclick="showCreateRuleModal({{ event.id }})" title="Create Rule">⚙</button>
                         {% if event.is_classified %}
                         <button class="btn-small" onclick="flipCard({{ event.id }})">Flip</button>
@@ -101,24 +117,78 @@
 <aside class="project-summary-sidebar">
     <h3>Project Summary</h3>
     <div class="summary-total">{{ "%.1f"|format(total_hours) }} hrs total</div>
-    <div class="summary-list">
-        {% for proj in project_summary %}
-        <div class="summary-item" data-project-id="{{ proj.id }}">
-            <label class="summary-toggle">
-                <input type="checkbox" checked
-                       onchange="toggleProjectVisibility({{ proj.id }}, this.checked)">
-                <span class="summary-color" style="background-color: {{ proj.color }}"></span>
-                <span class="summary-name">{{ proj.name }}</span>
-            </label>
-            <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
-            {% if total_hours > 0 %}
-            <div class="summary-bar">
-                <div class="summary-bar-fill" style="width: {{ (proj.hours / total_hours * 100)|int }}%; background-color: {{ proj.color }}"></div>
+
+    <!-- Regular Projects -->
+    <div class="summary-section">
+        <div class="summary-section-header">Projects</div>
+        <div class="summary-list">
+            {% for proj in regular_projects %}
+            <div class="summary-item" data-project-id="{{ proj.id }}">
+                <label class="summary-toggle">
+                    <input type="checkbox" checked
+                           onchange="toggleProjectVisibility({{ proj.id }}, this.checked)">
+                    <span class="summary-color" style="background-color: {{ proj.color }}"></span>
+                    <span class="summary-name">{{ proj.name }}{% if proj.does_not_accumulate_hours %} <span class="badge-tiny">no hrs</span>{% endif %}</span>
+                </label>
+                <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
+                {% if total_hours > 0 and not proj.does_not_accumulate_hours %}
+                <div class="summary-bar">
+                    <div class="summary-bar-fill" style="width: {{ (proj.hours / total_hours * 100)|int }}%; background-color: {{ proj.color }}"></div>
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
+            {% endfor %}
         </div>
-        {% endfor %}
     </div>
+
+    <!-- Hidden Projects (collapsed by default) -->
+    {% if hidden_projects %}
+    <div class="summary-section hidden-section" id="hidden-section">
+        <div class="summary-section-header collapsible" onclick="toggleHiddenSection()">
+            <span class="collapse-icon">▶</span>
+            Hidden ({{ hidden_projects|length }})
+            <span class="section-total">{{ "%.1f"|format(hidden_projects|sum(attribute='hours')) }} hrs</span>
+        </div>
+        <div class="summary-list hidden" id="hidden-projects-list">
+            {% for proj in hidden_projects %}
+            <div class="summary-item" data-project-id="{{ proj.id }}">
+                <label class="summary-toggle">
+                    <input type="checkbox"
+                           onchange="toggleProjectVisibility({{ proj.id }}, this.checked)">
+                    <span class="summary-color" style="background-color: {{ proj.color }}"></span>
+                    <span class="summary-name">{{ proj.name }}{% if proj.does_not_accumulate_hours %} <span class="badge-tiny">no hrs</span>{% endif %}</span>
+                </label>
+                <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Archived Projects (only shown if they have entries in current view) -->
+    {% if archived_projects %}
+    <div class="summary-section archived-section">
+        <div class="summary-section-header warning">
+            <span class="warning-icon">⚠</span>
+            Archived ({{ archived_projects|length }})
+            <span class="section-total">{{ "%.1f"|format(archived_projects|sum(attribute='hours')) }} hrs</span>
+        </div>
+        <div class="summary-list">
+            {% for proj in archived_projects %}
+            <div class="summary-item archived" data-project-id="{{ proj.id }}">
+                <label class="summary-toggle">
+                    <input type="checkbox"
+                           onchange="toggleProjectVisibility({{ proj.id }}, this.checked)">
+                    <span class="summary-color" style="background-color: {{ proj.color }}"></span>
+                    <span class="summary-name">{{ proj.name }}</span>
+                </label>
+                <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="archived-hint">These entries need reclassification.</p>
+    </div>
+    {% endif %}
 </aside>
 </div>
 <!-- Create Rule Modal -->
@@ -392,5 +462,76 @@
             hideRuleModal();
         }
     });
+
+    /**
+     * Toggle the hidden projects section in sidebar.
+     */
+    function toggleHiddenSection() {
+        const list = document.getElementById('hidden-projects-list');
+        const icon = document.querySelector('#hidden-section .collapse-icon');
+        if (list.classList.contains('hidden')) {
+            list.classList.remove('hidden');
+            icon.textContent = '▼';
+        } else {
+            list.classList.add('hidden');
+            icon.textContent = '▶';
+        }
+    }
+
+    /**
+     * Toggle the did_not_attend flag for an event.
+     */
+    async function toggleDidNotAttend(eventId) {
+        const card = document.querySelector(`.event-card[data-event-id="${eventId}"]`);
+        const currentValue = card.dataset.didNotAttend === 'true';
+        const newValue = !currentValue;
+
+        try {
+            await api.put(`/api/events/${eventId}/attendance`, { did_not_attend: newValue });
+
+            // Update the UI
+            card.dataset.didNotAttend = newValue ? 'true' : 'false';
+            if (newValue) {
+                card.classList.add('did-not-attend');
+            } else {
+                card.classList.remove('did-not-attend');
+            }
+
+            // Update the button
+            const btn = card.querySelector('.btn-attendance');
+            if (newValue) {
+                btn.classList.add('active');
+                btn.textContent = '✓';
+                btn.title = 'Mark as attended';
+            } else {
+                btn.classList.remove('active');
+                btn.textContent = '✗';
+                btn.title = 'Mark as did not attend';
+            }
+
+            // Toggle the did-not-attend badge
+            let badge = card.querySelector('.did-not-attend-badge');
+            if (newValue && !badge) {
+                badge = document.createElement('div');
+                badge.className = 'did-not-attend-badge';
+                badge.title = 'Did not attend';
+                badge.textContent = '✗';
+                card.insertBefore(badge, card.firstChild);
+            } else if (!newValue && badge) {
+                badge.remove();
+            }
+
+            // Disable/enable the project select
+            const select = card.querySelector('.project-select');
+            if (select) {
+                select.disabled = newValue;
+            }
+
+            showToast(newValue ? 'Marked as did not attend' : 'Marked as attended', 'success');
+
+        } catch (error) {
+            showToast('Error updating attendance: ' + error.message, 'error');
+        }
+    }
 </script>
 {% endblock %}

@@ -101,6 +101,8 @@ async def week_view(request: Request, date: str):
                     "project_color": row["project_color"] or "#00aa44",
                     "hours": row["hours"],
                     "entry_description": row["entry_description"],
+                    "did_not_attend": bool(row.get("did_not_attend", False)),
+                    "my_response_status": row.get("my_response_status"),
                 })
         days.append({
             "date": day_date,
@@ -117,33 +119,59 @@ async def week_view(request: Request, date: str):
     )
     all_projects = [dict(row) for row in all_projects]
 
-    # Filter to visible for dropdown
-    projects = [p for p in all_projects if p["is_visible"]]
+    # Build project lookup for quick access
+    project_lookup = {p["id"]: p for p in all_projects}
+
+    # Filter to non-archived, visible projects for dropdown
+    projects = [p for p in all_projects if p["is_visible"] and not p.get("is_archived", False)]
 
     # Calculate project hours summary for this week
+    # Exclude did_not_attend events and does_not_accumulate_hours projects from totals
     project_hours = {}
     total_hours = 0.0
     for day in days:
         for event in day["events"]:
-            if event["is_classified"] and event["hours"]:
+            if event["is_classified"] and event["hours"] and not event.get("did_not_attend", False):
                 pid = event["project_id"]
+                project = project_lookup.get(pid, {})
                 project_hours[pid] = project_hours.get(pid, 0.0) + event["hours"]
-                total_hours += event["hours"]
+                # Only add to total if project accumulates hours
+                if not project.get("does_not_accumulate_hours", False):
+                    total_hours += event["hours"]
 
-    # Build project summary list
-    project_summary = []
+    # Build project summary lists (grouped by type)
+    regular_projects = []
+    hidden_projects = []
+    archived_projects = []
+
     for p in all_projects:
         hours = project_hours.get(p["id"], 0.0)
-        project_summary.append({
+        summary_item = {
             "id": p["id"],
             "name": p["name"],
             "color": p["color"] or "#00aa44",
             "hours": hours,
             "is_visible": p["is_visible"],
-        })
+            "is_hidden_by_default": p.get("is_hidden_by_default", False),
+            "is_archived": p.get("is_archived", False),
+            "does_not_accumulate_hours": p.get("does_not_accumulate_hours", False),
+        }
 
-    # Sort by hours descending, then by name
-    project_summary.sort(key=lambda x: (-x["hours"], x["name"]))
+        if p.get("is_archived", False):
+            # Only include archived projects if they have hours in current view
+            if hours > 0:
+                archived_projects.append(summary_item)
+        elif p.get("is_hidden_by_default", False):
+            hidden_projects.append(summary_item)
+        else:
+            regular_projects.append(summary_item)
+
+    # Sort each group by hours descending, then by name
+    for group in [regular_projects, hidden_projects, archived_projects]:
+        group.sort(key=lambda x: (-x["hours"], x["name"]))
+
+    # Legacy project_summary for compatibility (all non-archived projects)
+    project_summary = regular_projects + hidden_projects
 
     # Calculate prev/next week dates
     prev_week = (monday - timedelta(days=7)).isoformat()
@@ -160,6 +188,9 @@ async def week_view(request: Request, date: str):
             "prev_week": prev_week,
             "next_week": next_week,
             "project_summary": project_summary,
+            "regular_projects": regular_projects,
+            "hidden_projects": hidden_projects,
+            "archived_projects": archived_projects,
             "total_hours": total_hours,
         },
     )

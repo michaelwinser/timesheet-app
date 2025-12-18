@@ -71,8 +71,10 @@ A web application that:
 **Core concepts and terminology:**
 - **Event**: A calendar entry from Google Calendar (meeting, work block, etc.)
 - **Time Entry**: A classified event with project assignment, ready for export
-- **Project**: A billable category defined by the user
+- **Project**: A billable category defined by the user (with settings for billing, visibility, and hour tracking)
 - **Classification**: The act of assigning a project to an event, transforming it into a time entry
+- **Did Not Attend**: A flag on events indicating the user did not attend the scheduled meeting (excludes from time tracking)
+- **Noise Project**: A special project type that classifies events without accumulating tracked hours
 
 **The "flip card" interaction:**
 - Unclassified events display as calendar meetings: title, attendees, video links, etc.
@@ -126,6 +128,25 @@ A web application that:
 - Refresh button for manual re-sync
 - Future: syntactic sugar for field-specific filters (e.g., `project:name`, `@attendee`)
 
+**Sidebar Project Summary:**
+The sidebar displays project-grouped hour totals for the current week view, organized into three sections:
+
+1. **Projects** (main section): Active, non-hidden projects with checkboxes for filtering
+   - Each project shows name and total hours
+   - Checkbox controls visibility of that project's entries in the week view
+   - Uses project color for visual identification
+
+2. **Hidden** (collapsed by default): Projects with `is_hidden_by_default = true`
+   - Appears as collapsed section "Hidden (N)" with total hours
+   - Click to expand and reveal individual hidden projects
+   - Expansion state is session-only (resets on page load)
+   - Hidden projects' entries are excluded from week view unless expanded and checked
+
+3. **Archived** (conditional): Only appears when time entries exist for archived projects
+   - Appears with warning indicator (⚠) to signal attention needed
+   - Shows which archived projects have entries in current view
+   - Presence in UI serves as prompt to reclassify those entries
+
 **Event Card (unclassified side):**
 - Event title (summary)
 - Event description (body/notes)
@@ -151,6 +172,15 @@ Note on hours editing: Calendar duration often doesn't match actual time spent (
 - Auto: high-confidence matches classified automatically (user can review/override)
 - Bulk actions: classify multiple similar events at once
 
+**Classification Rule Targets:**
+Rules can have two types of targets:
+1. **Project target**: Assigns event to a specific project (traditional classification)
+2. **Did Not Attend target**: Sets the did_not_attend flag on matching events (excludes from time tracking)
+
+A rule must have exactly one target type. This allows rules like:
+- "If response_status is 'needsAction', mark as Did Not Attend"
+- "If title contains 'Optional:', mark as Did Not Attend"
+
 **Classification Learning:**
 - Store classification decisions in SQLite
 - Use past decisions to suggest future classifications
@@ -169,7 +199,21 @@ Note on hours editing: Calendar duration often doesn't match actual time spent (
 - Per-project color assignment via color picker (used for time entry card background)
 - Import projects from CSV (planned)
 - Export projects to CSV (planned)
-- Per-project "show/hide" toggle (persisted) - allows hiding non-billable categories like "junk" or "personal"
+
+**Project Settings:**
+Each project has the following configurable settings:
+- **Does not accumulate hours** (boolean, default: false): Time entries in this project are excluded from hour totals and exports. Useful for "Noise" projects that classify events without tracking time.
+- **Billable** (boolean, default: false): Whether time on this project is billable to a client.
+- **Bill rate** (decimal, optional): Hourly rate for billing calculations. Only relevant when billable is true.
+- **Hidden by default** (boolean, default: false): Time entries in this project are hidden in the UI by default. Users can reveal hidden projects via sidebar toggle. Hidden projects appear in a collapsed "Hidden" group at the bottom of the sidebar.
+- **Archived** (boolean, default: false): Archived projects do not appear in the UI at all (dropdowns, sidebar). If rules classify to an archived project, the entry appears in a warning "Archived" section in the sidebar. Existing time entries remain in the database.
+
+**Event Attendance Tracking:**
+- Events have a "Did Not Attend" flag (boolean, default: false)
+- When set, the event is excluded from time tracking and exports
+- Classification rules can set this flag based on conditions (e.g., `my_response_status NOT IN ('accepted', 'tentative')`)
+- Users can manually toggle the flag on individual events
+- Useful for recurring meetings where attendance varies
 
 **Export:**
 - Generate Harvest-compatible CSV

@@ -140,9 +140,9 @@ pull:
 
 .PHONY: run
 run:
-	@echo "Running Docker container from $(IMAGE_NAME):$(VERSION)"
-	docker-compose up -d
-	@echo "✓ Container started. Check status: docker-compose ps"
+	@echo "Building and running Docker containers..."
+	docker-compose up -d --build
+	@echo "✓ Containers started. Check status: docker-compose ps"
 
 .PHONY: stop
 stop:

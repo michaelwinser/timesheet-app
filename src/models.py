@@ -19,6 +19,11 @@ class ProjectCreate(BaseModel):
     name: str
     client: str | None = None
     color: str = "#00aa44"
+    does_not_accumulate_hours: bool = False
+    is_billable: bool = False
+    bill_rate: float | None = None
+    is_hidden_by_default: bool = False
+    is_archived: bool = False
 
 
 class ProjectUpdate(BaseModel):
@@ -26,6 +31,11 @@ class ProjectUpdate(BaseModel):
     name: str | None = None
     client: str | None = None
     color: str | None = None
+    does_not_accumulate_hours: bool | None = None
+    is_billable: bool | None = None
+    bill_rate: float | None = None
+    is_hidden_by_default: bool | None = None
+    is_archived: bool | None = None
 
 
 class ProjectVisibility(BaseModel):
@@ -40,6 +50,11 @@ class Project(BaseModel):
     client: str | None
     color: str
     is_visible: bool
+    does_not_accumulate_hours: bool = False
+    is_billable: bool = False
+    bill_rate: float | None = None
+    is_hidden_by_default: bool = False
+    is_archived: bool = False
     created_at: datetime
 
 
@@ -58,8 +73,15 @@ class Event(BaseModel):
     meeting_link: str | None
     event_color: str | None
     is_recurring: bool
+    did_not_attend: bool = False
+    my_response_status: str | None = None
     # Populated if event has been classified
     time_entry: "TimeEntry | None" = None
+
+
+class EventAttendance(BaseModel):
+    """Request to update event attendance flag."""
+    did_not_attend: bool
 
 
 # --- Time Entries ---

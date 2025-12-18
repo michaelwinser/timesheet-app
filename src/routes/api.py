@@ -10,7 +10,7 @@ import io
 from db import get_db
 from models import (
     Project, ProjectCreate, ProjectUpdate, ProjectVisibility,
-    Event, TimeEntry, TimeEntryCreate, TimeEntryUpdate, BulkClassifyRequest,
+    Event, EventAttendance, TimeEntry, TimeEntryCreate, TimeEntryUpdate, BulkClassifyRequest,
     SyncRequest, SyncResponse,
 )
 from services.calendar import sync_calendar_events
@@ -56,6 +56,23 @@ def require_auth(user_id: int = Depends(get_user_id)):
 
 # --- Projects ---
 
+def _row_to_project(row: dict) -> Project:
+    """Convert a database row to a Project model."""
+    return Project(
+        id=row["id"],
+        name=row["name"],
+        client=row["client"],
+        color=row["color"] or "#00aa44",
+        is_visible=bool(row["is_visible"]),
+        does_not_accumulate_hours=bool(row.get("does_not_accumulate_hours", False)),
+        is_billable=bool(row.get("is_billable", False)),
+        bill_rate=row.get("bill_rate"),
+        is_hidden_by_default=bool(row.get("is_hidden_by_default", False)),
+        is_archived=bool(row.get("is_archived", False)),
+        created_at=row["created_at"],
+    )
+
+
 @router.get("/projects", response_model=list[Project])
 async def list_projects(user_id: int = Depends(get_user_id)):
     """List all projects for current user."""
@@ -64,17 +81,7 @@ async def list_projects(user_id: int = Depends(get_user_id)):
         "SELECT * FROM projects WHERE user_id = %s ORDER BY name",
         (user_id,)
     )
-    return [
-        Project(
-            id=row["id"],
-            name=row["name"],
-            client=row["client"],
-            color=row["color"] or "#00aa44",
-            is_visible=bool(row["is_visible"]),
-            created_at=row["created_at"],
-        )
-        for row in rows
-    ]
+    return [_row_to_project(row) for row in rows]
 
 
 @router.post("/projects", response_model=Project)
@@ -83,8 +90,16 @@ async def create_project(project: ProjectCreate, user_id: int = Depends(get_user
     db = get_db()
     try:
         project_id = db.execute_insert(
-            "INSERT INTO projects (user_id, name, client, color) VALUES (%s, %s, %s, %s) RETURNING id",
-            (user_id, project.name, project.client, project.color),
+            """INSERT INTO projects (
+                user_id, name, client, color,
+                does_not_accumulate_hours, is_billable, bill_rate,
+                is_hidden_by_default, is_archived
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            (
+                user_id, project.name, project.client, project.color,
+                project.does_not_accumulate_hours, project.is_billable, project.bill_rate,
+                project.is_hidden_by_default, project.is_archived,
+            ),
         )
     except Exception as e:
         if "unique constraint" in str(e).lower():
@@ -95,14 +110,7 @@ async def create_project(project: ProjectCreate, user_id: int = Depends(get_user
         "SELECT * FROM projects WHERE id = %s AND user_id = %s",
         (project_id, user_id)
     )
-    return Project(
-        id=row["id"],
-        name=row["name"],
-        client=row["client"],
-        color=row["color"] or "#00aa44",
-        is_visible=bool(row["is_visible"]),
-        created_at=row["created_at"],
-    )
+    return _row_to_project(row)
 
 
 @router.put("/projects/{project_id}", response_model=Project)
@@ -133,6 +141,21 @@ async def update_project(
     if project.color is not None:
         updates.append("color = %s")
         params.append(project.color)
+    if project.does_not_accumulate_hours is not None:
+        updates.append("does_not_accumulate_hours = %s")
+        params.append(project.does_not_accumulate_hours)
+    if project.is_billable is not None:
+        updates.append("is_billable = %s")
+        params.append(project.is_billable)
+    if project.bill_rate is not None:
+        updates.append("bill_rate = %s")
+        params.append(project.bill_rate)
+    if project.is_hidden_by_default is not None:
+        updates.append("is_hidden_by_default = %s")
+        params.append(project.is_hidden_by_default)
+    if project.is_archived is not None:
+        updates.append("is_archived = %s")
+        params.append(project.is_archived)
 
     if updates:
         params.extend([project_id, user_id])
@@ -145,14 +168,7 @@ async def update_project(
         "SELECT * FROM projects WHERE id = %s AND user_id = %s",
         (project_id, user_id)
     )
-    return Project(
-        id=row["id"],
-        name=row["name"],
-        client=row["client"],
-        color=row["color"] or "#00aa44",
-        is_visible=bool(row["is_visible"]),
-        created_at=row["created_at"],
-    )
+    return _row_to_project(row)
 
 
 @router.delete("/projects/{project_id}")
@@ -201,14 +217,7 @@ async def update_project_visibility(
         "SELECT * FROM projects WHERE id = %s AND user_id = %s",
         (project_id, user_id)
     )
-    return Project(
-        id=row["id"],
-        name=row["name"],
-        client=row["client"],
-        color=row["color"] or "#00aa44",
-        is_visible=bool(row["is_visible"]),
-        created_at=row["created_at"],
-    )
+    return _row_to_project(row)
 
 
 # --- Calendar Sync ---
@@ -282,10 +291,37 @@ async def list_events(
             meeting_link=row["meeting_link"],
             event_color=row["event_color"],
             is_recurring=bool(row["is_recurring"]),
+            did_not_attend=bool(row.get("did_not_attend", False)),
+            my_response_status=row.get("my_response_status"),
             time_entry=time_entry,
         ))
 
     return events
+
+
+@router.put("/events/{event_id}/attendance")
+async def update_event_attendance(
+    event_id: int,
+    attendance: EventAttendance,
+    user_id: int = Depends(get_user_id)
+):
+    """Update the did_not_attend flag for an event."""
+    db = get_db()
+
+    # Verify event belongs to user
+    row = db.execute_one(
+        "SELECT * FROM events WHERE id = %s AND user_id = %s",
+        (event_id, user_id)
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    db.execute(
+        "UPDATE events SET did_not_attend = %s WHERE id = %s AND user_id = %s",
+        (attendance.did_not_attend, event_id, user_id),
+    )
+
+    return {"status": "updated", "did_not_attend": attendance.did_not_attend}
 
 
 # --- Time Entries ---
@@ -521,9 +557,10 @@ async def get_rule(rule_id: int, user_id: int = Depends(get_user_id)):
 async def create_classification_rule(request: dict, user_id: int = Depends(get_user_id)):
     """Create a new classification rule.
 
-    Request body:
+    Request body for project rule:
     {
         "name": "Rule name",
+        "target_type": "project",  // optional, defaults to "project"
         "project_id": 1,
         "priority": 100,
         "is_enabled": true,
@@ -533,34 +570,57 @@ async def create_classification_rule(request: dict, user_id: int = Depends(get_u
             {"property_name": "weekday", "condition_type": "in_list", "condition_value": ["monday", "friday"]}
         ]
     }
+
+    Request body for did_not_attend rule:
+    {
+        "name": "Rule name",
+        "target_type": "did_not_attend",
+        "priority": 100,
+        "is_enabled": true,
+        "stop_processing": true,
+        "conditions": [
+            {"property_name": "my_response_status", "condition_type": "equals", "condition_value": "needsAction"}
+        ]
+    }
     """
     db = get_db()
 
     # Validate required fields
     if "name" not in request:
         raise HTTPException(status_code=400, detail="Rule name is required")
-    if "project_id" not in request:
-        raise HTTPException(status_code=400, detail="Project ID is required")
     if "conditions" not in request or not request["conditions"]:
         raise HTTPException(status_code=400, detail="At least one condition is required")
 
-    # Check project exists and belongs to user
-    project = db.execute_one(
-        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
-        (request["project_id"], user_id)
-    )
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found")
+    target_type = request.get("target_type", "project")
+
+    # Validate target_type
+    if target_type not in ("project", "did_not_attend"):
+        raise HTTPException(status_code=400, detail="target_type must be 'project' or 'did_not_attend'")
+
+    # For project rules, validate project_id
+    project_id = None
+    if target_type == "project":
+        if "project_id" not in request:
+            raise HTTPException(status_code=400, detail="Project ID is required for project rules")
+        project_id = request["project_id"]
+        # Check project exists and belongs to user
+        project = db.execute_one(
+            "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+            (project_id, user_id)
+        )
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
 
     rule_id = create_rule(
         db=db,
         user_id=user_id,
         name=request["name"],
-        project_id=request["project_id"],
+        project_id=project_id,
         conditions=request["conditions"],
         priority=request.get("priority", 0),
         is_enabled=request.get("is_enabled", True),
         stop_processing=request.get("stop_processing", True),
+        target_type=target_type,
     )
 
     # Return the created rule
@@ -583,7 +643,8 @@ async def update_classification_rule(
     Request body (all fields optional):
     {
         "name": "New name",
-        "project_id": 2,
+        "target_type": "project",  // or "did_not_attend"
+        "project_id": 2,  // required if target_type is "project"
         "priority": 50,
         "is_enabled": false,
         "stop_processing": true,
@@ -600,14 +661,23 @@ async def update_classification_rule(
     if existing is None:
         raise HTTPException(status_code=404, detail="Rule not found")
 
-    # Check project exists if changing and belongs to user
+    target_type = request.get("target_type")
+
+    # Validate target_type if provided
+    if target_type is not None and target_type not in ("project", "did_not_attend"):
+        raise HTTPException(status_code=400, detail="target_type must be 'project' or 'did_not_attend'")
+
+    # Check project exists if changing and target_type requires it
     if "project_id" in request:
-        project = db.execute_one(
-            "SELECT * FROM projects WHERE id = %s AND user_id = %s",
-            (request["project_id"], user_id)
-        )
-        if project is None:
-            raise HTTPException(status_code=404, detail="Project not found")
+        # Determine effective target_type
+        effective_target_type = target_type or existing.get("target_type", "project")
+        if effective_target_type == "project":
+            project = db.execute_one(
+                "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+                (request["project_id"], user_id)
+            )
+            if project is None:
+                raise HTTPException(status_code=404, detail="Project not found")
 
     update_rule(
         db=db,
@@ -618,6 +688,7 @@ async def update_classification_rule(
         is_enabled=request.get("is_enabled"),
         stop_processing=request.get("stop_processing"),
         conditions=request.get("conditions"),
+        target_type=target_type,
     )
 
     # Return the updated rule
@@ -719,13 +790,17 @@ async def get_suggestion(event_id: int, user_id: int = Depends(get_user_id)):
 
 @router.post("/rules/apply")
 async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get_user_id)):
-    """Apply rules to unclassified events.
+    """Apply rules to events.
+
+    Handles both project classification rules and did_not_attend rules:
+    - Project rules: Create time entries for unclassified events
+    - Did-not-attend rules: Set did_not_attend flag on matching events
 
     Request body (optional):
     {
         "start_date": "2025-01-01",  // Optional: filter by date range
         "end_date": "2025-12-31",
-        "dry_run": false  // If true, only return what would be classified
+        "dry_run": false  // If true, only return what would be affected
     }
     """
     from services.classifier import RuleMatcher, EventProperties
@@ -734,11 +809,15 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
     db = get_db()
     request = request or {}
 
-    # Build query for unclassified events (user's events only)
+    # Build query for events that need processing:
+    # - No time entry (for project rules), OR
+    # - did_not_attend is FALSE (for did_not_attend rules)
+    # We get all such events and let the matcher decide what to do
     query = """
         SELECT e.* FROM events e
         LEFT JOIN time_entries te ON e.id = te.event_id
-        WHERE e.user_id = %s AND te.id IS NULL
+        WHERE e.user_id = %s
+          AND (te.id IS NULL OR e.did_not_attend = FALSE)
     """
     params = [user_id]
 
@@ -759,6 +838,7 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
 
     dry_run = request.get("dry_run", False)
     classified = []
+    attendance_updated = []
     matched = []
 
     for event in events:
@@ -771,6 +851,7 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
                 "event_title": event["title"],
                 "rule_id": matching_rule.id,
                 "rule_name": matching_rule.name,
+                "target_type": matching_rule.target_type,
                 "project_id": matching_rule.project_id,
                 "project_name": matching_rule.project_name,
             }
@@ -778,41 +859,59 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
             if dry_run:
                 matched.append(match_info)
             else:
-                # Calculate hours from event duration
-                start_time = event["start_time"]
-                end_time = event["end_time"]
-                start = start_time if isinstance(start_time, datetime) else datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-                end = end_time if isinstance(end_time, datetime) else datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-                hours = (end - start).total_seconds() / 3600
+                if matching_rule.is_did_not_attend_rule:
+                    # Set did_not_attend flag on event
+                    if not event.get("did_not_attend"):  # Only update if not already set
+                        db.execute(
+                            "UPDATE events SET did_not_attend = TRUE WHERE id = %s AND user_id = %s",
+                            (event["id"], user_id)
+                        )
+                        attendance_updated.append(match_info)
+                elif matching_rule.is_project_rule:
+                    # Only classify if event doesn't have a time entry yet
+                    has_entry = db.execute_one(
+                        "SELECT id FROM time_entries WHERE event_id = %s",
+                        (event["id"],)
+                    )
+                    if not has_entry:
+                        # Calculate hours from event duration
+                        start_time = event["start_time"]
+                        end_time = event["end_time"]
+                        start = start_time if isinstance(start_time, datetime) else datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                        end = end_time if isinstance(end_time, datetime) else datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                        hours = (end - start).total_seconds() / 3600
 
-                db.execute_insert(
-                    """
-                    INSERT INTO time_entries (user_id, event_id, project_id, hours, description, classification_source, rule_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (
-                        user_id,
-                        event["id"],
-                        matching_rule.project_id,
-                        hours,
-                        event["title"],
-                        "rule",
-                        matching_rule.id,
-                    ),
-                )
-                classified.append(match_info)
+                        db.execute_insert(
+                            """
+                            INSERT INTO time_entries (user_id, event_id, project_id, hours, description, classification_source, rule_id)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            RETURNING id
+                            """,
+                            (
+                                user_id,
+                                event["id"],
+                                matching_rule.project_id,
+                                hours,
+                                event["title"],
+                                "rule",
+                                matching_rule.id,
+                            ),
+                        )
+                        classified.append(match_info)
 
     if dry_run:
         return {
             "dry_run": True,
-            "would_classify": len(matched),
+            "would_classify": len([m for m in matched if m["target_type"] == "project"]),
+            "would_mark_did_not_attend": len([m for m in matched if m["target_type"] == "did_not_attend"]),
             "matches": matched,
         }
 
     return {
         "classified": len(classified),
+        "attendance_updated": len(attendance_updated),
         "entries": classified,
+        "did_not_attend_events": attendance_updated,
     }
 
 

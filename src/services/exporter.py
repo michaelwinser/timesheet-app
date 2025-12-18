@@ -14,6 +14,10 @@ def export_harvest_csv(start_date: str, end_date: str, user_id: int) -> str:
     Harvest CSV format:
     Date, Client, Project, Task, Notes, Hours
 
+    Excludes:
+    - Time entries for projects with does_not_accumulate_hours = TRUE (e.g., Noise projects)
+    - Time entries for events with did_not_attend = TRUE
+
     Args:
         start_date: ISO date string (YYYY-MM-DD)
         end_date: ISO date string (YYYY-MM-DD)
@@ -35,7 +39,11 @@ def export_harvest_csv(start_date: str, end_date: str, user_id: int) -> str:
         FROM time_entries te
         JOIN events e ON te.event_id = e.id
         JOIN projects p ON te.project_id = p.id
-        WHERE e.user_id = %s AND date(e.start_time) >= %s AND date(e.start_time) <= %s
+        WHERE e.user_id = %s
+          AND date(e.start_time) >= %s
+          AND date(e.start_time) <= %s
+          AND COALESCE(p.does_not_accumulate_hours, FALSE) = FALSE
+          AND COALESCE(e.did_not_attend, FALSE) = FALSE
         ORDER BY e.start_time
         """,
         (user_id, start_date, end_date),

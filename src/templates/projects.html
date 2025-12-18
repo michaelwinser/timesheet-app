@@ -9,14 +9,40 @@
 </div>
 
 <div id="add-project-form" class="project-form hidden">
-    <input type="text" id="new-project-name" placeholder="Project name">
-    <input type="text" id="new-project-client" placeholder="Client (optional)">
-    <div class="color-picker-group">
-        <label for="new-project-color">Color:</label>
-        <input type="color" id="new-project-color" value="#00aa44">
+    <div class="form-row">
+        <input type="text" id="new-project-name" placeholder="Project name">
+        <input type="text" id="new-project-client" placeholder="Client (optional)">
+        <div class="color-picker-group">
+            <label for="new-project-color">Color:</label>
+            <input type="color" id="new-project-color" value="#00aa44">
+        </div>
     </div>
-    <button class="btn btn-primary" onclick="addProject()">Save</button>
-    <button class="btn btn-secondary" onclick="hideAddProject()">Cancel</button>
+    <div class="form-row project-settings">
+        <label class="checkbox-label">
+            <input type="checkbox" id="new-project-no-hours">
+            No hours (Noise)
+        </label>
+        <label class="checkbox-label">
+            <input type="checkbox" id="new-project-billable" onchange="toggleBillRate('new')">
+            Billable
+        </label>
+        <div class="bill-rate-group hidden" id="new-bill-rate-group">
+            <label>Rate: $</label>
+            <input type="number" id="new-project-bill-rate" step="0.01" min="0" placeholder="0.00">
+        </div>
+        <label class="checkbox-label">
+            <input type="checkbox" id="new-project-hidden">
+            Hidden by default
+        </label>
+        <label class="checkbox-label">
+            <input type="checkbox" id="new-project-archived">
+            Archived
+        </label>
+    </div>
+    <div class="form-row">
+        <button class="btn btn-primary" onclick="addProject()">Save</button>
+        <button class="btn btn-secondary" onclick="hideAddProject()">Cancel</button>
+    </div>
 </div>
 
 <table class="projects-table">
@@ -25,7 +51,7 @@
             <th>Color</th>
             <th>Name</th>
             <th>Client</th>
-            <th>Visible</th>
+            <th>Settings</th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -34,7 +60,13 @@
         <tr data-project-id="{{ project.id }}"
             data-name="{{ project.name }}"
             data-client="{{ project.client or '' }}"
-            data-color="{{ project.color or '#00aa44' }}">
+            data-color="{{ project.color or '#00aa44' }}"
+            data-no-hours="{{ 'true' if project.does_not_accumulate_hours else 'false' }}"
+            data-billable="{{ 'true' if project.is_billable else 'false' }}"
+            data-bill-rate="{{ project.bill_rate or '' }}"
+            data-hidden="{{ 'true' if project.is_hidden_by_default else 'false' }}"
+            data-archived="{{ 'true' if project.is_archived else 'false' }}"
+            class="{% if project.is_archived %}archived-row{% endif %}">
             <td class="color-cell">
                 <input type="color"
                        value="{{ project.color or '#00aa44' }}"
@@ -49,10 +81,35 @@
                 <span class="display-value">{{ project.client or '-' }}</span>
                 <input type="text" class="edit-input hidden" value="{{ project.client or '' }}" placeholder="(none)">
             </td>
-            <td>
-                <input type="checkbox"
-                       {% if project.is_visible %}checked{% endif %}
-                       onchange="toggleVisibility({{ project.id }}, this.checked)">
+            <td class="settings-cell">
+                <span class="display-value">
+                    {% if project.does_not_accumulate_hours %}<span class="badge badge-muted" title="Does not accumulate hours">No hrs</span>{% endif %}
+                    {% if project.is_billable %}<span class="badge badge-success" title="Billable{% if project.bill_rate %} @ ${{ project.bill_rate }}/hr{% endif %}">${% if project.bill_rate %}{{ project.bill_rate }}{% endif %}</span>{% endif %}
+                    {% if project.is_hidden_by_default %}<span class="badge badge-warning" title="Hidden by default">Hidden</span>{% endif %}
+                    {% if project.is_archived %}<span class="badge badge-danger" title="Archived">Archived</span>{% endif %}
+                    {% if not project.does_not_accumulate_hours and not project.is_billable and not project.is_hidden_by_default and not project.is_archived %}-{% endif %}
+                </span>
+                <div class="edit-settings hidden">
+                    <label class="checkbox-label">
+                        <input type="checkbox" class="no-hours-input" {% if project.does_not_accumulate_hours %}checked{% endif %}>
+                        No hours
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" class="billable-input" {% if project.is_billable %}checked{% endif %} onchange="toggleBillRateRow({{ project.id }})">
+                        Billable
+                    </label>
+                    <div class="bill-rate-inline {% if not project.is_billable %}hidden{% endif %}" id="bill-rate-{{ project.id }}">
+                        $<input type="number" class="bill-rate-input" step="0.01" min="0" value="{{ project.bill_rate or '' }}" placeholder="0.00">
+                    </div>
+                    <label class="checkbox-label">
+                        <input type="checkbox" class="hidden-input" {% if project.is_hidden_by_default %}checked{% endif %}>
+                        Hidden
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" class="archived-input" {% if project.is_archived %}checked{% endif %}>
+                        Archived
+                    </label>
+                </div>
             </td>
             <td class="actions-cell">
                 <button class="btn-small edit-btn" onclick="editProject({{ project.id }})">Edit</button>
@@ -88,19 +145,60 @@ function hideAddProject() {
     document.getElementById('new-project-name').value = '';
     document.getElementById('new-project-client').value = '';
     document.getElementById('new-project-color').value = '#00aa44';
+    document.getElementById('new-project-no-hours').checked = false;
+    document.getElementById('new-project-billable').checked = false;
+    document.getElementById('new-project-bill-rate').value = '';
+    document.getElementById('new-bill-rate-group').classList.add('hidden');
+    document.getElementById('new-project-hidden').checked = false;
+    document.getElementById('new-project-archived').checked = false;
+}
+
+function toggleBillRate(prefix) {
+    const checkbox = document.getElementById(`${prefix}-project-billable`);
+    const group = document.getElementById(`${prefix}-bill-rate-group`);
+    if (checkbox.checked) {
+        group.classList.remove('hidden');
+    } else {
+        group.classList.add('hidden');
+    }
+}
+
+function toggleBillRateRow(projectId) {
+    const row = document.querySelector(`tr[data-project-id="${projectId}"]`);
+    const checkbox = row.querySelector('.billable-input');
+    const group = document.getElementById(`bill-rate-${projectId}`);
+    if (checkbox.checked) {
+        group.classList.remove('hidden');
+    } else {
+        group.classList.add('hidden');
+    }
 }
 
 async function addProject() {
     const name = document.getElementById('new-project-name').value.trim();
     const client = document.getElementById('new-project-client').value.trim();
     const color = document.getElementById('new-project-color').value;
+    const noHours = document.getElementById('new-project-no-hours').checked;
+    const billable = document.getElementById('new-project-billable').checked;
+    const billRate = document.getElementById('new-project-bill-rate').value;
+    const hidden = document.getElementById('new-project-hidden').checked;
+    const archived = document.getElementById('new-project-archived').checked;
 
     if (!name) {
         alert('Project name is required');
         return;
     }
 
-    await api.post('/api/projects', { name, client: client || null, color });
+    await api.post('/api/projects', {
+        name,
+        client: client || null,
+        color,
+        does_not_accumulate_hours: noHours,
+        is_billable: billable,
+        bill_rate: billRate ? parseFloat(billRate) : null,
+        is_hidden_by_default: hidden,
+        is_archived: archived
+    });
     location.reload();
 }
 
@@ -124,6 +222,7 @@ function editProject(projectId) {
     // Show edit inputs, hide display values
     row.querySelectorAll('.display-value').forEach(el => el.classList.add('hidden'));
     row.querySelectorAll('.edit-input').forEach(el => el.classList.remove('hidden'));
+    row.querySelector('.edit-settings').classList.remove('hidden');
 
     // Toggle buttons
     row.querySelector('.edit-btn').classList.add('hidden');
@@ -141,10 +240,16 @@ function cancelEdit(projectId) {
     // Restore original values
     row.querySelector('.name-cell .edit-input').value = row.dataset.name;
     row.querySelector('.client-cell .edit-input').value = row.dataset.client;
+    row.querySelector('.no-hours-input').checked = row.dataset.noHours === 'true';
+    row.querySelector('.billable-input').checked = row.dataset.billable === 'true';
+    row.querySelector('.bill-rate-input').value = row.dataset.billRate;
+    row.querySelector('.hidden-input').checked = row.dataset.hidden === 'true';
+    row.querySelector('.archived-input').checked = row.dataset.archived === 'true';
 
     // Hide edit inputs, show display values
     row.querySelectorAll('.display-value').forEach(el => el.classList.remove('hidden'));
     row.querySelectorAll('.edit-input').forEach(el => el.classList.add('hidden'));
+    row.querySelector('.edit-settings').classList.add('hidden');
 
     // Toggle buttons
     row.querySelector('.edit-btn').classList.remove('hidden');
@@ -157,6 +262,11 @@ async function saveProject(projectId) {
     const row = document.querySelector(`tr[data-project-id="${projectId}"]`);
     const name = row.querySelector('.name-cell .edit-input').value.trim();
     const client = row.querySelector('.client-cell .edit-input').value.trim();
+    const noHours = row.querySelector('.no-hours-input').checked;
+    const billable = row.querySelector('.billable-input').checked;
+    const billRate = row.querySelector('.bill-rate-input').value;
+    const hidden = row.querySelector('.hidden-input').checked;
+    const archived = row.querySelector('.archived-input').checked;
 
     if (!name) {
         alert('Project name is required');
@@ -166,17 +276,16 @@ async function saveProject(projectId) {
     try {
         await api.put(`/api/projects/${projectId}`, {
             name,
-            client: client || null
+            client: client || null,
+            does_not_accumulate_hours: noHours,
+            is_billable: billable,
+            bill_rate: billRate ? parseFloat(billRate) : null,
+            is_hidden_by_default: hidden,
+            is_archived: archived
         });
 
-        // Update display values and data attributes
-        row.dataset.name = name;
-        row.dataset.client = client;
-        row.querySelector('.name-cell .display-value').textContent = name;
-        row.querySelector('.client-cell .display-value').textContent = client || '-';
-
-        // Exit edit mode
-        cancelEdit(projectId);
+        // Reload to show updated badges
+        location.reload();
     } catch (error) {
         alert('Save failed: ' + error.message);
     }

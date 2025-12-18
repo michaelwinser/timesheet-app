@@ -502,10 +502,16 @@ class RuleCondition:
 
 @dataclass
 class ClassificationRule:
-    """A classification rule with its conditions."""
+    """A classification rule with its conditions.
+
+    Rules can have two target types:
+    - 'project': Assigns matching events to a project (project_id required)
+    - 'did_not_attend': Sets the did_not_attend flag on matching events (project_id is None)
+    """
     id: int
     name: str
-    project_id: int
+    target_type: str  # 'project' or 'did_not_attend'
+    project_id: int | None
     project_name: str | None
     priority: int
     is_enabled: bool
@@ -521,7 +527,8 @@ class ClassificationRule:
         return cls(
             id=row["id"],
             name=row["name"],
-            project_id=row["project_id"],
+            target_type=row.get("target_type", "project"),
+            project_id=row.get("project_id"),
             project_name=row.get("project_name"),
             priority=row.get("priority", 0),
             is_enabled=bool(row.get("is_enabled", 1)),
@@ -534,6 +541,7 @@ class ClassificationRule:
         return {
             "id": self.id,
             "name": self.name,
+            "target_type": self.target_type,
             "project_id": self.project_id,
             "project_name": self.project_name,
             "priority": self.priority,
@@ -549,6 +557,16 @@ class ClassificationRule:
                 for c in self.conditions
             ],
         }
+
+    @property
+    def is_did_not_attend_rule(self) -> bool:
+        """Returns True if this rule sets the did_not_attend flag."""
+        return self.target_type == "did_not_attend"
+
+    @property
+    def is_project_rule(self) -> bool:
+        """Returns True if this rule assigns to a project."""
+        return self.target_type == "project"
 
 
 @dataclass
@@ -677,11 +695,11 @@ def load_rules_with_conditions(db=None, user_id: int = None, enabled_only: bool 
 
     where_clause = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
-    # Get rules with project names
+    # Get rules with project names (LEFT JOIN to support did_not_attend rules without project)
     rules_query = f"""
         SELECT r.*, p.name as project_name
         FROM classification_rules r
-        JOIN projects p ON r.project_id = p.id
+        LEFT JOIN projects p ON r.project_id = p.id
         {where_clause}
         ORDER BY r.priority DESC, r.id
     """
@@ -693,7 +711,7 @@ def load_rules_with_conditions(db=None, user_id: int = None, enabled_only: bool 
 
     # Get all conditions for these rules
     rule_ids = [r["id"] for r in rule_rows]
-    placeholders = ",".join("%s" * len(rule_ids))
+    placeholders = ",".join(["%s"] * len(rule_ids))
     conditions_query = f"""
         SELECT * FROM rule_conditions
         WHERE rule_id IN ({placeholders})
@@ -722,11 +740,12 @@ def create_rule(
     db,
     user_id: int,
     name: str,
-    project_id: int,
+    project_id: int | None,
     conditions: list[dict],
     priority: int = 0,
     is_enabled: bool = True,
     stop_processing: bool = True,
+    target_type: str = "project",
 ) -> int:
     """Create a new classification rule with conditions.
 
@@ -734,23 +753,30 @@ def create_rule(
         db: Database connection
         user_id: User ID for the rule
         name: Human-readable rule name
-        project_id: Project to classify matching events to
+        project_id: Project to classify matching events to (None for did_not_attend rules)
         conditions: List of condition dicts with property_name, condition_type, condition_value
         priority: Higher priority rules are evaluated first
         is_enabled: Whether rule is active
         stop_processing: If True, stop evaluating lower-priority rules on match
+        target_type: 'project' to classify to project, 'did_not_attend' to set attendance flag
 
     Returns:
         ID of the created rule
     """
+    # Validate target_type and project_id consistency
+    if target_type == "project" and project_id is None:
+        raise ValueError("project_id is required for project rules")
+    if target_type == "did_not_attend" and project_id is not None:
+        raise ValueError("project_id must be None for did_not_attend rules")
+
     # Insert rule
     rule_id = db.execute_insert(
         """
-        INSERT INTO classification_rules (user_id, name, project_id, priority, is_enabled, stop_processing)
-        VALUES (%s, %s, %s, %s, %s, %s)
+        INSERT INTO classification_rules (user_id, name, project_id, priority, is_enabled, stop_processing, target_type)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
-        (user_id, name, project_id, priority, is_enabled, stop_processing)
+        (user_id, name, project_id, priority, is_enabled, stop_processing, target_type)
     )
 
     # Insert conditions
@@ -774,7 +800,6 @@ def create_rule(
 
 def update_rule(
     db,
-    user_id: int,
     rule_id: int,
     name: str | None = None,
     project_id: int | None = None,
@@ -782,15 +807,16 @@ def update_rule(
     is_enabled: bool | None = None,
     stop_processing: bool | None = None,
     conditions: list[dict] | None = None,
+    target_type: str | None = None,
 ) -> bool:
     """Update an existing rule.
 
     Args:
         db: Database connection
-        user_id: User ID (for security check)
         rule_id: ID of rule to update
         Other args: Fields to update (None = don't update)
         conditions: If provided, replaces all existing conditions
+        target_type: 'project' or 'did_not_attend'
 
     Returns:
         True if rule was found and updated
@@ -814,12 +840,20 @@ def update_rule(
     if stop_processing is not None:
         updates.append("stop_processing = %s")
         values.append(stop_processing)
+    if target_type is not None:
+        updates.append("target_type = %s")
+        values.append(target_type)
+        # Clear project_id if switching to did_not_attend
+        if target_type == "did_not_attend":
+            updates.append("project_id = NULL")
+        elif target_type == "project" and project_id is None:
+            raise ValueError("project_id is required when setting target_type to 'project'")
 
     if updates:
         updates.append("updated_at = CURRENT_TIMESTAMP")
-        values.extend([rule_id, user_id])
+        values.append(rule_id)
         db.execute(
-            f"UPDATE classification_rules SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
+            f"UPDATE classification_rules SET {', '.join(updates)} WHERE id = %s",
             tuple(values)
         )
 
@@ -842,21 +876,20 @@ def update_rule(
     return True
 
 
-def delete_rule(db, user_id: int, rule_id: int) -> bool:
+def delete_rule(db, rule_id: int) -> bool:
     """Delete a rule and its conditions.
 
     Args:
         db: Database connection
-        user_id: User ID (for security check)
         rule_id: ID of rule to delete
 
     Returns:
         True if rule was found and deleted
     """
     # Conditions are deleted via ON DELETE CASCADE
-    result = db.execute(
-        "DELETE FROM classification_rules WHERE id = %s AND user_id = %s",
-        (rule_id, user_id)
+    db.execute(
+        "DELETE FROM classification_rules WHERE id = %s",
+        (rule_id,)
     )
     return True
 
