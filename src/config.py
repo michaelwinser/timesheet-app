@@ -32,12 +32,14 @@ class Config:
     DEBUG: bool = os.environ.get("DEBUG", "true").lower() == "true"
     LOG_LEVEL: str = os.environ.get("LOG_LEVEL", "INFO").upper()
 
-    # Google Calendar API scopes
+    # Google API scopes (Calendar + Sheets)
+    # Note: drive.file only grants access to files created by this app
     GOOGLE_SCOPES: list[str] = [
         "openid",
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile",
         "https://www.googleapis.com/auth/calendar.readonly",
+        "https://www.googleapis.com/auth/drive.file",
     ]
 
     @property

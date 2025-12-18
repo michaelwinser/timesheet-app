@@ -19,6 +19,7 @@ class ProjectCreate(BaseModel):
     name: str
     client: str | None = None
     color: str = "#00aa44"
+    short_code: str | None = None
     does_not_accumulate_hours: bool = False
     is_billable: bool = False
     bill_rate: float | None = None
@@ -31,6 +32,7 @@ class ProjectUpdate(BaseModel):
     name: str | None = None
     client: str | None = None
     color: str | None = None
+    short_code: str | None = None
     does_not_accumulate_hours: bool | None = None
     is_billable: bool | None = None
     bill_rate: float | None = None
@@ -49,12 +51,15 @@ class Project(BaseModel):
     name: str
     client: str | None
     color: str
+    short_code: str | None = None
     is_visible: bool
     does_not_accumulate_hours: bool = False
     is_billable: bool = False
     bill_rate: float | None = None
     is_hidden_by_default: bool = False
     is_archived: bool = False
+    sheets_spreadsheet_id: str | None = None
+    sheets_spreadsheet_url: str | None = None
     created_at: datetime
 
 
@@ -140,6 +145,67 @@ class ExportRequest(BaseModel):
     """Request to export time entries."""
     start_date: str  # ISO date: YYYY-MM-DD
     end_date: str    # ISO date: YYYY-MM-DD
+
+
+# --- Invoices ---
+
+class InvoiceCreate(BaseModel):
+    """Request to create an invoice."""
+    project_id: int
+    period_start: str  # ISO date: YYYY-MM-DD
+    period_end: str    # ISO date: YYYY-MM-DD
+    invoice_date: str | None = None  # ISO date, defaults to today
+
+
+class InvoiceLineItemResponse(BaseModel):
+    """Invoice line item response."""
+    id: int
+    time_entry_id: int | None
+    entry_date: str
+    description: str | None
+    hours: float
+    rate: float
+    amount: float
+    is_orphaned: bool
+
+
+class InvoiceResponse(BaseModel):
+    """Invoice response."""
+    id: int
+    project_id: int
+    project_name: str
+    client: str | None
+    invoice_number: str
+    period_start: str
+    period_end: str
+    invoice_date: str
+    status: str
+    total_hours: float
+    total_amount: float
+    sheets_spreadsheet_id: str | None = None
+    sheets_spreadsheet_url: str | None = None
+    last_exported_at: datetime | None = None
+    created_at: datetime
+    line_items: list[InvoiceLineItemResponse] | None = None
+
+
+class InvoiceListResponse(BaseModel):
+    """Response for invoice list."""
+    invoices: list[InvoiceResponse]
+    total: int
+
+
+class InvoicePreview(BaseModel):
+    """Preview of what an invoice would contain."""
+    project_id: int
+    project_name: str
+    invoice_number: str
+    period_start: str
+    period_end: str
+    unbilled_entries: int
+    total_hours: float
+    bill_rate: float
+    total_amount: float
 
 
 # Resolve forward references

@@ -16,6 +16,7 @@
                 <a href="/">Calendar</a>
                 <a href="/projects">Projects</a>
                 <a href="/rules">Rules</a>
+                <a href="/invoices">Invoices</a>
                 <a href="/docs" target="_blank">API</a>
             </div>
             <div class="nav-user" id="nav-user" style="display: none;">
@@ -60,7 +61,7 @@
                 });
 
                 if (response.ok) {
-                    window.location.href = '/auth/login';
+                    window.location.href = '/login';
                 } else {
                     alert('Logout failed. Please try again.');
                 }

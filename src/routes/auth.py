@@ -159,7 +159,6 @@ async def login(request: Request, next: str = None):
     flow = get_oauth_flow()
     auth_url, _ = flow.authorization_url(
         access_type="offline",
-        include_granted_scopes="true",
         prompt="consent",
     )
     return RedirectResponse(url=auth_url)

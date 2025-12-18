@@ -156,6 +156,9 @@
                     </div>
                     <!-- Row 4: Actions -->
                     <div class="card-row-actions">
+                        {% if event.invoice_id %}
+                        <a href="/invoices" class="badge badge-billed" title="Billed: {{ event.invoice_number }}">$</a>
+                        {% endif %}
                         <label class="checkbox-dna">
                             <input type="checkbox" {% if event.did_not_attend %}checked{% endif %} onchange="toggleDidNotAttend({{ event.id }})"> DNA
                         </label>

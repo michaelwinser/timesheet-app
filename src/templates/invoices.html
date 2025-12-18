@@ -1,0 +1,529 @@
+{% extends "base.html" %}
+
+{% block title %}Invoices - Timesheet{% endblock %}
+
+{% block content %}
+<div class="invoices-header">
+    <h1>Invoices</h1>
+    <button class="btn btn-primary" onclick="showCreateModal()">+ New Invoice</button>
+</div>
+
+<div class="filters-bar">
+    <div class="filter-group">
+        <label for="filter-project">Project:</label>
+        <select id="filter-project" onchange="loadInvoices()">
+            <option value="">All Projects</option>
+            {% for project in billable_projects %}
+            <option value="{{ project.id }}">{{ project.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label for="filter-status">Status:</label>
+        <select id="filter-status" onchange="loadInvoices()">
+            <option value="">All</option>
+            <option value="draft">Draft</option>
+            <option value="finalized">Finalized</option>
+            <option value="paid">Paid</option>
+        </select>
+    </div>
+</div>
+
+<table class="invoices-table">
+    <thead>
+        <tr>
+            <th>Invoice</th>
+            <th>Project</th>
+            <th>Client</th>
+            <th>Period</th>
+            <th class="text-right">Hours</th>
+            <th class="text-right">Amount</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody id="invoices-tbody">
+        <tr>
+            <td colspan="8" class="loading">Loading invoices...</td>
+        </tr>
+    </tbody>
+</table>
+
+<!-- Create Invoice Modal -->
+<div id="create-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Create Invoice</h2>
+            <button class="modal-close" onclick="hideCreateModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label for="invoice-project">Project</label>
+                <select id="invoice-project" onchange="updatePreview()">
+                    <option value="">Select a project...</option>
+                    {% for project in billable_projects %}
+                    <option value="{{ project.id }}"
+                            data-name="{{ project.name }}"
+                            data-rate="{{ project.bill_rate or 0 }}">
+                        {{ project.name }} {% if project.client %}({{ project.client }}){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="invoice-start">Period Start</label>
+                    <input type="date" id="invoice-start" onchange="updatePreview()">
+                </div>
+                <div class="form-group">
+                    <label for="invoice-end">Period End</label>
+                    <input type="date" id="invoice-end" onchange="updatePreview()">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="invoice-date">Invoice Date</label>
+                <input type="date" id="invoice-date">
+            </div>
+
+            <div id="invoice-preview" class="preview-box hidden">
+                <div class="preview-title">Preview</div>
+                <div class="preview-row">
+                    <span class="preview-label">Invoice Number</span>
+                    <span class="preview-value" id="preview-number">-</span>
+                </div>
+                <div class="preview-row">
+                    <span class="preview-label">Unbilled Entries</span>
+                    <span class="preview-value" id="preview-entries">-</span>
+                </div>
+                <div class="preview-row">
+                    <span class="preview-label">Hours</span>
+                    <span class="preview-value" id="preview-hours">-</span>
+                </div>
+                <div class="preview-row preview-total">
+                    <span class="preview-label">Total</span>
+                    <span class="preview-value" id="preview-total">-</span>
+                </div>
+            </div>
+
+            <div id="no-entries-warning" class="warning-box hidden">
+                No unbilled entries found for this project and period.
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="hideCreateModal()">Cancel</button>
+            <button class="btn btn-primary" id="create-btn" onclick="createInvoice()" disabled>Create Invoice</button>
+        </div>
+    </div>
+</div>
+
+<!-- Invoice Detail Modal -->
+<div id="detail-modal" class="modal-overlay hidden">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h2 id="detail-title">Invoice</h2>
+            <button class="modal-close" onclick="hideDetailModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="invoice-detail-meta" id="detail-meta"></div>
+
+            <div class="invoice-toolbar">
+                <div class="toolbar-left">
+                    <label for="detail-status">Status:</label>
+                    <select id="detail-status" onchange="updateStatus()">
+                        <option value="draft">Draft</option>
+                        <option value="finalized">Finalized</option>
+                        <option value="paid">Paid</option>
+                    </select>
+                    <button class="btn btn-secondary btn-small" id="regenerate-btn" onclick="regenerateInvoice()">Regenerate</button>
+                </div>
+                <div class="toolbar-right">
+                    <button class="btn btn-secondary" onclick="exportCSV()">Export CSV</button>
+                    <button class="btn btn-primary" onclick="exportSheets()" id="sheets-btn">Export to Sheets</button>
+                </div>
+            </div>
+
+            <div id="sheets-link" class="sheets-link-container hidden">
+                <a href="#" target="_blank" id="sheets-url">Open in Google Sheets</a>
+                <span class="last-exported" id="last-exported"></span>
+            </div>
+
+            <table class="line-items-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th class="text-right">Hours</th>
+                        <th class="text-right">Rate</th>
+                        <th class="text-right">Amount</th>
+                    </tr>
+                </thead>
+                <tbody id="line-items-tbody">
+                </tbody>
+                <tfoot>
+                    <tr class="totals-row">
+                        <td></td>
+                        <td class="text-right"><strong>TOTAL</strong></td>
+                        <td class="text-right" id="total-hours">-</td>
+                        <td></td>
+                        <td class="text-right" id="total-amount">-</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-danger" id="delete-btn" onclick="deleteInvoice()">Delete</button>
+            <button class="btn btn-secondary" onclick="hideDetailModal()">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentInvoiceId = null;
+let currentInvoice = null;
+
+// Format currency
+function formatCurrency(amount) {
+    return '$' + parseFloat(amount).toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+}
+
+// Format date for display
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    const date = new Date(dateStr + 'T00:00:00');
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+// Format period
+function formatPeriod(start, end) {
+    const startDate = new Date(start + 'T00:00:00');
+    const endDate = new Date(end + 'T00:00:00');
+    const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return `${startStr} - ${endStr}`;
+}
+
+// Get status badge HTML
+function getStatusBadge(status) {
+    const classes = {
+        'draft': 'badge-warning',
+        'finalized': 'badge-info',
+        'paid': 'badge-success'
+    };
+    return `<span class="badge ${classes[status] || ''}">${status}</span>`;
+}
+
+// Load invoices from API
+async function loadInvoices() {
+    const projectId = document.getElementById('filter-project').value;
+    const status = document.getElementById('filter-status').value;
+
+    let url = '/api/invoices?';
+    if (projectId) url += `project_id=${projectId}&`;
+    if (status) url += `status=${status}&`;
+
+    try {
+        const data = await api.get(url);
+        renderInvoices(data.invoices);
+    } catch (error) {
+        showToast('Failed to load invoices: ' + error.message, 'error');
+    }
+}
+
+// Render invoices table
+function renderInvoices(invoices) {
+    const tbody = document.getElementById('invoices-tbody');
+
+    if (invoices.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="no-data">No invoices found. Create one to get started.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = invoices.map(inv => `
+        <tr onclick="showDetail(${inv.id})" style="cursor: pointer;">
+            <td><span class="invoice-number">${inv.invoice_number}</span></td>
+            <td>${inv.project_name}</td>
+            <td>${inv.client || '-'}</td>
+            <td>${formatPeriod(inv.period_start, inv.period_end)}</td>
+            <td class="text-right">${inv.total_hours.toFixed(2)}</td>
+            <td class="text-right">${formatCurrency(inv.total_amount)}</td>
+            <td>${getStatusBadge(inv.status)}</td>
+            <td class="actions-cell" onclick="event.stopPropagation()">
+                <button class="btn-small" onclick="showDetail(${inv.id})">View</button>
+                <button class="btn-small" onclick="downloadCSV(${inv.id})">CSV</button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+// Show create modal
+function showCreateModal() {
+    // Set default dates (this month)
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    document.getElementById('invoice-start').value = firstDay.toISOString().split('T')[0];
+    document.getElementById('invoice-end').value = lastDay.toISOString().split('T')[0];
+    document.getElementById('invoice-date').value = now.toISOString().split('T')[0];
+    document.getElementById('invoice-project').value = '';
+
+    document.getElementById('invoice-preview').classList.add('hidden');
+    document.getElementById('no-entries-warning').classList.add('hidden');
+    document.getElementById('create-btn').disabled = true;
+
+    document.getElementById('create-modal').classList.remove('hidden');
+}
+
+function hideCreateModal() {
+    document.getElementById('create-modal').classList.add('hidden');
+}
+
+// Update preview when form changes
+async function updatePreview() {
+    const projectId = document.getElementById('invoice-project').value;
+    const startDate = document.getElementById('invoice-start').value;
+    const endDate = document.getElementById('invoice-end').value;
+
+    if (!projectId || !startDate || !endDate) {
+        document.getElementById('invoice-preview').classList.add('hidden');
+        document.getElementById('no-entries-warning').classList.add('hidden');
+        document.getElementById('create-btn').disabled = true;
+        return;
+    }
+
+    try {
+        const preview = await api.get(`/api/invoices/preview?project_id=${projectId}&period_start=${startDate}&period_end=${endDate}`);
+
+        if (preview.unbilled_entries === 0) {
+            document.getElementById('invoice-preview').classList.add('hidden');
+            document.getElementById('no-entries-warning').classList.remove('hidden');
+            document.getElementById('create-btn').disabled = true;
+        } else {
+            document.getElementById('preview-number').textContent = preview.invoice_number;
+            document.getElementById('preview-entries').textContent = preview.unbilled_entries + ' entries';
+            document.getElementById('preview-hours').textContent = `${preview.total_hours.toFixed(2)} hrs @ ${formatCurrency(preview.bill_rate)}/hr`;
+            document.getElementById('preview-total').textContent = formatCurrency(preview.total_amount);
+
+            document.getElementById('invoice-preview').classList.remove('hidden');
+            document.getElementById('no-entries-warning').classList.add('hidden');
+            document.getElementById('create-btn').disabled = false;
+        }
+    } catch (error) {
+        showToast('Failed to load preview: ' + error.message, 'error');
+    }
+}
+
+// Create invoice
+async function createInvoice() {
+    const projectId = document.getElementById('invoice-project').value;
+    const startDate = document.getElementById('invoice-start').value;
+    const endDate = document.getElementById('invoice-end').value;
+    const invoiceDate = document.getElementById('invoice-date').value;
+
+    try {
+        const invoice = await api.post('/api/invoices', {
+            project_id: parseInt(projectId),
+            period_start: startDate,
+            period_end: endDate,
+            invoice_date: invoiceDate || null
+        });
+
+        showToast(`Invoice ${invoice.invoice_number} created`, 'success');
+        hideCreateModal();
+        loadInvoices();
+        showDetail(invoice.id);
+    } catch (error) {
+        showToast('Failed to create invoice: ' + error.message, 'error');
+    }
+}
+
+// Show invoice detail
+async function showDetail(invoiceId) {
+    currentInvoiceId = invoiceId;
+
+    try {
+        const invoice = await api.get(`/api/invoices/${invoiceId}`);
+        currentInvoice = invoice;
+
+        document.getElementById('detail-title').textContent = invoice.invoice_number;
+        document.getElementById('detail-meta').innerHTML = `
+            <strong>${invoice.project_name}</strong> &bull;
+            ${invoice.client || 'No client'} &bull;
+            ${formatPeriod(invoice.period_start, invoice.period_end)} &bull;
+            Invoice Date: ${formatDate(invoice.invoice_date)}
+        `;
+
+        document.getElementById('detail-status').value = invoice.status;
+
+        // Show/hide regenerate and delete based on status
+        const isDraft = invoice.status === 'draft';
+        document.getElementById('regenerate-btn').style.display = isDraft ? 'inline-block' : 'none';
+        document.getElementById('delete-btn').style.display = isDraft ? 'inline-block' : 'none';
+
+        // Show sheets link if exported
+        if (invoice.sheets_spreadsheet_url) {
+            document.getElementById('sheets-url').href = invoice.sheets_spreadsheet_url;
+            document.getElementById('last-exported').textContent =
+                invoice.last_exported_at ? `Last exported: ${new Date(invoice.last_exported_at).toLocaleString()}` : '';
+            document.getElementById('sheets-link').classList.remove('hidden');
+        } else {
+            document.getElementById('sheets-link').classList.add('hidden');
+        }
+
+        // Render line items
+        const lineItems = invoice.line_items || [];
+        const tbody = document.getElementById('line-items-tbody');
+        tbody.innerHTML = lineItems.map(item => `
+            <tr class="${item.is_orphaned ? 'orphaned-row' : ''}">
+                <td>${formatDate(item.entry_date)}</td>
+                <td class="description">${item.description || '-'}${item.is_orphaned ? ' <span class="badge badge-danger">Orphaned</span>' : ''}</td>
+                <td class="text-right">${item.hours.toFixed(2)}</td>
+                <td class="text-right">${formatCurrency(item.rate)}</td>
+                <td class="text-right">${formatCurrency(item.amount)}</td>
+            </tr>
+        `).join('');
+
+        document.getElementById('total-hours').textContent = invoice.total_hours.toFixed(2);
+        document.getElementById('total-amount').textContent = formatCurrency(invoice.total_amount);
+
+        document.getElementById('detail-modal').classList.remove('hidden');
+    } catch (error) {
+        showToast('Failed to load invoice: ' + error.message, 'error');
+    }
+}
+
+function hideDetailModal() {
+    document.getElementById('detail-modal').classList.add('hidden');
+    currentInvoiceId = null;
+    currentInvoice = null;
+}
+
+// Update invoice status
+async function updateStatus() {
+    const status = document.getElementById('detail-status').value;
+
+    try {
+        await api.post(`/api/invoices/${currentInvoiceId}/status`, { status });
+        showToast(`Status updated to ${status}`, 'success');
+
+        // Update UI based on new status
+        const isDraft = status === 'draft';
+        document.getElementById('regenerate-btn').style.display = isDraft ? 'inline-block' : 'none';
+        document.getElementById('delete-btn').style.display = isDraft ? 'inline-block' : 'none';
+
+        loadInvoices();
+    } catch (error) {
+        showToast('Failed to update status: ' + error.message, 'error');
+    }
+}
+
+// Regenerate invoice
+async function regenerateInvoice() {
+    if (!confirm('Regenerate invoice? This will re-query time entries for the period.')) {
+        return;
+    }
+
+    try {
+        const invoice = await api.post(`/api/invoices/${currentInvoiceId}/regenerate`);
+        showToast('Invoice regenerated', 'success');
+        showDetail(currentInvoiceId);
+        loadInvoices();
+    } catch (error) {
+        showToast('Failed to regenerate: ' + error.message, 'error');
+    }
+}
+
+// Delete invoice
+async function deleteInvoice() {
+    if (!confirm('Delete this invoice? Time entries will become unbilled again.')) {
+        return;
+    }
+
+    try {
+        await api.delete(`/api/invoices/${currentInvoiceId}`);
+        showToast('Invoice deleted', 'success');
+        hideDetailModal();
+        loadInvoices();
+    } catch (error) {
+        showToast('Failed to delete: ' + error.message, 'error');
+    }
+}
+
+// Export to CSV
+function exportCSV() {
+    window.location.href = `/api/invoices/${currentInvoiceId}/export/csv`;
+}
+
+function downloadCSV(invoiceId) {
+    window.location.href = `/api/invoices/${invoiceId}/export/csv`;
+}
+
+// Export to Google Sheets
+async function exportSheets(force = false) {
+    try {
+        const url = `/api/invoices/${currentInvoiceId}/export/sheets` + (force ? '?force=true' : '');
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+        });
+
+        // Handle 409 Conflict - modification warning
+        if (response.status === 409) {
+            const warning = await response.json();
+            const detail = warning.detail || warning;
+            const lastExported = detail.last_exported_at ? new Date(detail.last_exported_at).toLocaleString() : 'unknown';
+            const lastModified = detail.spreadsheet_modified_at ? new Date(detail.spreadsheet_modified_at).toLocaleString() : 'unknown';
+
+            if (confirm(`This spreadsheet was modified since the last export.\n\nLast exported: ${lastExported}\nLast modified: ${lastModified}\n\nOverwrite anyway?`)) {
+                return exportSheets(true);  // Retry with force=true
+            }
+            return;
+        }
+
+        if (response.status === 401) {
+            window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+            return;
+        }
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+            throw new Error(error.detail || 'Request failed');
+        }
+
+        const result = await response.json();
+
+        // Update UI with sheets link
+        document.getElementById('sheets-url').href = result.spreadsheet_url;
+        document.getElementById('last-exported').textContent = `Just exported`;
+        document.getElementById('sheets-link').classList.remove('hidden');
+
+        showToast(`Exported to Google Sheets`, 'success');
+
+        // Open spreadsheet in new tab
+        window.open(result.spreadsheet_url, '_blank');
+    } catch (error) {
+        if (error.message && error.message.includes('Not authenticated')) {
+            // Might need to re-authenticate with Sheets scope
+            showToast('Please re-login to grant Google Sheets access', 'error');
+        } else {
+            showToast('Failed to export to Sheets: ' + error.message, 'error');
+        }
+    }
+}
+
+// Close modals when clicking outside
+document.getElementById('create-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) hideCreateModal();
+});
+document.getElementById('detail-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) hideDetailModal();
+});
+
+// Load invoices on page load
+document.addEventListener('DOMContentLoaded', loadInvoices);
+</script>
+{% endblock %}

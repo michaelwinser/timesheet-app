@@ -12,6 +12,7 @@ from models import (
     Project, ProjectCreate, ProjectUpdate, ProjectVisibility,
     Event, EventAttendance, TimeEntry, TimeEntryCreate, TimeEntryUpdate, BulkClassifyRequest,
     SyncRequest, SyncResponse,
+    InvoiceCreate, InvoiceResponse, InvoiceListResponse, InvoiceLineItemResponse, InvoicePreview,
 )
 from services.calendar import sync_calendar_events
 from services.exporter import export_harvest_csv
@@ -63,12 +64,15 @@ def _row_to_project(row: dict) -> Project:
         name=row["name"],
         client=row["client"],
         color=row["color"] or "#00aa44",
+        short_code=row.get("short_code"),
         is_visible=bool(row["is_visible"]),
         does_not_accumulate_hours=bool(row.get("does_not_accumulate_hours", False)),
         is_billable=bool(row.get("is_billable", False)),
         bill_rate=row.get("bill_rate"),
         is_hidden_by_default=bool(row.get("is_hidden_by_default", False)),
         is_archived=bool(row.get("is_archived", False)),
+        sheets_spreadsheet_id=row.get("sheets_spreadsheet_id"),
+        sheets_spreadsheet_url=row.get("sheets_spreadsheet_url"),
         created_at=row["created_at"],
     )
 
@@ -91,12 +95,12 @@ async def create_project(project: ProjectCreate, user_id: int = Depends(get_user
     try:
         project_id = db.execute_insert(
             """INSERT INTO projects (
-                user_id, name, client, color,
+                user_id, name, client, color, short_code,
                 does_not_accumulate_hours, is_billable, bill_rate,
                 is_hidden_by_default, is_archived
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
             (
-                user_id, project.name, project.client, project.color,
+                user_id, project.name, project.client, project.color, project.short_code,
                 project.does_not_accumulate_hours, project.is_billable, project.bill_rate,
                 project.is_hidden_by_default, project.is_archived,
             ),
@@ -141,6 +145,9 @@ async def update_project(
     if project.color is not None:
         updates.append("color = %s")
         params.append(project.color)
+    if project.short_code is not None:
+        updates.append("short_code = %s")
+        params.append(project.short_code if project.short_code else None)
     if project.does_not_accumulate_hours is not None:
         updates.append("does_not_accumulate_hours = %s")
         params.append(project.does_not_accumulate_hours)
@@ -189,6 +196,83 @@ async def delete_project(project_id: int, user_id: int = Depends(get_user_id)):
         (project_id, user_id)
     )
     return {"status": "deleted"}
+
+
+@router.post("/projects/{project_id}/spreadsheet")
+async def create_project_spreadsheet(
+    project_id: int,
+    user_id: int = Depends(get_user_id),
+    credentials=Depends(require_auth)
+):
+    """Create a new spreadsheet for a billable project."""
+    from services.sheets import create_project_spreadsheet as do_create
+
+    db = get_db()
+
+    # Verify project belongs to user and is billable
+    project = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not project["is_billable"]:
+        raise HTTPException(status_code=400, detail="Project is not billable")
+
+    if project["sheets_spreadsheet_id"]:
+        raise HTTPException(status_code=400, detail="Project already has a spreadsheet attached")
+
+    try:
+        spreadsheet_id, spreadsheet_url = do_create(
+            credentials, project_id, project["name"], user_id
+        )
+        return {
+            "spreadsheet_id": spreadsheet_id,
+            "spreadsheet_url": spreadsheet_url,
+            "name": f"{project['name']} - Invoices"
+        }
+    except Exception as e:
+        logger.exception(f"Failed to create spreadsheet for project {project_id}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ArchiveSpreadsheetRequest(BaseModel):
+    archive_name: str
+
+
+@router.post("/projects/{project_id}/spreadsheet/archive")
+async def archive_project_spreadsheet(
+    project_id: int,
+    request: ArchiveSpreadsheetRequest,
+    user_id: int = Depends(get_user_id),
+    credentials=Depends(require_auth)
+):
+    """Archive (rename and detach) the project's spreadsheet."""
+    from services.sheets import archive_project_spreadsheet as do_archive
+
+    db = get_db()
+
+    # Verify project belongs to user
+    project = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not project["sheets_spreadsheet_id"]:
+        raise HTTPException(status_code=400, detail="No spreadsheet attached to this project")
+
+    try:
+        archived_url = do_archive(credentials, project_id, request.archive_name, user_id)
+        return {
+            "archived_spreadsheet_url": archived_url,
+            "message": f"Spreadsheet archived as '{request.archive_name}'"
+        }
+    except Exception as e:
+        logger.exception(f"Failed to archive spreadsheet for project {project_id}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/projects/{project_id}/visibility", response_model=Project)
@@ -682,6 +766,307 @@ async def export_harvest(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=timesheet_{start_date}_{end_date}.csv"},
     )
+
+
+# --- Invoices ---
+
+def _invoice_to_response(invoice) -> InvoiceResponse:
+    """Convert Invoice dataclass to response model."""
+    from services.invoice import Invoice, InvoiceLineItem
+
+    line_items = None
+    if invoice.line_items is not None:
+        line_items = [
+            InvoiceLineItemResponse(
+                id=item.id,
+                time_entry_id=item.time_entry_id,
+                entry_date=str(item.entry_date),
+                description=item.description,
+                hours=item.hours,
+                rate=float(item.rate),
+                amount=float(item.amount),
+                is_orphaned=item.is_orphaned
+            )
+            for item in invoice.line_items
+        ]
+
+    return InvoiceResponse(
+        id=invoice.id,
+        project_id=invoice.project_id,
+        project_name=invoice.project_name,
+        client=invoice.client,
+        invoice_number=invoice.invoice_number,
+        period_start=str(invoice.period_start),
+        period_end=str(invoice.period_end),
+        invoice_date=str(invoice.invoice_date),
+        status=invoice.status,
+        total_hours=invoice.total_hours,
+        total_amount=float(invoice.total_amount),
+        sheets_spreadsheet_id=invoice.sheets_spreadsheet_id,
+        sheets_spreadsheet_url=invoice.sheets_spreadsheet_url,
+        last_exported_at=invoice.last_exported_at,
+        created_at=invoice.created_at,
+        line_items=line_items
+    )
+
+
+@router.get("/invoices", response_model=InvoiceListResponse)
+async def list_invoices(
+    project_id: int | None = None,
+    status: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+    user_id: int = Depends(get_user_id)
+):
+    """List invoices with optional filters."""
+    from services.invoice import list_invoices as do_list
+
+    invoices, total = do_list(user_id, project_id, status, limit, offset)
+
+    return InvoiceListResponse(
+        invoices=[_invoice_to_response(inv) for inv in invoices],
+        total=total
+    )
+
+
+@router.post("/invoices", response_model=InvoiceResponse)
+async def create_invoice(
+    request: InvoiceCreate,
+    user_id: int = Depends(get_user_id)
+):
+    """Create a new invoice from unbilled time entries."""
+    from services.invoice import create_invoice as do_create
+    from datetime import date
+
+    try:
+        period_start = date.fromisoformat(request.period_start)
+        period_end = date.fromisoformat(request.period_end)
+        invoice_date = date.fromisoformat(request.invoice_date) if request.invoice_date else None
+
+        invoice = do_create(
+            user_id=user_id,
+            project_id=request.project_id,
+            period_start=period_start,
+            period_end=period_end,
+            invoice_date=invoice_date
+        )
+        return _invoice_to_response(invoice)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/invoices/preview", response_model=InvoicePreview)
+async def preview_invoice(
+    project_id: int,
+    period_start: str,
+    period_end: str,
+    user_id: int = Depends(get_user_id)
+):
+    """Preview what an invoice would contain without creating it."""
+    from services.invoice import get_unbilled_entries, generate_invoice_number
+    from datetime import date
+    from decimal import Decimal
+
+    db = get_db()
+
+    # Get project details
+    project = db.execute_one(
+        "SELECT id, name, short_code, is_billable, bill_rate FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not project["is_billable"]:
+        raise HTTPException(status_code=400, detail="Project is not billable")
+
+    start = date.fromisoformat(period_start)
+    end = date.fromisoformat(period_end)
+
+    entries = get_unbilled_entries(user_id, project_id, start, end)
+    bill_rate = Decimal(str(project["bill_rate"] or 0))
+    total_hours = sum(e["hours"] for e in entries)
+    total_amount = sum(Decimal(str(e["hours"])) * bill_rate for e in entries)
+
+    return InvoicePreview(
+        project_id=project_id,
+        project_name=project["name"],
+        invoice_number=generate_invoice_number(
+            project_id, project["name"], user_id, project.get("short_code")
+        ),
+        period_start=period_start,
+        period_end=period_end,
+        unbilled_entries=len(entries),
+        total_hours=total_hours,
+        bill_rate=float(bill_rate),
+        total_amount=float(total_amount)
+    )
+
+
+@router.get("/invoices/{invoice_id}", response_model=InvoiceResponse)
+async def get_invoice(
+    invoice_id: int,
+    user_id: int = Depends(get_user_id)
+):
+    """Get invoice details with line items."""
+    from services.invoice import get_invoice as do_get
+
+    invoice = do_get(user_id, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    return _invoice_to_response(invoice)
+
+
+@router.delete("/invoices/{invoice_id}")
+async def delete_invoice(
+    invoice_id: int,
+    user_id: int = Depends(get_user_id),
+    credentials=Depends(require_auth)
+):
+    """Delete a draft invoice and its worksheet from the spreadsheet."""
+    from services.invoice import delete_invoice as do_delete
+    from services.sheets import delete_invoice_worksheet, remove_invoice_from_summary
+
+    db = get_db()
+
+    # Get invoice info before deleting
+    invoice = db.execute_one(
+        """
+        SELECT i.invoice_number, i.sheets_spreadsheet_id, p.sheets_spreadsheet_id AS project_spreadsheet_id
+        FROM invoices i
+        JOIN projects p ON i.project_id = p.id
+        WHERE i.id = %s AND i.user_id = %s
+        """,
+        (invoice_id, user_id)
+    )
+
+    try:
+        # Delete invoice from database
+        do_delete(user_id, invoice_id)
+
+        # Clean up spreadsheet if invoice was exported
+        if invoice:
+            # The invoice might have been exported to a project spreadsheet
+            spreadsheet_id = invoice.get("sheets_spreadsheet_id") or invoice.get("project_spreadsheet_id")
+            if spreadsheet_id and invoice.get("invoice_number"):
+                try:
+                    delete_invoice_worksheet(credentials, spreadsheet_id, invoice["invoice_number"])
+                    remove_invoice_from_summary(credentials, spreadsheet_id, invoice["invoice_number"])
+                except Exception as e:
+                    # Log but don't fail - spreadsheet cleanup is best-effort
+                    logger.warning(f"Failed to clean up spreadsheet for invoice {invoice_id}: {e}")
+
+        return {"status": "deleted"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/invoices/{invoice_id}/regenerate", response_model=InvoiceResponse)
+async def regenerate_invoice(
+    invoice_id: int,
+    user_id: int = Depends(get_user_id)
+):
+    """Regenerate invoice line items from current unbilled entries."""
+    from services.invoice import regenerate_invoice as do_regenerate
+
+    try:
+        invoice = do_regenerate(user_id, invoice_id)
+        return _invoice_to_response(invoice)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/invoices/{invoice_id}/status")
+async def update_invoice_status(
+    invoice_id: int,
+    request: dict,
+    user_id: int = Depends(get_user_id)
+):
+    """Update invoice status (draft, finalized, paid)."""
+    from services.invoice import update_invoice_status as do_update
+
+    status = request.get("status")
+    if not status:
+        raise HTTPException(status_code=400, detail="status is required")
+
+    try:
+        invoice = do_update(user_id, invoice_id, status)
+        return _invoice_to_response(invoice)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/invoices/{invoice_id}/export/csv")
+async def export_invoice_csv(
+    invoice_id: int,
+    user_id: int = Depends(get_user_id)
+):
+    """Export invoice as CSV."""
+    from services.invoice import export_invoice_csv as do_export, get_invoice as do_get
+
+    invoice = do_get(user_id, invoice_id, include_line_items=False)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    try:
+        csv_content = do_export(user_id, invoice_id)
+        filename = f"{invoice.invoice_number}.csv"
+
+        return StreamingResponse(
+            io.StringIO(csv_content),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/invoices/{invoice_id}/export/sheets")
+async def export_invoice_sheets(
+    invoice_id: int,
+    force: bool = False,
+    user_id: int = Depends(get_user_id),
+    credentials=Depends(require_auth)
+):
+    """Export invoice to Google Sheets.
+
+    Creates or updates a worksheet within the project's spreadsheet.
+    Returns the spreadsheet URL.
+
+    If the spreadsheet was modified since last export and force=False,
+    returns 409 Conflict with modification details.
+    """
+    from services.invoice import get_invoice as do_get
+    from services.sheets import export_invoice_to_sheets
+
+    invoice = do_get(user_id, invoice_id, include_line_items=True)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    try:
+        result = export_invoice_to_sheets(
+            credentials=credentials,
+            invoice=invoice,
+            user_id=user_id,
+            force=force
+        )
+
+        # Check if result is a warning dict
+        if isinstance(result, dict) and result.get("warning") == "spreadsheet_modified":
+            raise HTTPException(status_code=409, detail=result)
+
+        spreadsheet_id, spreadsheet_url = result
+        return {
+            "spreadsheet_id": spreadsheet_id,
+            "spreadsheet_url": spreadsheet_url,
+            "invoice_number": invoice.invoice_number,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to export invoice {invoice_id} to Sheets")
+        raise HTTPException(status_code=500, detail=f"Failed to export to Sheets: {str(e)}")
 
 
 # --- Classification Rules ---

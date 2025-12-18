@@ -60,10 +60,13 @@ async def week_view(request: Request, date: str):
     rows = db.execute(
         """
         SELECT e.*, te.id as entry_id, te.project_id, te.hours, te.description as entry_description,
-               te.classified_at, te.classification_source, p.name as project_name, p.color as project_color
+               te.classified_at, te.classification_source, te.invoice_id,
+               p.name as project_name, p.color as project_color,
+               inv.invoice_number
         FROM events e
         LEFT JOIN time_entries te ON e.id = te.event_id
         LEFT JOIN projects p ON te.project_id = p.id
+        LEFT JOIN invoices inv ON te.invoice_id = inv.id
         WHERE e.user_id = %s AND DATE(e.start_time) >= %s AND DATE(e.start_time) <= %s
         ORDER BY e.start_time
         """,
@@ -103,6 +106,8 @@ async def week_view(request: Request, date: str):
                     "entry_description": row["entry_description"],
                     "did_not_attend": bool(row.get("did_not_attend", False)),
                     "my_response_status": row.get("my_response_status"),
+                    "invoice_id": row.get("invoice_id"),
+                    "invoice_number": row.get("invoice_number"),
                 })
         days.append({
             "date": day_date,
@@ -251,5 +256,30 @@ async def rules_page(request: Request):
             "request": request,
             "rules": rules_data,
             "projects": projects,
+        },
+    )
+
+
+@router.get("/invoices", response_class=HTMLResponse)
+async def invoices_page(request: Request):
+    """Invoice management page."""
+    user_id = get_user_id(request)
+
+    db = get_db()
+
+    # Get billable projects for the create invoice dropdown
+    billable_projects = db.execute(
+        """SELECT * FROM projects
+           WHERE user_id = %s AND is_billable = TRUE AND is_archived = FALSE
+           ORDER BY name""",
+        (user_id,)
+    )
+    billable_projects = [dict(row) for row in billable_projects]
+
+    return templates.TemplateResponse(
+        "invoices.html",
+        {
+            "request": request,
+            "billable_projects": billable_projects,
         },
     )
