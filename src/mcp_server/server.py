@@ -2,10 +2,10 @@
 
 import json
 import logging
-from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import Server
+from mcp.types import Tool, TextContent
 
 from .auth import AuthProvider
 from .tools import ALL_TOOLS
@@ -13,7 +13,7 @@ from .tools import ALL_TOOLS
 logger = logging.getLogger(__name__)
 
 
-def create_server(db, auth: AuthProvider) -> FastMCP:
+def create_server(db, auth: AuthProvider) -> Server:
     """Create and configure the MCP server with all tools.
 
     Args:
@@ -21,60 +21,56 @@ def create_server(db, auth: AuthProvider) -> FastMCP:
         auth: Authentication provider
 
     Returns:
-        Configured FastMCP Server instance
+        Configured MCP Server instance
     """
-    mcp = FastMCP(
-        "timesheet",
-        instructions=(
-            "This MCP server provides access to timesheet data. "
-            "Use the available tools to query time entries, projects, and generate reports."
-        )
-    )
+    server = Server("timesheet")
 
     # Instantiate all tools with db and auth
     tool_instances = {tool.name: tool(db, auth) for tool in ALL_TOOLS}
 
-    # Register each tool with FastMCP
-    for tool_cls in ALL_TOOLS:
-        tool_instance = tool_instances[tool_cls.name]
-        _register_tool(mcp, tool_instance)
+    @server.list_tools()
+    async def list_tools() -> list[Tool]:
+        """List all available tools with their schemas."""
+        return [
+            Tool(
+                name=instance.name,
+                description=instance.description,
+                inputSchema=instance.parameters
+            )
+            for instance in tool_instances.values()
+        ]
 
-    return mcp
+    @server.call_tool()
+    async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
+        """Execute a tool by name with given arguments."""
+        tool = tool_instances.get(name)
+        if not tool:
+            logger.warning(f"Unknown tool requested: {name}")
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": f"Unknown tool: {name}"})
+            )]
 
-
-def _register_tool(mcp: FastMCP, tool_instance) -> None:
-    """Register a tool instance with FastMCP.
-
-    Creates a wrapper function that calls the tool's execute method
-    and registers it with the appropriate schema.
-
-    Args:
-        mcp: FastMCP server instance
-        tool_instance: Instantiated tool object
-    """
-    # Create a wrapper function for the tool
-    async def tool_handler(**kwargs) -> str:
-        """Execute the tool and return JSON result."""
         try:
-            logger.info(f"Executing tool: {tool_instance.name} with args: {kwargs}")
-            result = tool_instance.execute(**kwargs)
+            logger.info(f"Executing tool: {name} with args: {arguments}")
+            result = tool.execute(**arguments)
 
             if result.success:
-                return json.dumps(result.data, default=str)
+                return [TextContent(
+                    type="text",
+                    text=json.dumps(result.data, default=str)
+                )]
             else:
-                return json.dumps({"error": result.error})
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({"error": result.error})
+                )]
 
         except Exception as e:
-            logger.exception(f"Error executing tool {tool_instance.name}: {e}")
-            return json.dumps({"error": str(e)})
+            logger.exception(f"Error executing tool {name}: {e}")
+            return [TextContent(
+                type="text",
+                text=json.dumps({"error": str(e)})
+            )]
 
-    # Set function metadata for FastMCP
-    tool_handler.__name__ = tool_instance.name
-    tool_handler.__doc__ = tool_instance.description
-
-    # Add the tool with its schema
-    mcp.add_tool(
-        tool_handler,
-        name=tool_instance.name,
-        description=tool_instance.description,
-    )
+    return server

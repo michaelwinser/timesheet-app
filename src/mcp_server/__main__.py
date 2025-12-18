@@ -7,6 +7,7 @@ Requires environment variables:
 - TIMESHEET_USER_EMAIL: Email of the user to authenticate as
 """
 
+import asyncio
 import logging
 import os
 import sys
@@ -15,6 +16,8 @@ import sys
 _src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _src_dir not in sys.path:
     sys.path.insert(0, _src_dir)
+
+from mcp.server.stdio import stdio_server
 
 from db import init_db
 from mcp_server.auth import EnvAuthProvider
@@ -29,7 +32,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main():
+async def main():
     """Main entry point for MCP server."""
     # Get database URL from environment
     database_url = os.environ.get("DATABASE_URL")
@@ -56,12 +59,17 @@ def main():
 
     # Create MCP server
     logger.info("Starting MCP server...")
-    mcp = create_server(db, auth)
+    server = create_server(db, auth)
 
     # Run with stdio transport
     logger.info("MCP server running on stdio")
-    mcp.run(transport="stdio")
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(
+            read_stream,
+            write_stream,
+            server.create_initialization_options()
+        )
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
