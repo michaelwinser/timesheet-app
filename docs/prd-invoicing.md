@@ -161,17 +161,17 @@ Add invoicing capability that:
 - **Time entry deleted after invoicing**: Keep line item, mark as orphaned
 - **Project archived**: Can still view/export existing invoices, can't create new ones
 
-## 6. Open Questions
+## 6. Resolved Questions
 
-1. **Invoice number format**: Is `INV-{YEAR}-{SEQ}` acceptable, or should it be configurable?
+1. **Invoice number format**: `{PROJECT}-{YEAR}-{SEQ}` (e.g., ALPHA-2024-001). Project prefix derived from project name, sequence per project per year.
 
-2. **Partial invoicing**: Should users be able to select specific time entries to include, or always use date range?
+2. **Partial invoicing**: Date range only. All unbilled entries in the range are included. Simpler UX, avoids tedious entry selection.
 
-3. **Bill rate changes**: If a project's bill rate changes, should existing draft invoices be recalculated?
+3. **Bill rate changes**: No recalculation. Line items snapshot the rate at invoice creation time. Regenerating uses the snapshotted rate, not current project rate.
 
-4. **Google Sheets formatting**: How much formatting should be applied (borders, bold headers, currency format)?
+4. **Google Sheets formatting**: Basic formatting - bold headers, currency format for amounts, appropriate column widths. No borders or alternating row colors.
 
-5. **Undo finalize**: Should users be able to revert a finalized invoice back to draft?
+5. **Undo finalize**: Yes, users can revert a finalized invoice back to draft for corrections.
 
 ## 7. Future Considerations
 

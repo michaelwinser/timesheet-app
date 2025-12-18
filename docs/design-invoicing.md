@@ -119,21 +119,26 @@ time_entries
 
 ### Invoice Number Generation
 
-Sequential per user with year prefix:
+Format: `{PROJECT}-{YEAR}-{SEQ}` (e.g., ALPHA-2024-001)
+
+Sequential per project per year, using a short prefix derived from project name:
 
 ```python
-def generate_invoice_number(user_id: int, db) -> str:
-    """Generate next invoice number for user."""
+def generate_invoice_number(project_id: int, project_name: str, db) -> str:
+    """Generate next invoice number for project."""
     year = datetime.now().year
 
-    # Get highest sequence number for this year
+    # Generate project prefix (first word, uppercase, max 10 chars)
+    prefix = project_name.split()[0].upper()[:10]
+
+    # Get highest sequence number for this project this year
     result = db.execute_one(
         """
         SELECT invoice_number FROM invoices
-        WHERE user_id = %s AND invoice_number LIKE %s
+        WHERE project_id = %s AND invoice_number LIKE %s
         ORDER BY invoice_number DESC LIMIT 1
         """,
-        (user_id, f"INV-{year}-%")
+        (project_id, f"{prefix}-{year}-%")
     )
 
     if result:
@@ -143,7 +148,7 @@ def generate_invoice_number(user_id: int, db) -> str:
     else:
         next_seq = 1
 
-    return f"INV-{year}-{next_seq:03d}"
+    return f"{prefix}-{year}-{next_seq:03d}"
 ```
 
 ## 3. API Design

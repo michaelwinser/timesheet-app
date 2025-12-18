@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoicing UX Mockup</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2a2a2a;
+            --bg-tertiary: #333;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --text-muted: #777;
+            --border-color: #444;
+            --accent-blue: #2563eb;
+            --accent-green: #16a34a;
+            --accent-warning: #ffaa00;
+            --accent-success: #00aa44;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 2rem;
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        h1 {
+            margin-bottom: 0.5rem;
+            font-size: 1.5rem;
+        }
+
+        h2 {
+            margin: 2.5rem 0 1rem;
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        h3 {
+            margin: 1.5rem 0 0.75rem;
+            font-size: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+        }
+
+        /* ============================================
+           INVOICE LIST PAGE
+           ============================================ */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .page-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            cursor: pointer;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-secondary);
+        }
+
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-secondary);
+            padding: 0.25rem 0.5rem;
+        }
+
+        .btn-ghost:hover {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+
+        /* Filters bar */
+        .filters-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            padding: 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+        }
+
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .filter-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+        }
+
+        .filter-select {
+            padding: 0.35rem 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        /* Invoice table */
+        .invoice-table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .invoice-table th {
+            text-align: left;
+            padding: 0.75rem 1rem;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .invoice-table td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.875rem;
+        }
+
+        .invoice-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .invoice-table tr:hover td {
+            background: var(--bg-tertiary);
+        }
+
+        .invoice-number {
+            font-weight: 600;
+            color: var(--accent-blue);
+        }
+
+        .invoice-amount {
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.2rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-draft {
+            background: rgba(255, 170, 0, 0.2);
+            color: var(--accent-warning);
+        }
+
+        .status-finalized {
+            background: rgba(37, 99, 235, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .status-paid {
+            background: rgba(22, 163, 74, 0.2);
+            color: var(--accent-green);
+        }
+
+        .table-actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        /* ============================================
+           CREATE INVOICE MODAL
+           ============================================ */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .modal-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: var(--text-primary);
+        }
+
+        .modal-body {
+            padding: 1.25rem;
+        }
+
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--border-color);
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .form-input, .form-select {
+            width: 100%;
+            padding: 0.6rem 0.75rem;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .form-row .form-group {
+            flex: 1;
+        }
+
+        .preview-box {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .preview-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 0.75rem;
+        }
+
+        .preview-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .preview-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .preview-label {
+            color: var(--text-secondary);
+        }
+
+        .preview-value {
+            font-weight: 500;
+        }
+
+        .preview-total {
+            border-top: 1px solid var(--border-color);
+            padding-top: 0.5rem;
+            margin-top: 0.5rem;
+            font-weight: 600;
+        }
+
+        /* ============================================
+           INVOICE DETAIL PAGE
+           ============================================ */
+        .invoice-detail {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .invoice-detail-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .invoice-detail-number {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .invoice-detail-meta {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .invoice-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            background: var(--bg-tertiary);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .toolbar-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .toolbar-right {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .status-dropdown {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-dropdown label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        /* Line items table */
+        .line-items-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .line-items-table th {
+            text-align: left;
+            padding: 0.75rem 1.5rem;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            background: var(--bg-tertiary);
+        }
+
+        .line-items-table th:nth-child(3),
+        .line-items-table th:nth-child(4),
+        .line-items-table th:nth-child(5) {
+            text-align: right;
+        }
+
+        .line-items-table td {
+            padding: 0.75rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 0.875rem;
+        }
+
+        .line-items-table td:nth-child(3),
+        .line-items-table td:nth-child(4),
+        .line-items-table td:nth-child(5) {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .line-items-table .description {
+            color: var(--text-secondary);
+            max-width: 300px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .totals-row {
+            background: var(--bg-tertiary);
+        }
+
+        .totals-row td {
+            font-weight: 600;
+            border-bottom: none;
+        }
+
+        /* ============================================
+           TIME ENTRY INVOICE INDICATOR
+           ============================================ */
+        .card-with-invoice {
+            position: relative;
+        }
+
+        .invoice-indicator {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            width: 20px;
+            height: 20px;
+            background: var(--accent-blue);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: help;
+        }
+
+        .invoice-indicator svg {
+            width: 12px;
+            height: 12px;
+            color: white;
+        }
+
+        /* Card demo */
+        .card-demo {
+            width: 220px;
+            padding: 0.75rem;
+            border-radius: 6px;
+            background: var(--accent-green);
+            color: white;
+            position: relative;
+        }
+
+        .card-demo .row-title {
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-bottom: 0.35rem;
+        }
+
+        .card-demo .row-project {
+            font-size: 0.75rem;
+            opacity: 0.9;
+            margin-bottom: 0.35rem;
+        }
+
+        .card-demo .row-time {
+            font-size: 0.8rem;
+            opacity: 0.85;
+        }
+
+        /* ============================================
+           GOOGLE SHEETS EXPORT INDICATOR
+           ============================================ */
+        .sheets-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--accent-green);
+            text-decoration: none;
+            font-size: 0.875rem;
+        }
+
+        .sheets-link:hover {
+            text-decoration: underline;
+        }
+
+        .sheets-icon {
+            width: 18px;
+            height: 18px;
+        }
+
+        /* ============================================
+           NOTES SECTION
+           ============================================ */
+        .notes {
+            margin-top: 3rem;
+            padding: 1.5rem;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+
+        .notes h3 {
+            margin: 0 0 1rem;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+
+        .notes ul {
+            margin-left: 1.5rem;
+            color: var(--text-secondary);
+        }
+
+        .notes li {
+            margin-bottom: 0.5rem;
+        }
+
+        .notes strong {
+            color: var(--text-primary);
+        }
+
+        .notes code {
+            background: var(--bg-tertiary);
+            padding: 0.1rem 0.4rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+        }
+
+        /* Demo container */
+        .demo-container {
+            max-width: 900px;
+        }
+
+        .demo-inline {
+            display: inline-block;
+            margin-right: 2rem;
+            vertical-align: top;
+        }
+    </style>
+</head>
+<body>
+    <h1>Invoicing UX Mockup</h1>
+    <p class="subtitle">Visual mockups for the invoicing feature</p>
+
+    <!-- ============================================
+         INVOICE LIST PAGE
+         ============================================ -->
+    <h2>1. Invoice List Page (/invoices)</h2>
+    <div class="demo-container">
+        <div class="page-header">
+            <span class="page-title">Invoices</span>
+            <button class="btn btn-primary">+ New Invoice</button>
+        </div>
+
+        <div class="filters-bar">
+            <div class="filter-group">
+                <span class="filter-label">Project</span>
+                <select class="filter-select">
+                    <option>All Projects</option>
+                    <option>Alpha Omega</option>
+                    <option>Beta Project</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <span class="filter-label">Status</span>
+                <select class="filter-select">
+                    <option>All</option>
+                    <option>Draft</option>
+                    <option>Finalized</option>
+                    <option>Paid</option>
+                </select>
+            </div>
+        </div>
+
+        <table class="invoice-table">
+            <thead>
+                <tr>
+                    <th>Invoice</th>
+                    <th>Project</th>
+                    <th>Client</th>
+                    <th>Period</th>
+                    <th style="text-align: right">Amount</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><span class="invoice-number">ALPHA-2024-003</span></td>
+                    <td>Alpha Omega</td>
+                    <td>Linux Foundation</td>
+                    <td>Dec 1-31, 2024</td>
+                    <td class="invoice-amount">$6,375.00</td>
+                    <td><span class="status-badge status-draft">Draft</span></td>
+                    <td class="table-actions">
+                        <button class="btn btn-ghost" title="View">👁</button>
+                        <button class="btn btn-ghost" title="Export CSV">📄</button>
+                        <button class="btn btn-ghost" title="Export to Sheets">📊</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span class="invoice-number">BETA-2024-001</span></td>
+                    <td>Beta Project</td>
+                    <td>Acme Corp</td>
+                    <td>Dec 1-31, 2024</td>
+                    <td class="invoice-amount">$2,100.00</td>
+                    <td><span class="status-badge status-finalized">Finalized</span></td>
+                    <td class="table-actions">
+                        <button class="btn btn-ghost" title="View">👁</button>
+                        <button class="btn btn-ghost" title="Export CSV">📄</button>
+                        <button class="btn btn-ghost" title="Export to Sheets">📊</button>
+                    </td>
+                </tr>
+                <tr>
+                    <td><span class="invoice-number">ALPHA-2024-002</span></td>
+                    <td>Alpha Omega</td>
+                    <td>Linux Foundation</td>
+                    <td>Nov 1-30, 2024</td>
+                    <td class="invoice-amount">$5,250.00</td>
+                    <td><span class="status-badge status-paid">Paid</span></td>
+                    <td class="table-actions">
+                        <button class="btn btn-ghost" title="View">👁</button>
+                        <button class="btn btn-ghost" title="Export CSV">📄</button>
+                        <a href="#" class="btn btn-ghost" title="Open in Sheets">📊</a>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- ============================================
+         CREATE INVOICE MODAL
+         ============================================ -->
+    <h2>2. Create Invoice Modal</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 1rem;">Triggered by "+ New Invoice" button</p>
+
+    <div style="position: relative; height: 520px; background: rgba(0,0,0,0.3); border-radius: 8px;">
+        <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+            <div class="modal">
+                <div class="modal-header">
+                    <span class="modal-title">Create Invoice</span>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Project</label>
+                        <select class="form-select">
+                            <option>Alpha Omega</option>
+                            <option>Beta Project</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="form-label">Period Start</label>
+                            <input type="date" class="form-input" value="2024-12-01">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Period End</label>
+                            <input type="date" class="form-input" value="2024-12-31">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Invoice Date</label>
+                        <input type="date" class="form-input" value="2024-12-31">
+                    </div>
+
+                    <div class="preview-box">
+                        <div class="preview-title">Preview</div>
+                        <div class="preview-row">
+                            <span class="preview-label">Invoice Number</span>
+                            <span class="preview-value">ALPHA-2024-003</span>
+                        </div>
+                        <div class="preview-row">
+                            <span class="preview-label">Unbilled Entries</span>
+                            <span class="preview-value">15 entries</span>
+                        </div>
+                        <div class="preview-row">
+                            <span class="preview-label">Hours</span>
+                            <span class="preview-value">42.5 hrs @ $150.00/hr</span>
+                        </div>
+                        <div class="preview-row preview-total">
+                            <span class="preview-label">Total</span>
+                            <span class="preview-value">$6,375.00</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary">Cancel</button>
+                    <button class="btn btn-primary">Create Invoice</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
+         INVOICE DETAIL PAGE
+         ============================================ -->
+    <h2>3. Invoice Detail Page (/invoices/{id})</h2>
+    <div class="demo-container">
+        <div class="invoice-detail">
+            <div class="invoice-detail-header">
+                <div class="invoice-detail-number">ALPHA-2024-003</div>
+                <div class="invoice-detail-meta">
+                    Alpha Omega &bull; Linux Foundation &bull; Dec 1-31, 2024 &bull; Invoice Date: Dec 31, 2024
+                </div>
+            </div>
+
+            <div class="invoice-toolbar">
+                <div class="toolbar-left">
+                    <div class="status-dropdown">
+                        <label>Status:</label>
+                        <select class="filter-select">
+                            <option>Draft</option>
+                            <option>Finalized</option>
+                            <option>Paid</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-secondary">Regenerate</button>
+                </div>
+                <div class="toolbar-right">
+                    <button class="btn btn-secondary">📄 Export CSV</button>
+                    <button class="btn btn-primary">📊 Export to Sheets</button>
+                </div>
+            </div>
+
+            <table class="line-items-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Hours</th>
+                        <th>Rate</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Dec 2</td>
+                        <td class="description">Weekly standup meeting</td>
+                        <td>0.50</td>
+                        <td>$150.00</td>
+                        <td>$75.00</td>
+                    </tr>
+                    <tr>
+                        <td>Dec 2</td>
+                        <td class="description">Code review session with team</td>
+                        <td>2.00</td>
+                        <td>$150.00</td>
+                        <td>$300.00</td>
+                    </tr>
+                    <tr>
+                        <td>Dec 3</td>
+                        <td class="description">Feature implementation - authentication module</td>
+                        <td>4.00</td>
+                        <td>$150.00</td>
+                        <td>$600.00</td>
+                    </tr>
+                    <tr>
+                        <td>Dec 4</td>
+                        <td class="description">Client call - requirements review</td>
+                        <td>1.50</td>
+                        <td>$150.00</td>
+                        <td>$225.00</td>
+                    </tr>
+                    <tr>
+                        <td>Dec 5</td>
+                        <td class="description">Bug fixes and testing</td>
+                        <td>3.00</td>
+                        <td>$150.00</td>
+                        <td>$450.00</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="color: var(--text-secondary); font-style: italic;">... 10 more entries ...</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                    <tr class="totals-row">
+                        <td></td>
+                        <td style="text-align: right">TOTAL</td>
+                        <td>42.50</td>
+                        <td></td>
+                        <td>$6,375.00</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ============================================
+         GOOGLE SHEETS LINK
+         ============================================ -->
+    <h3>After Export to Sheets</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1rem;">Once exported, a link appears in the toolbar:</p>
+    <div style="background: var(--bg-tertiary); padding: 1rem; border-radius: 6px; display: inline-block;">
+        <a href="#" class="sheets-link">
+            <svg class="sheets-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
+                <path d="M7 7h2v2H7zm0 4h2v2H7zm0 4h2v2H7zm4-8h6v2h-6zm0 4h6v2h-6zm0 4h6v2h-6z"/>
+            </svg>
+            Open in Google Sheets
+        </a>
+        <span style="color: var(--text-muted); font-size: 0.75rem; margin-left: 1rem;">Last exported: Dec 31, 2024 3:45 PM</span>
+    </div>
+
+    <!-- ============================================
+         TIME ENTRY INDICATOR
+         ============================================ -->
+    <h2>4. Time Entry Invoice Indicator</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 1rem;">When a time entry is included in an invoice, show a small indicator:</p>
+
+    <div style="display: flex; gap: 2rem;">
+        <div>
+            <p style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 0.5rem;">Not Invoiced</p>
+            <div class="card-demo">
+                <div class="row-title">Weekly Team Standup</div>
+                <div class="row-project">Alpha Omega</div>
+                <div class="row-time">0.50 hrs</div>
+            </div>
+        </div>
+
+        <div>
+            <p style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 0.5rem;">Invoiced</p>
+            <div class="card-demo card-with-invoice">
+                <div class="invoice-indicator" title="Included in ALPHA-2024-003">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                    </svg>
+                </div>
+                <div class="row-title">Weekly Team Standup</div>
+                <div class="row-project">Alpha Omega</div>
+                <div class="row-time">0.50 hrs</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
+         GOOGLE SHEETS WORKSHEET STRUCTURE
+         ============================================ -->
+    <h2>5. Google Sheets Structure</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 1rem;">Each project has one spreadsheet with worksheets per invoice:</p>
+
+    <div style="background: var(--bg-secondary); border-radius: 8px; padding: 1.5rem; max-width: 600px;">
+        <div style="font-weight: 600; margin-bottom: 1rem;">
+            <svg style="width: 20px; height: 20px; vertical-align: middle; margin-right: 0.5rem; color: var(--accent-green);" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/>
+                <path d="M7 7h2v2H7zm0 4h2v2H7zm0 4h2v2H7zm4-8h6v2h-6zm0 4h6v2h-6zm0 4h6v2h-6z"/>
+            </svg>
+            Alpha Omega - Invoices
+        </div>
+
+        <div style="display: flex; gap: 0.25rem; background: var(--bg-tertiary); padding: 0.5rem; border-radius: 4px;">
+            <div style="background: var(--bg-secondary); padding: 0.35rem 0.75rem; border-radius: 3px; font-size: 0.8rem; border-bottom: 2px solid var(--accent-blue);">
+                ALPHA-2024-003
+            </div>
+            <div style="background: transparent; padding: 0.35rem 0.75rem; font-size: 0.8rem; color: var(--text-secondary);">
+                ALPHA-2024-002
+            </div>
+            <div style="background: transparent; padding: 0.35rem 0.75rem; font-size: 0.8rem; color: var(--text-secondary);">
+                ALPHA-2024-001
+            </div>
+        </div>
+
+        <div style="margin-top: 1rem; background: var(--bg-tertiary); border-radius: 4px; padding: 1rem; font-size: 0.8rem; font-family: monospace;">
+            <div style="display: grid; grid-template-columns: 100px 200px 60px 80px 80px; gap: 0.25rem; color: var(--text-secondary);">
+                <div style="font-weight: bold; color: var(--text-primary);">Invoice:</div>
+                <div>ALPHA-2024-003</div>
+                <div></div><div></div><div></div>
+
+                <div style="font-weight: bold; color: var(--text-primary);">Project:</div>
+                <div>Alpha Omega</div>
+                <div></div><div></div><div></div>
+
+                <div style="font-weight: bold; color: var(--text-primary);">Client:</div>
+                <div>Linux Foundation</div>
+                <div></div><div></div><div></div>
+
+                <div style="font-weight: bold; color: var(--text-primary);">Period:</div>
+                <div>Dec 1-31, 2024</div>
+                <div></div><div></div><div></div>
+
+                <div style="height: 0.5rem;"></div>
+                <div></div><div></div><div></div><div></div>
+
+                <div style="font-weight: bold; color: var(--text-primary);">Date</div>
+                <div style="font-weight: bold; color: var(--text-primary);">Description</div>
+                <div style="font-weight: bold; color: var(--text-primary); text-align: right;">Hours</div>
+                <div style="font-weight: bold; color: var(--text-primary); text-align: right;">Rate</div>
+                <div style="font-weight: bold; color: var(--text-primary); text-align: right;">Amount</div>
+
+                <div>Dec 2</div>
+                <div>Weekly standup</div>
+                <div style="text-align: right;">0.50</div>
+                <div style="text-align: right;">$150.00</div>
+                <div style="text-align: right;">$75.00</div>
+
+                <div>Dec 2</div>
+                <div>Code review</div>
+                <div style="text-align: right;">2.00</div>
+                <div style="text-align: right;">$150.00</div>
+                <div style="text-align: right;">$300.00</div>
+
+                <div>...</div>
+                <div></div><div></div><div></div><div></div>
+
+                <div></div>
+                <div style="font-weight: bold; color: var(--text-primary); text-align: right;">TOTAL</div>
+                <div style="font-weight: bold; color: var(--text-primary); text-align: right;">42.50</div>
+                <div></div>
+                <div style="font-weight: bold; color: var(--text-primary); text-align: right;">$6,375.00</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================
+         NOTES
+         ============================================ -->
+    <div class="notes">
+        <h3>Design Notes</h3>
+        <ul>
+            <li><strong>Invoice number format:</strong> <code>{PROJECT}-{YEAR}-{SEQ}</code> (e.g., ALPHA-2024-001). Project prefix from first word of project name.</li>
+            <li><strong>Status workflow:</strong> Draft → Finalized → Paid. Can revert Finalized back to Draft.</li>
+            <li><strong>Regenerate:</strong> Only available for Draft invoices. Re-queries time entries for the period.</li>
+            <li><strong>Google Sheets:</strong> One spreadsheet per project (created on first export). Each invoice becomes a worksheet.</li>
+            <li><strong>Re-export:</strong> Updates the existing worksheet in place. Last exported timestamp shown.</li>
+            <li><strong>Invoice indicator:</strong> Small blue document icon on time entry cards. Tooltip shows invoice number.</li>
+            <li><strong>Bill rate:</strong> Snapshot at invoice creation time. Regenerating uses original rate, not current project rate.</li>
+        </ul>
+    </div>
+</body>
+</html>
