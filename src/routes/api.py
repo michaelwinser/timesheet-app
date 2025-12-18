@@ -9,7 +9,7 @@ import io
 
 from db import get_db
 from models import (
-    Project, ProjectCreate, ProjectUpdate, ProjectVisibility,
+    Project, ProjectCreate, ProjectUpdate,
     Event, EventAttendance, TimeEntry, TimeEntryCreate, TimeEntryUpdate, BulkClassifyRequest,
     SyncRequest, SyncResponse,
     InvoiceCreate, InvoiceResponse, InvoiceListResponse, InvoiceLineItemResponse, InvoicePreview,
@@ -65,7 +65,6 @@ def _row_to_project(row: dict) -> Project:
         client=row["client"],
         color=row["color"] or "#00aa44",
         short_code=row.get("short_code"),
-        is_visible=bool(row["is_visible"]),
         does_not_accumulate_hours=bool(row.get("does_not_accumulate_hours", False)),
         is_billable=bool(row.get("is_billable", False)),
         bill_rate=row.get("bill_rate"),
@@ -275,35 +274,6 @@ async def archive_project_spreadsheet(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.put("/projects/{project_id}/visibility", response_model=Project)
-async def update_project_visibility(
-    project_id: int,
-    visibility: ProjectVisibility,
-    user_id: int = Depends(get_user_id)
-):
-    """Toggle project visibility."""
-    db = get_db()
-
-    # Verify project belongs to user
-    row = db.execute_one(
-        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
-        (project_id, user_id)
-    )
-    if row is None:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    db.execute(
-        "UPDATE projects SET is_visible = %s WHERE id = %s AND user_id = %s",
-        (visibility.is_visible, project_id, user_id),
-    )
-
-    row = db.execute_one(
-        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
-        (project_id, user_id)
-    )
-    return _row_to_project(row)
-
-
 @router.get("/projects/export")
 async def export_projects(user_id: int = Depends(get_user_id)):
     """Export all projects as JSON.
@@ -326,7 +296,6 @@ async def export_projects(user_id: int = Depends(get_user_id)):
             "name": row["name"],
             "client": row["client"],
             "color": row["color"],
-            "is_visible": row["is_visible"],
             "does_not_accumulate_hours": bool(row.get("does_not_accumulate_hours", False)),
             "is_billable": bool(row.get("is_billable", False)),
             "bill_rate": row.get("bill_rate"),
@@ -402,7 +371,6 @@ async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
                 UPDATE projects SET
                     client = %s,
                     color = %s,
-                    is_visible = %s,
                     does_not_accumulate_hours = %s,
                     is_billable = %s,
                     bill_rate = %s,
@@ -413,7 +381,6 @@ async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
                 (
                     proj.get("client"),
                     proj.get("color", "#00aa44"),
-                    proj.get("is_visible", True),
                     proj.get("does_not_accumulate_hours", False),
                     proj.get("is_billable", False),
                     proj.get("bill_rate"),
@@ -428,10 +395,10 @@ async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
             # Create new project
             db.execute_insert(
                 """
-                INSERT INTO projects (user_id, name, client, color, is_visible,
+                INSERT INTO projects (user_id, name, client, color,
                     does_not_accumulate_hours, is_billable, bill_rate,
                     is_hidden_by_default, is_archived)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -439,7 +406,6 @@ async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
                     name,
                     proj.get("client"),
                     proj.get("color", "#00aa44"),
-                    proj.get("is_visible", True),
                     proj.get("does_not_accumulate_hours", False),
                     proj.get("is_billable", False),
                     proj.get("bill_rate"),
@@ -639,6 +605,7 @@ async def update_entry(
 
     updates = []
     params = []
+    mark_manual = False
     if entry.project_id is not None:
         # Verify new project belongs to user
         project = db.execute_one(
@@ -649,12 +616,18 @@ async def update_entry(
             raise HTTPException(status_code=404, detail="Project not found")
         updates.append("project_id = %s")
         params.append(entry.project_id)
+        mark_manual = True
     if entry.hours is not None:
         updates.append("hours = %s")
         params.append(entry.hours)
+        mark_manual = True
     if entry.description is not None:
         updates.append("description = %s")
         params.append(entry.description)
+
+    # Mark as manual classification when user explicitly changes project or hours
+    if mark_manual:
+        updates.append("classification_source = 'manual'")
 
     if updates:
         params.extend([entry_id, user_id])

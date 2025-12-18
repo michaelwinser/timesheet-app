@@ -60,7 +60,8 @@
     </thead>
     <tbody>
         {% for project in projects %}
-        <tr data-project-id="{{ project.id }}"
+        <tr id="{{ project.name }}"
+            data-project-id="{{ project.id }}"
             data-name="{{ project.name }}"
             data-short-code="{{ project.short_code or '' }}"
             data-client="{{ project.client or '' }}"
@@ -273,10 +274,6 @@ async function addProject() {
 
 async function updateProjectColor(projectId, color) {
     await api.put(`/api/projects/${projectId}`, { color });
-}
-
-async function toggleVisibility(projectId, isVisible) {
-    await api.put(`/api/projects/${projectId}/visibility`, { is_visible: isVisible });
 }
 
 async function deleteProject(projectId) {

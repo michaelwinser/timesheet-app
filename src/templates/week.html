@@ -39,7 +39,8 @@
                  data-attendees="{{ event.attendees | join(', ') if event.attendees else '' }}"
                  data-project="{{ event.project_name or '' }}"
                  data-did-not-attend="{{ 'true' if event.did_not_attend else 'false' }}"
-                 data-google-event-id="{{ event.google_event_id or '' }}">
+                 data-google-event-id="{{ event.google_event_id or '' }}"
+                 data-duration="{{ event.duration }}">
 
                 <!-- Event side (unclassified view) -->
                 <div class="card-side card-event {% if event.is_classified %}hidden{% endif %}"
@@ -186,19 +187,27 @@
     <h3>Project Summary</h3>
     <div class="summary-total">{{ "%.1f"|format(total_hours) }} hrs total</div>
 
-    <!-- Regular Projects -->
-    <div class="summary-section">
-        <div class="summary-section-header">Projects</div>
+    <!-- Active Projects (always shown, even with 0 hours) -->
+    <div class="summary-section active-section">
         <div class="summary-list">
             {% for proj in regular_projects %}
-            <div class="summary-item" data-project-id="{{ proj.id }}">
-                <label class="summary-toggle">
-                    <input type="checkbox" checked
-                           onchange="toggleProjectVisibility({{ proj.id }}, this.checked)">
-                    <span class="summary-color" style="background-color: {{ proj.color }}"></span>
-                    <span class="summary-name">{{ proj.name }}{% if proj.does_not_accumulate_hours %} <span class="badge-tiny">no hrs</span>{% endif %}</span>
-                </label>
-                <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
+            <div class="summary-item" data-project-id="{{ proj.id }}" data-project-name="{{ proj.name }}">
+                <div class="summary-row">
+                    <label class="summary-toggle" title="Temporarily hide events for this project">
+                        <input type="checkbox" checked
+                               onchange="toggleProjectVisibility({{ proj.id }}, this.checked)">
+                        <span class="summary-color" style="background-color: {{ proj.color }}"></span>
+                        <span class="summary-name">{{ proj.name }}{% if proj.does_not_accumulate_hours %} <span class="badge-tiny">no hrs</span>{% endif %}</span>
+                    </label>
+                    <a href="/projects#{{ proj.name | urlencode }}" class="summary-link" title="Go to project settings">
+                        <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                    <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
+                </div>
                 {% if total_hours > 0 and not proj.does_not_accumulate_hours %}
                 <div class="summary-bar">
                     <div class="summary-bar-fill" style="width: {{ (proj.hours / total_hours * 100)|int }}%; background-color: {{ proj.color }}"></div>
@@ -209,52 +218,86 @@
         </div>
     </div>
 
-    <!-- Hidden Projects (collapsed by default) -->
+    <!-- Unclassified Events -->
+    <div class="summary-section unclassified-section" id="unclassified-section">
+        <div class="summary-section-header">
+            Unclassified
+            <span class="section-total" id="unclassified-total">0.0 hrs</span>
+        </div>
+    </div>
+
+    <!-- Archived Projects (collapsible, open by default, only if hours > 0) -->
+    {% if archived_projects %}
+    <div class="summary-section archived-section" id="archived-section">
+        <div class="summary-section-header collapsible" onclick="toggleSection('archived')">
+            <span class="collapse-icon" id="archived-collapse-icon">▼</span>
+            <label class="section-bulk-toggle" onclick="event.stopPropagation()">
+                <input type="checkbox" id="archived-bulk-checkbox"
+                       onchange="toggleSectionProjects('archived', this.checked)">
+            </label>
+            Archived ({{ archived_projects|length }})
+            <span class="section-total">{{ "%.1f"|format(archived_projects|sum(attribute='hours')) }} hrs</span>
+        </div>
+        <div class="summary-list" id="archived-projects-list">
+            {% for proj in archived_projects %}
+            <div class="summary-item archived" data-project-id="{{ proj.id }}" data-project-name="{{ proj.name }}" data-section="archived">
+                <div class="summary-row">
+                    <label class="summary-toggle" title="Temporarily hide events for this project">
+                        <input type="checkbox"
+                               onchange="toggleProjectVisibility({{ proj.id }}, this.checked); updateSectionCheckbox('archived')">
+                        <span class="summary-color" style="background-color: {{ proj.color }}"></span>
+                        <span class="summary-name">{{ proj.name }}</span>
+                    </label>
+                    <a href="/projects#{{ proj.name | urlencode }}" class="summary-link" title="Go to project settings">
+                        <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                    <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <p class="archived-hint">These entries need reclassification.</p>
+    </div>
+    {% endif %}
+
+    <!-- Hidden Projects (collapsible, closed by default, only if hours > 0) -->
     {% if hidden_projects %}
     <div class="summary-section hidden-section" id="hidden-section">
-        <div class="summary-section-header collapsible" onclick="toggleHiddenSection()">
-            <span class="collapse-icon">▶</span>
+        <div class="summary-section-header collapsible" onclick="toggleSection('hidden')">
+            <span class="collapse-icon" id="hidden-collapse-icon">▶</span>
+            <label class="section-bulk-toggle" onclick="event.stopPropagation()">
+                <input type="checkbox" id="hidden-bulk-checkbox"
+                       onchange="toggleSectionProjects('hidden', this.checked)">
+            </label>
             Hidden ({{ hidden_projects|length }})
             <span class="section-total">{{ "%.1f"|format(hidden_projects|sum(attribute='hours')) }} hrs</span>
         </div>
         <div class="summary-list hidden" id="hidden-projects-list">
             {% for proj in hidden_projects %}
-            <div class="summary-item" data-project-id="{{ proj.id }}">
-                <label class="summary-toggle">
-                    <input type="checkbox"
-                           onchange="toggleProjectVisibility({{ proj.id }}, this.checked)">
-                    <span class="summary-color" style="background-color: {{ proj.color }}"></span>
-                    <span class="summary-name">{{ proj.name }}{% if proj.does_not_accumulate_hours %} <span class="badge-tiny">no hrs</span>{% endif %}</span>
-                </label>
-                <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
+            <div class="summary-item" data-project-id="{{ proj.id }}" data-project-name="{{ proj.name }}" data-section="hidden">
+                <div class="summary-row">
+                    <label class="summary-toggle" title="Temporarily hide events for this project">
+                        <input type="checkbox"
+                               onchange="toggleProjectVisibility({{ proj.id }}, this.checked); updateSectionCheckbox('hidden')">
+                        <span class="summary-color" style="background-color: {{ proj.color }}"></span>
+                        <span class="summary-name">{{ proj.name }}{% if proj.does_not_accumulate_hours %} <span class="badge-tiny">no hrs</span>{% endif %}</span>
+                    </label>
+                    <a href="/projects#{{ proj.name | urlencode }}" class="summary-link" title="Go to project settings">
+                        <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                    <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
+                </div>
             </div>
             {% endfor %}
         </div>
-    </div>
-    {% endif %}
-
-    <!-- Archived Projects (only shown if they have entries in current view) -->
-    {% if archived_projects %}
-    <div class="summary-section archived-section">
-        <div class="summary-section-header warning">
-            <span class="warning-icon">⚠</span>
-            Archived ({{ archived_projects|length }})
-            <span class="section-total">{{ "%.1f"|format(archived_projects|sum(attribute='hours')) }} hrs</span>
-        </div>
-        <div class="summary-list">
-            {% for proj in archived_projects %}
-            <div class="summary-item archived" data-project-id="{{ proj.id }}">
-                <label class="summary-toggle">
-                    <input type="checkbox"
-                           onchange="toggleProjectVisibility({{ proj.id }}, this.checked)">
-                    <span class="summary-color" style="background-color: {{ proj.color }}"></span>
-                    <span class="summary-name">{{ proj.name }}</span>
-                </label>
-                <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
-            </div>
-            {% endfor %}
-        </div>
-        <p class="archived-hint">These entries need reclassification.</p>
     </div>
     {% endif %}
 </aside>
@@ -325,7 +368,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v=7"></script>
 <script>
     // Initialize with current week dates
     window.weekStart = "{{ week_start }}";
@@ -342,6 +385,7 @@
         syncEventsQuiet();
         await autoClassifyEvents();
         restoreProjectVisibility();
+        updateProjectSummary();
     });
 
     // Keyboard shortcuts
@@ -431,20 +475,26 @@
      * Restore project visibility preferences from sessionStorage.
      */
     function restoreProjectVisibility() {
+        console.log('restoreProjectVisibility called');
         const visibilityKey = `projectVisibility_${window.weekStart}`;
         const visibility = JSON.parse(sessionStorage.getItem(visibilityKey) || '{}');
+        console.log('  sessionStorage visibility:', visibility);
 
+        // Restore checkbox states from sessionStorage
         for (const [projectId, isVisible] of Object.entries(visibility)) {
-            if (!isVisible) {
-                // Update checkbox state
-                const checkbox = document.querySelector(`.summary-item[data-project-id="${projectId}"] input[type="checkbox"]`);
-                if (checkbox) {
-                    checkbox.checked = false;
-                    // Trigger visibility update
-                    toggleProjectVisibility(parseInt(projectId), false);
-                }
+            const checkbox = document.querySelector(`.summary-item[data-project-id="${projectId}"] input[type="checkbox"]`);
+            if (checkbox) {
+                console.log('  restoring checkbox for project', projectId, 'to', isVisible);
+                checkbox.checked = isVisible;
             }
         }
+
+        // Hide events for all unchecked checkboxes
+        initProjectVisibility();
+
+        // Update section bulk checkboxes after restoring individual states
+        updateSectionCheckbox('archived');
+        updateSectionCheckbox('hidden');
     }
 
     // Rule creation from event
@@ -659,11 +709,11 @@
     });
 
     /**
-     * Toggle the hidden projects section in sidebar.
+     * Toggle a collapsible section in sidebar.
      */
-    function toggleHiddenSection() {
-        const list = document.getElementById('hidden-projects-list');
-        const icon = document.querySelector('#hidden-section .collapse-icon');
+    function toggleSection(sectionName) {
+        const list = document.getElementById(`${sectionName}-projects-list`);
+        const icon = document.getElementById(`${sectionName}-collapse-icon`);
         if (list.classList.contains('hidden')) {
             list.classList.remove('hidden');
             icon.textContent = '▼';
@@ -671,6 +721,55 @@
             list.classList.add('hidden');
             icon.textContent = '▶';
         }
+    }
+
+    /**
+     * Toggle all projects in a section (bulk checkbox).
+     */
+    function toggleSectionProjects(sectionName, checked) {
+        const items = document.querySelectorAll(`.summary-item[data-section="${sectionName}"]`);
+        items.forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            if (checkbox && checkbox.checked !== checked) {
+                checkbox.checked = checked;
+                const projectId = parseInt(item.dataset.projectId);
+                toggleProjectVisibility(projectId, checked);
+            }
+        });
+    }
+
+    /**
+     * Update section bulk checkbox state based on individual checkboxes.
+     */
+    function updateSectionCheckbox(sectionName) {
+        const items = document.querySelectorAll(`.summary-item[data-section="${sectionName}"]`);
+        const bulkCheckbox = document.getElementById(`${sectionName}-bulk-checkbox`);
+        if (!bulkCheckbox || items.length === 0) return;
+
+        let checkedCount = 0;
+        items.forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            if (checkbox && checkbox.checked) checkedCount++;
+        });
+
+        if (checkedCount === 0) {
+            bulkCheckbox.checked = false;
+            bulkCheckbox.indeterminate = false;
+        } else if (checkedCount === items.length) {
+            bulkCheckbox.checked = true;
+            bulkCheckbox.indeterminate = false;
+        } else {
+            bulkCheckbox.checked = false;
+            bulkCheckbox.indeterminate = true;
+        }
+    }
+
+    /**
+     * Initialize section checkboxes on page load.
+     */
+    function initSectionCheckboxes() {
+        updateSectionCheckbox('archived');
+        updateSectionCheckbox('hidden');
     }
 
     /**
@@ -704,6 +803,9 @@
                     select.disabled = newValue;
                 }
             });
+
+            // Update sidebar totals (DNA events don't contribute to hours)
+            updateProjectSummary();
 
             showToast(newValue ? 'Marked as did not attend' : 'Marked as attended', 'success');
 

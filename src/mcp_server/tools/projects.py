@@ -43,7 +43,6 @@ class ListProjectsTool(BaseTool):
                 name,
                 client,
                 color,
-                is_visible,
                 does_not_accumulate_hours,
                 is_billable,
                 bill_rate,
@@ -59,7 +58,7 @@ class ListProjectsTool(BaseTool):
             query += " AND (is_archived = FALSE OR is_archived IS NULL)"
 
         if not include_hidden:
-            query += " AND is_visible = TRUE"
+            query += " AND (is_hidden_by_default = FALSE OR is_hidden_by_default IS NULL)"
 
         query += " ORDER BY name"
 
@@ -72,7 +71,6 @@ class ListProjectsTool(BaseTool):
                 "name": row["name"],
                 "client": row["client"],
                 "color": row["color"] or "#00aa44",
-                "is_visible": bool(row["is_visible"]),
                 "does_not_accumulate_hours": bool(row.get("does_not_accumulate_hours", False)),
                 "is_billable": bool(row.get("is_billable", False)),
                 "bill_rate": row.get("bill_rate"),

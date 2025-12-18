@@ -150,7 +150,7 @@ def get_available_projects(db=None, user_id: int = None) -> list[dict]:
     if db is None:
         db = get_db()
 
-    where_clause = "WHERE user_id = %s AND is_visible = true" if user_id is not None else "WHERE is_visible = true"
+    where_clause = "WHERE user_id = %s AND is_archived = false" if user_id is not None else "WHERE is_archived = false"
     params = (user_id,) if user_id is not None else ()
 
     rows = db.execute(f"SELECT id, name, client FROM projects {where_clause} ORDER BY name", params)

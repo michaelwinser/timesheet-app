@@ -88,6 +88,11 @@ async def week_view(request: Request, date: str):
                 start_str = start_time.isoformat() if isinstance(start_time, datetime) else start_time
                 end_time_val = row["end_time"]
                 end_str = end_time_val.isoformat() if isinstance(end_time_val, datetime) else end_time_val
+                # Calculate event duration from start/end times
+                start_dt = start_time if isinstance(start_time, datetime) else datetime.fromisoformat(start_time)
+                end_dt = end_time_val if isinstance(end_time_val, datetime) else datetime.fromisoformat(end_time_val)
+                event_duration = (end_dt - start_dt).total_seconds() / 3600  # hours
+
                 day_events.append({
                     "id": row["id"],
                     "google_event_id": row["google_event_id"],
@@ -103,6 +108,7 @@ async def week_view(request: Request, date: str):
                     "project_name": row["project_name"],
                     "project_color": row["project_color"] or "#00aa44",
                     "hours": row["hours"],
+                    "duration": event_duration,  # Always available, even for unclassified
                     "entry_description": row["entry_description"],
                     "did_not_attend": bool(row.get("did_not_attend", False)),
                     "my_response_status": row.get("my_response_status"),
@@ -127,8 +133,8 @@ async def week_view(request: Request, date: str):
     # Build project lookup for quick access
     project_lookup = {p["id"]: p for p in all_projects}
 
-    # Filter to non-archived, visible projects for dropdown
-    projects = [p for p in all_projects if p["is_visible"] and not p.get("is_archived", False)]
+    # Filter to non-archived projects for dropdown
+    projects = [p for p in all_projects if not p.get("is_archived", False)]
 
     # Calculate project hours summary for this week
     # Exclude did_not_attend events and does_not_accumulate_hours projects from totals
@@ -156,7 +162,6 @@ async def week_view(request: Request, date: str):
             "name": p["name"],
             "color": p["color"] or "#00aa44",
             "hours": hours,
-            "is_visible": p["is_visible"],
             "is_hidden_by_default": p.get("is_hidden_by_default", False),
             "is_archived": p.get("is_archived", False),
             "does_not_accumulate_hours": p.get("does_not_accumulate_hours", False),
@@ -167,8 +172,11 @@ async def week_view(request: Request, date: str):
             if hours > 0:
                 archived_projects.append(summary_item)
         elif p.get("is_hidden_by_default", False):
-            hidden_projects.append(summary_item)
+            # Only include hidden projects if they have hours in current view
+            if hours > 0:
+                hidden_projects.append(summary_item)
         else:
+            # Active projects always show (even with 0 hours)
             regular_projects.append(summary_item)
 
     # Sort each group by hours descending, then by name

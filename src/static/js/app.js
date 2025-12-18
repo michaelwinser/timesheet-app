@@ -114,6 +114,9 @@ async function classifyEvent(eventId, projectId, projectColor) {
         eventSide.classList.add('hidden');
         entrySide.classList.remove('hidden');
 
+        // Update sidebar totals
+        updateProjectSummary();
+
     } catch (error) {
         alert('Classification failed: ' + error.message);
         // Reset dropdown
@@ -151,6 +154,9 @@ async function reclassifyEvent(eventId, entryId, projectId, projectColor) {
             if (dogEar) dogEar.remove();
             eventSide.dataset.projectColor = '';
 
+            // Update sidebar totals
+            updateProjectSummary();
+
         } catch (error) {
             alert('Unclassify failed: ' + error.message);
             // Reload to reset state
@@ -164,6 +170,9 @@ async function reclassifyEvent(eventId, entryId, projectId, projectColor) {
             entrySide.style.backgroundColor = projectColor || '#00aa44';
             applyTextColorClass(entrySide, projectColor || '#00aa44');
             eventSide.dataset.projectColor = projectColor || '#00aa44';
+
+            // Update sidebar totals
+            updateProjectSummary();
         } catch (error) {
             alert('Reclassify failed: ' + error.message);
             location.reload();
@@ -199,6 +208,7 @@ async function roundUp(eventId, entryId) {
         try {
             await api.updateEntry(entryId, { hours: newHours });
             durationInput.value = newHours.toFixed(2);
+            updateProjectSummary();
         } catch (error) {
             alert('Update failed: ' + error.message);
         }
@@ -206,6 +216,7 @@ async function roundUp(eventId, entryId) {
         try {
             await api.updateEntry(entryId, { hours: roundedHours });
             durationInput.value = roundedHours.toFixed(2);
+            updateProjectSummary();
         } catch (error) {
             alert('Update failed: ' + error.message);
         }
@@ -224,6 +235,7 @@ async function updateHours(entryId, value) {
 
     try {
         await api.updateEntry(entryId, { hours: hours });
+        updateProjectSummary();
     } catch (error) {
         alert('Update failed: ' + error.message);
     }
@@ -245,26 +257,144 @@ function filterEvents() {
 }
 
 /**
+ * Update the project summary sidebar with current hours from all cards.
+ */
+function updateProjectSummary() {
+    const projectHours = {};
+    let unclassifiedHours = 0;
+
+    // Collect hours from all classified cards (excluding DNA)
+    document.querySelectorAll('.event-card.classified:not(.did-not-attend)').forEach(card => {
+        const projectName = card.dataset.project;
+        if (!projectName) return;
+
+        const durationInput = card.querySelector('.duration-input');
+        if (!durationInput) return;
+
+        const hours = parseFloat(durationInput.value) || 0;
+        projectHours[projectName] = (projectHours[projectName] || 0) + hours;
+    });
+
+    // Collect hours from unclassified cards (excluding DNA)
+    document.querySelectorAll('.event-card.unclassified:not(.did-not-attend)').forEach(card => {
+        const duration = parseFloat(card.dataset.duration) || 0;
+        unclassifiedHours += duration;
+    });
+
+    // Calculate total hours (excluding "no hrs" projects)
+    let totalHours = 0;
+
+    // Update each project's hours in the sidebar
+    document.querySelectorAll('.summary-item').forEach(item => {
+        const nameEl = item.querySelector('.summary-name');
+        if (!nameEl) return;
+
+        // Get project name from data attribute
+        const projectName = item.dataset.projectName;
+        if (!projectName) return;
+        const hours = projectHours[projectName] || 0;
+
+        // Update hours display
+        const hoursEl = item.querySelector('.summary-hours');
+        if (hoursEl) {
+            hoursEl.textContent = hours.toFixed(1);
+        }
+
+        // Check if this project accumulates hours
+        const noHrsBadge = nameEl.querySelector('.badge-tiny');
+        if (!noHrsBadge) {
+            totalHours += hours;
+        }
+
+        // Update progress bar if present
+        const barFill = item.querySelector('.summary-bar-fill');
+        if (barFill) {
+            // We'll update the width after calculating total
+            barFill.dataset.hours = hours;
+        }
+    });
+
+    // Update unclassified total
+    const unclassifiedEl = document.getElementById('unclassified-total');
+    if (unclassifiedEl) {
+        unclassifiedEl.textContent = unclassifiedHours.toFixed(1) + ' hrs';
+    }
+
+    // Show/hide unclassified section based on whether there are unclassified hours
+    const unclassifiedSection = document.getElementById('unclassified-section');
+    if (unclassifiedSection) {
+        unclassifiedSection.style.display = unclassifiedHours > 0 ? '' : 'none';
+    }
+
+    // Update total display
+    const totalEl = document.querySelector('.summary-total');
+    if (totalEl) {
+        totalEl.textContent = totalHours.toFixed(1) + ' hrs total';
+    }
+
+    // Update progress bar widths now that we have the total
+    document.querySelectorAll('.summary-bar-fill').forEach(barFill => {
+        const hours = parseFloat(barFill.dataset.hours) || 0;
+        const width = totalHours > 0 ? (hours / totalHours * 100) : 0;
+        barFill.style.width = width + '%';
+    });
+}
+
+/**
  * Toggle project visibility in the week view (client-side filter only).
  * This does NOT affect the database or rule matching - it's purely visual.
  */
 function toggleProjectVisibility(projectId, isVisible) {
-    // Get project name from the sidebar item
+    // Get project name from the sidebar item's data attribute
     const summaryItem = document.querySelector(`.summary-item[data-project-id="${projectId}"]`);
-    const projectName = summaryItem ? summaryItem.querySelector('.summary-name').textContent : '';
+    const projectName = summaryItem ? summaryItem.dataset.projectName : '';
+
+    console.log('toggleProjectVisibility:', { projectId, isVisible, projectName, summaryItemFound: !!summaryItem });
+
+    // Don't try to hide events if we couldn't find the project name
+    if (!projectName) {
+        console.warn('  WARNING: No project name found for projectId:', projectId);
+        return;
+    }
 
     // Update event card visibility based on project
     const cards = document.querySelectorAll('.event-card');
+    let matchCount = 0;
     cards.forEach(card => {
         const cardProject = card.dataset.project || '';
         if (cardProject === projectName) {
+            matchCount++;
             card.style.display = isVisible ? '' : 'none';
         }
     });
+    console.log('  matched cards:', matchCount);
 
     // Store visibility preferences in sessionStorage for this week
     const visibilityKey = `projectVisibility_${window.weekStart}`;
     let visibility = JSON.parse(sessionStorage.getItem(visibilityKey) || '{}');
     visibility[projectId] = isVisible;
     sessionStorage.setItem(visibilityKey, JSON.stringify(visibility));
+}
+
+/**
+ * Initialize project visibility based on checkbox states.
+ * Called on page load to hide events for unchecked projects.
+ */
+function initProjectVisibility() {
+    console.log('initProjectVisibility called');
+    const checkboxes = document.querySelectorAll('.summary-item input[type="checkbox"]');
+    console.log('  found checkboxes:', checkboxes.length);
+    let uncheckedCount = 0;
+    checkboxes.forEach(checkbox => {
+        if (!checkbox.checked) {
+            uncheckedCount++;
+            const summaryItem = checkbox.closest('.summary-item');
+            if (summaryItem) {
+                const projectId = parseInt(summaryItem.dataset.projectId);
+                console.log('  hiding project:', projectId, summaryItem.dataset.projectName);
+                toggleProjectVisibility(projectId, false);
+            }
+        }
+    });
+    console.log('  unchecked projects:', uncheckedCount);
 }

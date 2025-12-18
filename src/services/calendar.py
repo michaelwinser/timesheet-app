@@ -185,12 +185,13 @@ def sync_calendar_events(
             )
             events_new += 1
 
-        # Auto-classify if not already classified
+        # Auto-classify if not already classified (and not manually classified)
         already_classified = db.execute_one(
-            "SELECT id FROM time_entries WHERE event_id = %s",
+            "SELECT id, classification_source FROM time_entries WHERE event_id = %s",
             (event_db_id,),
         )
 
+        # Skip if entry exists - never overwrite existing classifications
         if not already_classified:
             # Build event dict for matcher (use DB column names)
             event_data = {

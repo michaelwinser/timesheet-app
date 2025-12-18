@@ -194,13 +194,6 @@ const api = {
     },
 
     /**
-     * Update project visibility.
-     */
-    async setProjectVisibility(projectId, isVisible) {
-        return this.put(`/api/projects/${projectId}/visibility`, { is_visible: isVisible });
-    },
-
-    /**
      * Apply rules to unclassified events.
      */
     async applyRules(startDate, endDate) {

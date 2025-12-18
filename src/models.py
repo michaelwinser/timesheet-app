@@ -40,11 +40,6 @@ class ProjectUpdate(BaseModel):
     is_archived: bool | None = None
 
 
-class ProjectVisibility(BaseModel):
-    """Request to update project visibility."""
-    is_visible: bool
-
-
 class Project(BaseModel):
     """Project response."""
     id: int
@@ -52,7 +47,6 @@ class Project(BaseModel):
     client: str | None
     color: str
     short_code: str | None = None
-    is_visible: bool
     does_not_accumulate_hours: bool = False
     is_billable: bool = False
     bill_rate: float | None = None
