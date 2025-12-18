@@ -194,6 +194,32 @@ class EventProperties:
         """Lowercase title for case-insensitive matching."""
         return (self._event.get("title") or "").lower()
 
+    def _compute_full_text(self) -> str:
+        """All text fields combined for easy searching.
+
+        Combines title, description, and attendees into a single lowercase
+        string, making it easy to match words anywhere in the event.
+        """
+        parts = []
+
+        title = self._event.get("title")
+        if title:
+            parts.append(title)
+
+        description = self._event.get("description")
+        if description:
+            parts.append(description)
+
+        attendees = self.get("attendees")
+        if attendees:
+            parts.append(" ".join(attendees))
+
+        meeting_link = self._event.get("meeting_link")
+        if meeting_link:
+            parts.append(meeting_link)
+
+        return " ".join(parts).lower()
+
     def _parse_datetime(self, value: str | datetime) -> datetime:
         """Parse a datetime value (string or datetime object)."""
         if isinstance(value, datetime):
@@ -238,6 +264,8 @@ PROPERTY_REGISTRY: list[PropertyDefinition] = [
                        "List of attendee email addresses"),
 
     # Computed string properties
+    PropertyDefinition("full_text", "Full Text", PropertyType.STRING, True,
+                       "All text combined (title, description, attendees, meeting link) - lowercase"),
     PropertyDefinition("weekday", "Day of Week", PropertyType.STRING, True,
                        "Day name: monday, tuesday, etc."),
     PropertyDefinition("time_block", "Time of Day", PropertyType.STRING, True,
