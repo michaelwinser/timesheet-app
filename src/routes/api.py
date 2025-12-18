@@ -1,7 +1,8 @@
-"""JSON API routes."""
+"""JSON API routes with multi-user support."""
 
+import logging
 from datetime import datetime
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import io
@@ -28,11 +29,26 @@ from services.classifier import (
 from routes.auth import get_stored_credentials
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
-def require_auth():
-    """Dependency that requires authentication."""
-    credentials = get_stored_credentials()
+def get_user_id(request: Request) -> int:
+    """Dependency that extracts user_id from request state.
+
+    Raises 401 if user not authenticated.
+    """
+    user_id = getattr(request.state, 'user_id', None)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return user_id
+
+
+def require_auth(user_id: int = Depends(get_user_id)):
+    """Dependency that requires authentication and returns credentials.
+
+    Returns both credentials and user_id.
+    """
+    credentials = get_stored_credentials(user_id)
     if credentials is None:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return credentials
@@ -41,10 +57,13 @@ def require_auth():
 # --- Projects ---
 
 @router.get("/projects", response_model=list[Project])
-async def list_projects():
-    """List all projects."""
+async def list_projects(user_id: int = Depends(get_user_id)):
+    """List all projects for current user."""
     db = get_db()
-    rows = db.execute("SELECT * FROM projects ORDER BY name")
+    rows = db.execute(
+        "SELECT * FROM projects WHERE user_id = %s ORDER BY name",
+        (user_id,)
+    )
     return [
         Project(
             id=row["id"],
@@ -59,20 +78,23 @@ async def list_projects():
 
 
 @router.post("/projects", response_model=Project)
-async def create_project(project: ProjectCreate):
-    """Create a new project."""
+async def create_project(project: ProjectCreate, user_id: int = Depends(get_user_id)):
+    """Create a new project for current user."""
     db = get_db()
     try:
         project_id = db.execute_insert(
-            "INSERT INTO projects (name, client, color) VALUES (?, ?, ?)",
-            (project.name, project.client, project.color),
+            "INSERT INTO projects (user_id, name, client, color) VALUES (%s, %s, %s, %s) RETURNING id",
+            (user_id, project.name, project.client, project.color),
         )
     except Exception as e:
-        if "UNIQUE constraint" in str(e):
+        if "unique constraint" in str(e).lower():
             raise HTTPException(status_code=400, detail="Project name already exists")
         raise
 
-    row = db.execute_one("SELECT * FROM projects WHERE id = ?", (project_id,))
+    row = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
     return Project(
         id=row["id"],
         name=row["name"],
@@ -84,33 +106,45 @@ async def create_project(project: ProjectCreate):
 
 
 @router.put("/projects/{project_id}", response_model=Project)
-async def update_project(project_id: int, project: ProjectUpdate):
-    """Update a project."""
+async def update_project(
+    project_id: int,
+    project: ProjectUpdate,
+    user_id: int = Depends(get_user_id)
+):
+    """Update a project (user can only update their own projects)."""
     db = get_db()
-    row = db.execute_one("SELECT * FROM projects WHERE id = ?", (project_id,))
+
+    # Verify project belongs to user
+    row = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     updates = []
     params = []
     if project.name is not None:
-        updates.append("name = ?")
+        updates.append("name = %s")
         params.append(project.name)
     if project.client is not None:
-        updates.append("client = ?")
+        updates.append("client = %s")
         params.append(project.client)
     if project.color is not None:
-        updates.append("color = ?")
+        updates.append("color = %s")
         params.append(project.color)
 
     if updates:
-        params.append(project_id)
+        params.extend([project_id, user_id])
         db.execute(
-            f"UPDATE projects SET {', '.join(updates)} WHERE id = ?",
+            f"UPDATE projects SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
             tuple(params),
         )
 
-    row = db.execute_one("SELECT * FROM projects WHERE id = ?", (project_id,))
+    row = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
     return Project(
         id=row["id"],
         name=row["name"],
@@ -122,31 +156,51 @@ async def update_project(project_id: int, project: ProjectUpdate):
 
 
 @router.delete("/projects/{project_id}")
-async def delete_project(project_id: int):
-    """Delete a project."""
+async def delete_project(project_id: int, user_id: int = Depends(get_user_id)):
+    """Delete a project (user can only delete their own projects)."""
     db = get_db()
-    row = db.execute_one("SELECT * FROM projects WHERE id = ?", (project_id,))
-    if row is None:
-        raise HTTPException(status_code=404, detail="Project not found")
 
-    db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
-    return {"status": "deleted"}
-
-
-@router.put("/projects/{project_id}/visibility", response_model=Project)
-async def update_project_visibility(project_id: int, visibility: ProjectVisibility):
-    """Toggle project visibility."""
-    db = get_db()
-    row = db.execute_one("SELECT * FROM projects WHERE id = ?", (project_id,))
+    # Verify project belongs to user
+    row = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     db.execute(
-        "UPDATE projects SET is_visible = ? WHERE id = ?",
-        (1 if visibility.is_visible else 0, project_id),
+        "DELETE FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
+    return {"status": "deleted"}
+
+
+@router.put("/projects/{project_id}/visibility", response_model=Project)
+async def update_project_visibility(
+    project_id: int,
+    visibility: ProjectVisibility,
+    user_id: int = Depends(get_user_id)
+):
+    """Toggle project visibility."""
+    db = get_db()
+
+    # Verify project belongs to user
+    row = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    db.execute(
+        "UPDATE projects SET is_visible = %s WHERE id = %s AND user_id = %s",
+        (visibility.is_visible, project_id, user_id),
     )
 
-    row = db.execute_one("SELECT * FROM projects WHERE id = ?", (project_id,))
+    row = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
     return Project(
         id=row["id"],
         name=row["name"],
@@ -160,12 +214,17 @@ async def update_project_visibility(project_id: int, visibility: ProjectVisibili
 # --- Calendar Sync ---
 
 @router.post("/sync", response_model=SyncResponse)
-async def sync_events(request: SyncRequest, credentials=Depends(require_auth)):
-    """Sync events from Google Calendar."""
+async def sync_events(
+    request: SyncRequest,
+    user_id: int = Depends(get_user_id),
+    credentials=Depends(require_auth)
+):
+    """Sync events from Google Calendar for current user."""
     result = sync_calendar_events(
         credentials=credentials,
         start_date=request.start_date,
         end_date=request.end_date,
+        user_id=user_id,  # Pass user_id to calendar service
     )
     return SyncResponse(**result)
 
@@ -173,8 +232,12 @@ async def sync_events(request: SyncRequest, credentials=Depends(require_auth)):
 # --- Events ---
 
 @router.get("/events")
-async def list_events(start_date: str, end_date: str):
-    """List events for a date range."""
+async def list_events(
+    start_date: str,
+    end_date: str,
+    user_id: int = Depends(get_user_id)
+):
+    """List events for a date range (user's events only)."""
     db = get_db()
     rows = db.execute(
         """
@@ -183,10 +246,10 @@ async def list_events(start_date: str, end_date: str):
         FROM events e
         LEFT JOIN time_entries te ON e.id = te.event_id
         LEFT JOIN projects p ON te.project_id = p.id
-        WHERE date(e.start_time) >= ? AND date(e.start_time) <= ?
+        WHERE e.user_id = %s AND DATE(e.start_time) >= %s AND DATE(e.start_time) <= %s
         ORDER BY e.start_time
         """,
-        (start_date, end_date),
+        (user_id, start_date, end_date),
     )
 
     events = []
@@ -228,33 +291,39 @@ async def list_events(start_date: str, end_date: str):
 # --- Time Entries ---
 
 @router.post("/entries", response_model=TimeEntry)
-async def create_entry(entry: TimeEntryCreate):
+async def create_entry(entry: TimeEntryCreate, user_id: int = Depends(get_user_id)):
     """Create a time entry (classify an event)."""
     db = get_db()
 
-    # Check event exists
-    event = db.execute_one("SELECT * FROM events WHERE id = ?", (entry.event_id,))
+    # Check event exists and belongs to user
+    event = db.execute_one(
+        "SELECT * FROM events WHERE id = %s AND user_id = %s",
+        (entry.event_id, user_id)
+    )
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Check project exists
-    project = db.execute_one("SELECT * FROM projects WHERE id = ?", (entry.project_id,))
+    # Check project exists and belongs to user
+    project = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (entry.project_id, user_id)
+    )
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     # Upsert time entry
     db.execute(
         """
-        INSERT INTO time_entries (event_id, project_id, hours, description, classification_source)
-        VALUES (?, ?, ?, ?, 'manual')
+        INSERT INTO time_entries (user_id, event_id, project_id, hours, description, classification_source)
+        VALUES (%s, %s, %s, %s, %s, 'manual')
         ON CONFLICT(event_id) DO UPDATE SET
-            project_id = excluded.project_id,
-            hours = excluded.hours,
-            description = excluded.description,
-            classification_source = excluded.classification_source,
+            project_id = EXCLUDED.project_id,
+            hours = EXCLUDED.hours,
+            description = EXCLUDED.description,
+            classification_source = EXCLUDED.classification_source,
             classified_at = CURRENT_TIMESTAMP
         """,
-        (entry.event_id, entry.project_id, entry.hours, entry.description),
+        (user_id, entry.event_id, entry.project_id, entry.hours, entry.description),
     )
 
     row = db.execute_one(
@@ -262,9 +331,9 @@ async def create_entry(entry: TimeEntryCreate):
         SELECT te.*, p.name as project_name
         FROM time_entries te
         JOIN projects p ON te.project_id = p.id
-        WHERE te.event_id = ?
+        WHERE te.event_id = %s AND te.user_id = %s
         """,
-        (entry.event_id,),
+        (entry.event_id, user_id),
     )
 
     return TimeEntry(
@@ -280,30 +349,45 @@ async def create_entry(entry: TimeEntryCreate):
 
 
 @router.put("/entries/{entry_id}", response_model=TimeEntry)
-async def update_entry(entry_id: int, entry: TimeEntryUpdate):
-    """Update a time entry."""
+async def update_entry(
+    entry_id: int,
+    entry: TimeEntryUpdate,
+    user_id: int = Depends(get_user_id)
+):
+    """Update a time entry (user can only update their own entries)."""
     db = get_db()
 
-    row = db.execute_one("SELECT * FROM time_entries WHERE id = ?", (entry_id,))
+    # Verify entry belongs to user
+    row = db.execute_one(
+        "SELECT * FROM time_entries WHERE id = %s AND user_id = %s",
+        (entry_id, user_id)
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Time entry not found")
 
     updates = []
     params = []
     if entry.project_id is not None:
-        updates.append("project_id = ?")
+        # Verify new project belongs to user
+        project = db.execute_one(
+            "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+            (entry.project_id, user_id)
+        )
+        if project is None:
+            raise HTTPException(status_code=404, detail="Project not found")
+        updates.append("project_id = %s")
         params.append(entry.project_id)
     if entry.hours is not None:
-        updates.append("hours = ?")
+        updates.append("hours = %s")
         params.append(entry.hours)
     if entry.description is not None:
-        updates.append("description = ?")
+        updates.append("description = %s")
         params.append(entry.description)
 
     if updates:
-        params.append(entry_id)
+        params.extend([entry_id, user_id])
         db.execute(
-            f"UPDATE time_entries SET {', '.join(updates)} WHERE id = ?",
+            f"UPDATE time_entries SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
             tuple(params),
         )
 
@@ -312,9 +396,9 @@ async def update_entry(entry_id: int, entry: TimeEntryUpdate):
         SELECT te.*, p.name as project_name
         FROM time_entries te
         JOIN projects p ON te.project_id = p.id
-        WHERE te.id = ?
+        WHERE te.id = %s AND te.user_id = %s
         """,
-        (entry_id,),
+        (entry_id, user_id),
     )
 
     return TimeEntry(
@@ -330,31 +414,45 @@ async def update_entry(entry_id: int, entry: TimeEntryUpdate):
 
 
 @router.delete("/entries/{entry_id}")
-async def delete_entry(entry_id: int):
+async def delete_entry(entry_id: int, user_id: int = Depends(get_user_id)):
     """Delete a time entry (unclassify event)."""
     db = get_db()
 
-    row = db.execute_one("SELECT * FROM time_entries WHERE id = ?", (entry_id,))
+    # Verify entry belongs to user
+    row = db.execute_one(
+        "SELECT * FROM time_entries WHERE id = %s AND user_id = %s",
+        (entry_id, user_id)
+    )
     if row is None:
         raise HTTPException(status_code=404, detail="Time entry not found")
 
-    db.execute("DELETE FROM time_entries WHERE id = ?", (entry_id,))
+    db.execute(
+        "DELETE FROM time_entries WHERE id = %s AND user_id = %s",
+        (entry_id, user_id)
+    )
     return {"status": "deleted"}
 
 
 @router.post("/entries/bulk")
-async def bulk_classify(request: BulkClassifyRequest):
+async def bulk_classify(request: BulkClassifyRequest, user_id: int = Depends(get_user_id)):
     """Classify multiple events at once."""
     db = get_db()
 
-    # Check project exists
-    project = db.execute_one("SELECT * FROM projects WHERE id = ?", (request.project_id,))
+    # Check project exists and belongs to user
+    project = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (request.project_id, user_id)
+    )
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     classified = 0
     for event_id in request.event_ids:
-        event = db.execute_one("SELECT * FROM events WHERE id = ?", (event_id,))
+        # Verify event belongs to user
+        event = db.execute_one(
+            "SELECT * FROM events WHERE id = %s AND user_id = %s",
+            (event_id, user_id)
+        )
         if event is None:
             continue
 
@@ -365,15 +463,15 @@ async def bulk_classify(request: BulkClassifyRequest):
 
         db.execute(
             """
-            INSERT INTO time_entries (event_id, project_id, hours, description, classification_source)
-            VALUES (?, ?, ?, ?, 'manual')
+            INSERT INTO time_entries (user_id, event_id, project_id, hours, description, classification_source)
+            VALUES (%s, %s, %s, %s, %s, 'manual')
             ON CONFLICT(event_id) DO UPDATE SET
-                project_id = excluded.project_id,
-                hours = excluded.hours,
-                classification_source = excluded.classification_source,
+                project_id = EXCLUDED.project_id,
+                hours = EXCLUDED.hours,
+                classification_source = EXCLUDED.classification_source,
                 classified_at = CURRENT_TIMESTAMP
             """,
-            (event_id, request.project_id, hours, event["title"]),
+            (user_id, event_id, request.project_id, hours, event["title"]),
         )
         classified += 1
 
@@ -383,9 +481,13 @@ async def bulk_classify(request: BulkClassifyRequest):
 # --- Export ---
 
 @router.get("/export/harvest")
-async def export_harvest(start_date: str, end_date: str):
+async def export_harvest(
+    start_date: str,
+    end_date: str,
+    user_id: int = Depends(get_user_id)
+):
     """Export time entries as Harvest-compatible CSV."""
-    csv_content = export_harvest_csv(start_date, end_date)
+    csv_content = export_harvest_csv(start_date, end_date, user_id)
 
     return StreamingResponse(
         io.StringIO(csv_content),
@@ -397,18 +499,18 @@ async def export_harvest(start_date: str, end_date: str):
 # --- Classification Rules ---
 
 @router.get("/rules")
-async def list_rules(enabled_only: bool = False):
-    """List all classification rules with their conditions."""
+async def list_rules(enabled_only: bool = False, user_id: int = Depends(get_user_id)):
+    """List all classification rules with their conditions (user's rules only)."""
     db = get_db()
-    rules = load_rules_with_conditions(db, enabled_only=enabled_only)
+    rules = load_rules_with_conditions(db, user_id, enabled_only=enabled_only)
     return [r.to_dict() for r in rules]
 
 
 @router.get("/rules/{rule_id}")
-async def get_rule(rule_id: int):
+async def get_rule(rule_id: int, user_id: int = Depends(get_user_id)):
     """Get a single rule with conditions."""
     db = get_db()
-    rules = load_rules_with_conditions(db, enabled_only=False)
+    rules = load_rules_with_conditions(db, user_id, enabled_only=False)
     for rule in rules:
         if rule.id == rule_id:
             return rule.to_dict()
@@ -416,7 +518,7 @@ async def get_rule(rule_id: int):
 
 
 @router.post("/rules")
-async def create_classification_rule(request: dict):
+async def create_classification_rule(request: dict, user_id: int = Depends(get_user_id)):
     """Create a new classification rule.
 
     Request body:
@@ -442,13 +544,17 @@ async def create_classification_rule(request: dict):
     if "conditions" not in request or not request["conditions"]:
         raise HTTPException(status_code=400, detail="At least one condition is required")
 
-    # Check project exists
-    project = db.execute_one("SELECT * FROM projects WHERE id = ?", (request["project_id"],))
+    # Check project exists and belongs to user
+    project = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (request["project_id"], user_id)
+    )
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     rule_id = create_rule(
         db=db,
+        user_id=user_id,
         name=request["name"],
         project_id=request["project_id"],
         conditions=request["conditions"],
@@ -458,7 +564,7 @@ async def create_classification_rule(request: dict):
     )
 
     # Return the created rule
-    rules = load_rules_with_conditions(db, enabled_only=False)
+    rules = load_rules_with_conditions(db, user_id, enabled_only=False)
     for rule in rules:
         if rule.id == rule_id:
             return rule.to_dict()
@@ -467,7 +573,11 @@ async def create_classification_rule(request: dict):
 
 
 @router.put("/rules/{rule_id}")
-async def update_classification_rule(rule_id: int, request: dict):
+async def update_classification_rule(
+    rule_id: int,
+    request: dict,
+    user_id: int = Depends(get_user_id)
+):
     """Update a classification rule.
 
     Request body (all fields optional):
@@ -482,14 +592,20 @@ async def update_classification_rule(rule_id: int, request: dict):
     """
     db = get_db()
 
-    # Check rule exists
-    existing = db.execute_one("SELECT * FROM classification_rules WHERE id = ?", (rule_id,))
+    # Check rule exists and belongs to user
+    existing = db.execute_one(
+        "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
+        (rule_id, user_id)
+    )
     if existing is None:
         raise HTTPException(status_code=404, detail="Rule not found")
 
-    # Check project exists if changing
+    # Check project exists if changing and belongs to user
     if "project_id" in request:
-        project = db.execute_one("SELECT * FROM projects WHERE id = ?", (request["project_id"],))
+        project = db.execute_one(
+            "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+            (request["project_id"], user_id)
+        )
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
 
@@ -505,7 +621,7 @@ async def update_classification_rule(rule_id: int, request: dict):
     )
 
     # Return the updated rule
-    rules = load_rules_with_conditions(db, enabled_only=False)
+    rules = load_rules_with_conditions(db, user_id, enabled_only=False)
     for rule in rules:
         if rule.id == rule_id:
             return rule.to_dict()
@@ -514,11 +630,15 @@ async def update_classification_rule(rule_id: int, request: dict):
 
 
 @router.delete("/rules/{rule_id}")
-async def delete_classification_rule(rule_id: int):
+async def delete_classification_rule(rule_id: int, user_id: int = Depends(get_user_id)):
     """Delete a classification rule."""
     db = get_db()
 
-    existing = db.execute_one("SELECT * FROM classification_rules WHERE id = ?", (rule_id,))
+    # Verify rule belongs to user
+    existing = db.execute_one(
+        "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
+        (rule_id, user_id)
+    )
     if existing is None:
         raise HTTPException(status_code=404, detail="Rule not found")
 
@@ -527,7 +647,7 @@ async def delete_classification_rule(rule_id: int):
 
 
 @router.post("/rules/{rule_id}/test")
-async def test_rule(rule_id: int, request: dict):
+async def test_rule(rule_id: int, request: dict, user_id: int = Depends(get_user_id)):
     """Test a rule against an event.
 
     Request body:
@@ -537,7 +657,7 @@ async def test_rule(rule_id: int, request: dict):
     if not event_id:
         raise HTTPException(status_code=400, detail="event_id is required")
 
-    results = test_rules_against_event(event_id)
+    results = test_rules_against_event(event_id, user_id)
 
     # Find the specific rule in results
     for result in results:
@@ -564,38 +684,41 @@ async def list_conditions():
 # --- Event Analysis (debugging) ---
 
 @router.get("/events/{event_id}/properties")
-async def get_event_props(event_id: int):
+async def get_event_props(event_id: int, user_id: int = Depends(get_user_id)):
     """Get all computed properties for an event."""
-    props = get_event_properties(event_id)
+    props = get_event_properties(event_id, user_id)
     if props is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return props
 
 
 @router.get("/events/{event_id}/test-rules")
-async def test_event_rules(event_id: int):
+async def test_event_rules(event_id: int, user_id: int = Depends(get_user_id)):
     """Test all rules against an event."""
-    results = test_rules_against_event(event_id)
+    results = test_rules_against_event(event_id, user_id)
     if not results:
-        # Check if event exists
+        # Check if event exists and belongs to user
         db = get_db()
-        event = db.execute_one("SELECT * FROM events WHERE id = ?", (event_id,))
+        event = db.execute_one(
+            "SELECT * FROM events WHERE id = %s AND user_id = %s",
+            (event_id, user_id)
+        )
         if event is None:
             raise HTTPException(status_code=404, detail="Event not found")
     return results
 
 
 @router.get("/events/{event_id}/suggest")
-async def get_suggestion(event_id: int):
+async def get_suggestion(event_id: int, user_id: int = Depends(get_user_id)):
     """Get classification suggestion for an event."""
-    suggestion = suggest_classification(event_id)
+    suggestion = suggest_classification(event_id, user_id)
     if suggestion is None:
         return {"suggestion": None}
     return {"suggestion": suggestion}
 
 
 @router.post("/rules/apply")
-async def apply_rules_to_events(request: dict = None):
+async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get_user_id)):
     """Apply rules to unclassified events.
 
     Request body (optional):
@@ -611,27 +734,27 @@ async def apply_rules_to_events(request: dict = None):
     db = get_db()
     request = request or {}
 
-    # Build query for unclassified events
+    # Build query for unclassified events (user's events only)
     query = """
         SELECT e.* FROM events e
         LEFT JOIN time_entries te ON e.id = te.event_id
-        WHERE te.id IS NULL
+        WHERE e.user_id = %s AND te.id IS NULL
     """
-    params = []
+    params = [user_id]
 
     if request.get("start_date"):
-        query += " AND date(e.start_time) >= ?"
+        query += " AND DATE(e.start_time) >= %s"
         params.append(request["start_date"])
     if request.get("end_date"):
-        query += " AND date(e.start_time) <= ?"
+        query += " AND DATE(e.start_time) <= %s"
         params.append(request["end_date"])
 
     query += " ORDER BY e.start_time"
 
     events = db.execute(query, tuple(params))
 
-    # Load rules
-    rules = load_rules_with_conditions(db, enabled_only=True)
+    # Load rules for this user only
+    rules = load_rules_with_conditions(db, user_id, enabled_only=True)
     matcher = RuleMatcher(rules)
 
     dry_run = request.get("dry_run", False)
@@ -662,10 +785,12 @@ async def apply_rules_to_events(request: dict = None):
 
                 db.execute_insert(
                     """
-                    INSERT INTO time_entries (event_id, project_id, hours, description, classification_source, rule_id)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO time_entries (user_id, event_id, project_id, hours, description, classification_source, rule_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (
+                        user_id,
                         event["id"],
                         matching_rule.project_id,
                         hours,
@@ -695,13 +820,13 @@ async def apply_rules_to_events(request: dict = None):
 
 
 @router.get("/llm/examples")
-async def get_llm_examples():
+async def get_llm_examples(user_id: int = Depends(get_user_id)):
     """Get the examples that would be used for LLM classification."""
     from services.llm_classifier import get_classified_examples, get_available_projects
 
     db = get_db()
-    examples = get_classified_examples(db, limit=50)
-    projects = get_available_projects(db)
+    examples = get_classified_examples(db, user_id, limit=50)
+    projects = get_available_projects(db, user_id)
 
     # Group examples by project
     by_project: dict[str, list[str]] = {}
@@ -720,12 +845,12 @@ async def get_llm_examples():
 
 
 @router.get("/llm/preview/{event_id}")
-async def preview_llm_classification(event_id: int):
+async def preview_llm_classification(event_id: int, user_id: int = Depends(get_user_id)):
     """Preview what prompt would be sent to Claude for an event."""
     from services.llm_classifier import preview_classification_prompt
 
     db = get_db()
-    result = preview_classification_prompt(event_id, db)
+    result = preview_classification_prompt(event_id, user_id, db)
     if result is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
@@ -733,7 +858,7 @@ async def preview_llm_classification(event_id: int):
 
 
 @router.post("/llm/classify/{event_id}")
-async def classify_event_with_llm(event_id: int):
+async def classify_event_with_llm(event_id: int, user_id: int = Depends(get_user_id)):
     """Classify a single event using Claude API.
 
     Requires ANTHROPIC_API_KEY environment variable to be set.
@@ -742,7 +867,7 @@ async def classify_event_with_llm(event_id: int):
 
     db = get_db()
     try:
-        suggestion = await do_classify(event_id, db)
+        suggestion = await do_classify(event_id, user_id, db)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -763,7 +888,10 @@ class LLMClassifyBatchRequest(BaseModel):
 
 
 @router.post("/llm/classify")
-async def classify_events_batch_with_llm(request: LLMClassifyBatchRequest):
+async def classify_events_batch_with_llm(
+    request: LLMClassifyBatchRequest,
+    user_id: int = Depends(get_user_id)
+):
     """Classify multiple events using Claude API.
 
     Requires ANTHROPIC_API_KEY environment variable to be set.
@@ -772,7 +900,7 @@ async def classify_events_batch_with_llm(request: LLMClassifyBatchRequest):
 
     db = get_db()
     try:
-        results = await classify_events_batch(request.event_ids, db)
+        results = await classify_events_batch(request.event_ids, user_id, db)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -784,7 +912,7 @@ async def classify_events_batch_with_llm(request: LLMClassifyBatchRequest):
 
 
 @router.post("/llm/infer-rules")
-async def infer_rules_with_llm():
+async def infer_rules_with_llm(user_id: int = Depends(get_user_id)):
     """Ask the LLM to infer classification rules from past classifications.
 
     This analyzes the classified examples (without seeing existing rules)
@@ -794,7 +922,7 @@ async def infer_rules_with_llm():
 
     db = get_db()
     try:
-        result = await infer_rules_from_classifications(db)
+        result = await infer_rules_from_classifications(user_id, db)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
 

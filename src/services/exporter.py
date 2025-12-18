@@ -7,7 +7,7 @@ from datetime import datetime
 from db import get_db
 
 
-def export_harvest_csv(start_date: str, end_date: str) -> str:
+def export_harvest_csv(start_date: str, end_date: str, user_id: int) -> str:
     """
     Generate a Harvest-compatible CSV for time entries in date range.
 
@@ -17,6 +17,7 @@ def export_harvest_csv(start_date: str, end_date: str) -> str:
     Args:
         start_date: ISO date string (YYYY-MM-DD)
         end_date: ISO date string (YYYY-MM-DD)
+        user_id: User ID to export data for
 
     Returns:
         CSV content as string
@@ -34,10 +35,10 @@ def export_harvest_csv(start_date: str, end_date: str) -> str:
         FROM time_entries te
         JOIN events e ON te.event_id = e.id
         JOIN projects p ON te.project_id = p.id
-        WHERE date(e.start_time) >= ? AND date(e.start_time) <= ?
+        WHERE e.user_id = %s AND date(e.start_time) >= %s AND date(e.start_time) <= %s
         ORDER BY e.start_time
         """,
-        (start_date, end_date),
+        (user_id, start_date, end_date),
     )
 
     output = io.StringIO()

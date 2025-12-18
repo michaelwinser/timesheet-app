@@ -482,8 +482,8 @@ class RuleCondition:
 
     @classmethod
     def from_row(cls, row) -> "RuleCondition":
-        """Create from database row (sqlite3.Row or dict)."""
-        # Convert sqlite3.Row to dict if needed
+        """Create from database row (dict)."""
+        # Ensure we have a dict
         if hasattr(row, "keys"):
             row = dict(row)
         value = row["condition_value"]
@@ -514,8 +514,8 @@ class ClassificationRule:
 
     @classmethod
     def from_row(cls, row, conditions: list[RuleCondition] | None = None) -> "ClassificationRule":
-        """Create from database row (sqlite3.Row or dict)."""
-        # Convert sqlite3.Row to dict if needed
+        """Create from database row (dict)."""
+        # Ensure we have a dict
         if hasattr(row, "keys"):
             row = dict(row)
         return cls(
@@ -654,11 +654,12 @@ class RuleMatcher:
 # =============================================================================
 
 
-def load_rules_with_conditions(db=None, enabled_only: bool = True) -> list[ClassificationRule]:
+def load_rules_with_conditions(db=None, user_id: int = None, enabled_only: bool = True) -> list[ClassificationRule]:
     """Load classification rules with their conditions from database.
 
     Args:
         db: Database connection (uses default if None)
+        user_id: User ID to load rules for
         enabled_only: If True, only load enabled rules
 
     Returns:
@@ -667,8 +668,14 @@ def load_rules_with_conditions(db=None, enabled_only: bool = True) -> list[Class
     if db is None:
         db = get_db()
 
-    # Build query
-    where_clause = "WHERE r.is_enabled = 1" if enabled_only else ""
+    # Build query with user_id filter
+    where_clauses = []
+    if user_id is not None:
+        where_clauses.append("r.user_id = %s")
+    if enabled_only:
+        where_clauses.append("r.is_enabled = true")
+
+    where_clause = "WHERE " + " AND ".join(where_clauses) if where_clauses else ""
 
     # Get rules with project names
     rules_query = f"""
@@ -678,20 +685,21 @@ def load_rules_with_conditions(db=None, enabled_only: bool = True) -> list[Class
         {where_clause}
         ORDER BY r.priority DESC, r.id
     """
-    rule_rows = db.execute(rules_query)
+    params = [user_id] if user_id is not None else []
+    rule_rows = db.execute(rules_query, tuple(params))
 
     if not rule_rows:
         return []
 
     # Get all conditions for these rules
     rule_ids = [r["id"] for r in rule_rows]
-    placeholders = ",".join("?" * len(rule_ids))
+    placeholders = ",".join("%s" * len(rule_ids))
     conditions_query = f"""
         SELECT * FROM rule_conditions
         WHERE rule_id IN ({placeholders})
         ORDER BY rule_id, id
     """
-    condition_rows = db.execute(conditions_query, rule_ids)
+    condition_rows = db.execute(conditions_query, tuple(rule_ids))
 
     # Group conditions by rule_id
     conditions_by_rule: dict[int, list[RuleCondition]] = {}
@@ -712,6 +720,7 @@ def load_rules_with_conditions(db=None, enabled_only: bool = True) -> list[Class
 
 def create_rule(
     db,
+    user_id: int,
     name: str,
     project_id: int,
     conditions: list[dict],
@@ -723,6 +732,7 @@ def create_rule(
 
     Args:
         db: Database connection
+        user_id: User ID for the rule
         name: Human-readable rule name
         project_id: Project to classify matching events to
         conditions: List of condition dicts with property_name, condition_type, condition_value
@@ -736,10 +746,11 @@ def create_rule(
     # Insert rule
     rule_id = db.execute_insert(
         """
-        INSERT INTO classification_rules (name, project_id, priority, is_enabled, stop_processing)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO classification_rules (user_id, name, project_id, priority, is_enabled, stop_processing)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        RETURNING id
         """,
-        (name, project_id, priority, int(is_enabled), int(stop_processing))
+        (user_id, name, project_id, priority, is_enabled, stop_processing)
     )
 
     # Insert conditions
@@ -752,7 +763,8 @@ def create_rule(
         db.execute_insert(
             """
             INSERT INTO rule_conditions (rule_id, property_name, condition_type, condition_value)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id
             """,
             (rule_id, cond["property_name"], cond["condition_type"], value)
         )
@@ -762,6 +774,7 @@ def create_rule(
 
 def update_rule(
     db,
+    user_id: int,
     rule_id: int,
     name: str | None = None,
     project_id: int | None = None,
@@ -774,6 +787,7 @@ def update_rule(
 
     Args:
         db: Database connection
+        user_id: User ID (for security check)
         rule_id: ID of rule to update
         Other args: Fields to update (None = don't update)
         conditions: If provided, replaces all existing conditions
@@ -786,32 +800,32 @@ def update_rule(
     values = []
 
     if name is not None:
-        updates.append("name = ?")
+        updates.append("name = %s")
         values.append(name)
     if project_id is not None:
-        updates.append("project_id = ?")
+        updates.append("project_id = %s")
         values.append(project_id)
     if priority is not None:
-        updates.append("priority = ?")
+        updates.append("priority = %s")
         values.append(priority)
     if is_enabled is not None:
-        updates.append("is_enabled = ?")
-        values.append(int(is_enabled))
+        updates.append("is_enabled = %s")
+        values.append(is_enabled)
     if stop_processing is not None:
-        updates.append("stop_processing = ?")
-        values.append(int(stop_processing))
+        updates.append("stop_processing = %s")
+        values.append(stop_processing)
 
     if updates:
         updates.append("updated_at = CURRENT_TIMESTAMP")
-        values.append(rule_id)
+        values.extend([rule_id, user_id])
         db.execute(
-            f"UPDATE classification_rules SET {', '.join(updates)} WHERE id = ?",
-            values
+            f"UPDATE classification_rules SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
+            tuple(values)
         )
 
     # Replace conditions if provided
     if conditions is not None:
-        db.execute("DELETE FROM rule_conditions WHERE rule_id = ?", (rule_id,))
+        db.execute("DELETE FROM rule_conditions WHERE rule_id = %s", (rule_id,))
         for cond in conditions:
             value = cond["condition_value"]
             if not isinstance(value, str):
@@ -819,7 +833,8 @@ def update_rule(
             db.execute_insert(
                 """
                 INSERT INTO rule_conditions (rule_id, property_name, condition_type, condition_value)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
                 """,
                 (rule_id, cond["property_name"], cond["condition_type"], value)
             )
@@ -827,11 +842,12 @@ def update_rule(
     return True
 
 
-def delete_rule(db, rule_id: int) -> bool:
+def delete_rule(db, user_id: int, rule_id: int) -> bool:
     """Delete a rule and its conditions.
 
     Args:
         db: Database connection
+        user_id: User ID (for security check)
         rule_id: ID of rule to delete
 
     Returns:
@@ -839,8 +855,8 @@ def delete_rule(db, rule_id: int) -> bool:
     """
     # Conditions are deleted via ON DELETE CASCADE
     result = db.execute(
-        "DELETE FROM classification_rules WHERE id = ?",
-        (rule_id,)
+        "DELETE FROM classification_rules WHERE id = %s AND user_id = %s",
+        (rule_id, user_id)
     )
     return True
 
@@ -850,20 +866,24 @@ def delete_rule(db, rule_id: int) -> bool:
 # =============================================================================
 
 
-def suggest_classification(event_id: int) -> dict | None:
+def suggest_classification(event_id: int, user_id: int) -> dict | None:
     """Suggest a project classification for an event based on rules.
+
+    Args:
+        event_id: Event ID to classify
+        user_id: User ID for filtering
 
     Returns:
         dict with project_id, rule_id, and confidence, or None if no suggestion
     """
     db = get_db()
 
-    event = db.execute_one("SELECT * FROM events WHERE id = ?", (event_id,))
+    event = db.execute_one("SELECT * FROM events WHERE id = %s AND user_id = %s", (event_id, user_id))
     if event is None:
         return None
 
     # Load rules and match
-    rules = load_rules_with_conditions(db, enabled_only=True)
+    rules = load_rules_with_conditions(db, user_id, enabled_only=True)
     matcher = RuleMatcher(rules)
 
     matching_rule = matcher.match(dict(event))
@@ -884,11 +904,11 @@ def suggest_classification(event_id: int) -> dict | None:
             FROM time_entries te
             JOIN events e ON te.event_id = e.id
             JOIN projects p ON te.project_id = p.id
-            WHERE e.recurrence_id = ? AND e.id != ?
+            WHERE e.user_id = %s AND e.recurrence_id = %s AND e.id != %s
             ORDER BY e.start_time DESC
             LIMIT 1
             """,
-            (event["recurrence_id"], event_id),
+            (user_id, event["recurrence_id"], event_id),
         )
         if previous_entry:
             return {
@@ -902,11 +922,12 @@ def suggest_classification(event_id: int) -> dict | None:
     return None
 
 
-def classify_event_by_rules(event: dict, db=None) -> ClassificationRule | None:
+def classify_event_by_rules(event: dict, user_id: int, db=None) -> ClassificationRule | None:
     """Attempt to classify an event using rules.
 
     Args:
         event: Event dict from database
+        user_id: User ID for filtering rules
         db: Database connection (uses default if None)
 
     Returns:
@@ -915,34 +936,47 @@ def classify_event_by_rules(event: dict, db=None) -> ClassificationRule | None:
     if db is None:
         db = get_db()
 
-    rules = load_rules_with_conditions(db, enabled_only=True)
+    rules = load_rules_with_conditions(db, user_id, enabled_only=True)
     matcher = RuleMatcher(rules)
     return matcher.match(event)
 
 
-def test_rules_against_event(event_id: int) -> list[dict]:
+def test_rules_against_event(event_id: int, user_id: int) -> list[dict]:
     """Test all rules against an event for debugging.
 
-    Returns detailed match results for each rule.
+    Args:
+        event_id: Event ID to test
+        user_id: User ID for filtering
+
+    Returns:
+        Detailed match results for each rule
     """
     db = get_db()
 
-    event = db.execute_one("SELECT * FROM events WHERE id = ?", (event_id,))
+    event = db.execute_one("SELECT * FROM events WHERE id = %s AND user_id = %s", (event_id, user_id))
     if event is None:
         return []
 
-    rules = load_rules_with_conditions(db, enabled_only=False)
+    rules = load_rules_with_conditions(db, user_id, enabled_only=False)
     matcher = RuleMatcher(rules)
     results = matcher.match_all(dict(event))
 
     return [r.to_dict() for r in results]
 
 
-def get_event_properties(event_id: int) -> dict | None:
-    """Get all computed properties for an event (for debugging)."""
+def get_event_properties(event_id: int, user_id: int) -> dict | None:
+    """Get all computed properties for an event (for debugging).
+
+    Args:
+        event_id: Event ID
+        user_id: User ID for filtering
+
+    Returns:
+        Dict of all event properties, or None if not found
+    """
     db = get_db()
 
-    event = db.execute_one("SELECT * FROM events WHERE id = ?", (event_id,))
+    event = db.execute_one("SELECT * FROM events WHERE id = %s AND user_id = %s", (event_id, user_id))
     if event is None:
         return None
 

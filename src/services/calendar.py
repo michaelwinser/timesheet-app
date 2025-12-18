@@ -13,6 +13,7 @@ def sync_calendar_events(
     credentials: Credentials,
     start_date: str,
     end_date: str,
+    user_id: int,
 ) -> dict:
     """
     Fetch events from Google Calendar and store in database.
@@ -21,6 +22,7 @@ def sync_calendar_events(
         credentials: OAuth credentials
         start_date: ISO date string (YYYY-MM-DD)
         end_date: ISO date string (YYYY-MM-DD)
+        user_id: User ID to sync events for
 
     Returns:
         dict with events_fetched, events_new, events_updated
@@ -49,7 +51,7 @@ def sync_calendar_events(
     events_classified = 0
 
     # Load rules for auto-classification
-    rules = load_rules_with_conditions(db, enabled_only=True)
+    rules = load_rules_with_conditions(db, user_id, enabled_only=True)
     matcher = RuleMatcher(rules)
 
     for event in events:
@@ -105,8 +107,8 @@ def sync_calendar_events(
 
         # Check if event already exists
         existing = db.execute_one(
-            "SELECT id FROM events WHERE google_event_id = ?",
-            (google_event_id,),
+            "SELECT id FROM events WHERE google_event_id = %s AND user_id = %s",
+            (google_event_id, user_id),
         )
 
         if existing:
@@ -114,21 +116,21 @@ def sync_calendar_events(
             db.execute(
                 """
                 UPDATE events SET
-                    title = ?,
-                    description = ?,
-                    start_time = ?,
-                    end_time = ?,
-                    attendees = ?,
-                    meeting_link = ?,
-                    event_color = ?,
-                    is_recurring = ?,
-                    recurrence_id = ?,
-                    my_response_status = ?,
-                    transparency = ?,
-                    visibility = ?,
-                    raw_json = ?,
+                    title = %s,
+                    description = %s,
+                    start_time = %s,
+                    end_time = %s,
+                    attendees = %s,
+                    meeting_link = %s,
+                    event_color = %s,
+                    is_recurring = %s,
+                    recurrence_id = %s,
+                    my_response_status = %s,
+                    transparency = %s,
+                    visibility = %s,
+                    raw_json = %s,
                     fetched_at = CURRENT_TIMESTAMP
-                WHERE google_event_id = ?
+                WHERE google_event_id = %s AND user_id = %s
                 """,
                 (
                     event.get("summary", ""),
@@ -145,6 +147,7 @@ def sync_calendar_events(
                     visibility,
                     json.dumps(event),
                     google_event_id,
+                    user_id,
                 ),
             )
             events_updated += 1
@@ -154,13 +157,15 @@ def sync_calendar_events(
             event_db_id = db.execute_insert(
                 """
                 INSERT INTO events (
-                    google_event_id, calendar_id, title, description,
+                    user_id, google_event_id, calendar_id, title, description,
                     start_time, end_time, attendees, meeting_link,
                     event_color, is_recurring, recurrence_id, my_response_status,
                     transparency, visibility, raw_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
                 """,
                 (
+                    user_id,
                     google_event_id,
                     "primary",
                     event.get("summary", ""),
@@ -182,7 +187,7 @@ def sync_calendar_events(
 
         # Auto-classify if not already classified
         already_classified = db.execute_one(
-            "SELECT id FROM time_entries WHERE event_id = ?",
+            "SELECT id FROM time_entries WHERE event_id = %s",
             (event_db_id,),
         )
 
@@ -213,10 +218,12 @@ def sync_calendar_events(
 
                 db.execute_insert(
                     """
-                    INSERT INTO time_entries (event_id, project_id, hours, description, classification_source, rule_id)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO time_entries (user_id, event_id, project_id, hours, description, classification_source, rule_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
                     """,
                     (
+                        user_id,
                         event_db_id,
                         matching_rule.project_id,
                         hours,

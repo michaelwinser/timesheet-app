@@ -1,4 +1,4 @@
-"""UI routes for server-rendered HTML pages."""
+"""UI routes for server-rendered HTML pages with multi-user support."""
 
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Request
@@ -7,9 +7,13 @@ from fastapi.templating import Jinja2Templates
 from pathlib import Path
 
 from db import get_db
-from routes.auth import get_stored_credentials
 
 router = APIRouter()
+
+
+def get_user_id(request: Request) -> int | None:
+    """Get user_id from request state (set by UserContextMiddleware)."""
+    return getattr(request.state, 'user_id', None)
 
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
 
@@ -40,6 +44,7 @@ async def index(request: Request):
 async def week_view(request: Request, date: str):
     """Display week view centered on the given date."""
     # Authentication is enforced by middleware, no need to check here
+    user_id = get_user_id(request)
 
     # Parse date and find Monday of that week
     try:
@@ -50,7 +55,7 @@ async def week_view(request: Request, date: str):
     monday = target_date - timedelta(days=target_date.weekday())
     sunday = monday + timedelta(days=6)
 
-    # Get events for the week
+    # Get events for the week (filtered by user_id)
     db = get_db()
     rows = db.execute(
         """
@@ -59,10 +64,10 @@ async def week_view(request: Request, date: str):
         FROM events e
         LEFT JOIN time_entries te ON e.id = te.event_id
         LEFT JOIN projects p ON te.project_id = p.id
-        WHERE date(e.start_time) >= ? AND date(e.start_time) <= ?
+        WHERE e.user_id = %s AND DATE(e.start_time) >= %s AND DATE(e.start_time) <= %s
         ORDER BY e.start_time
         """,
-        (monday.isoformat(), sunday.isoformat()),
+        (user_id, monday.isoformat(), sunday.isoformat()),
     )
 
     # Organize events by day
@@ -101,7 +106,10 @@ async def week_view(request: Request, date: str):
         })
 
     # Get all projects (visible and hidden) for summary
-    all_projects = db.execute("SELECT * FROM projects ORDER BY name")
+    all_projects = db.execute(
+        "SELECT * FROM projects WHERE user_id = %s ORDER BY name",
+        (user_id,)
+    )
     all_projects = [dict(row) for row in all_projects]
 
     # Filter to visible for dropdown
@@ -156,9 +164,13 @@ async def week_view(request: Request, date: str):
 async def projects_page(request: Request):
     """Project management page."""
     # Authentication is enforced by middleware, no need to check here
+    user_id = get_user_id(request)
 
     db = get_db()
-    projects = db.execute("SELECT * FROM projects ORDER BY name")
+    projects = db.execute(
+        "SELECT * FROM projects WHERE user_id = %s ORDER BY name",
+        (user_id,)
+    )
     projects = [dict(row) for row in projects]
 
     return templates.TemplateResponse(
@@ -174,16 +186,20 @@ async def projects_page(request: Request):
 async def rules_page(request: Request):
     """Rule management page."""
     # Authentication is enforced by middleware, no need to check here
+    user_id = get_user_id(request)
 
     db = get_db()
 
     # Get projects for the dropdown
-    projects = db.execute("SELECT * FROM projects ORDER BY name")
+    projects = db.execute(
+        "SELECT * FROM projects WHERE user_id = %s ORDER BY name",
+        (user_id,)
+    )
     projects = [dict(row) for row in projects]
 
     # Get rules with their conditions and project info
     from services.classifier import load_rules_with_conditions
-    rules = load_rules_with_conditions(db, enabled_only=False)
+    rules = load_rules_with_conditions(db, user_id, enabled_only=False)
 
     # Add project color to rules
     project_colors = {p["id"]: p["color"] for p in projects}

@@ -4,14 +4,38 @@
 version: "3.8"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: timesheet-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-timesheet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeMe123!}
+      POSTGRES_DB: ${POSTGRES_DB:-timesheet}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timesheet}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   timesheet-app:
     image: michaelwinser/timesheet-app:latest
     build: .
     container_name: timesheet-app
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "8000:8000"
 
     environment:
+      # PostgreSQL connection
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-timesheet}:${POSTGRES_PASSWORD:-changeMe123!}@postgres:5432/${POSTGRES_DB:-timesheet}
+
       # Google OAuth credentials (REQUIRED)
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
@@ -26,9 +50,6 @@ services:
 
       # Anthropic API for LLM classification (OPTIONAL)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-
-      # Database location (inside container)
-      - DATABASE_PATH=/data/timesheet.db
 
       # Application settings
       - ENVIRONMENT=${ENVIRONMENT:-development}
@@ -59,7 +80,9 @@ services:
     # Health check (uses built-in Docker HEALTHCHECK in Dockerfile)
     # View status: docker inspect --format='{{.State.Health.Status}}' timesheet-app
 
-# Named volume for data persistence
+# Named volumes for data persistence
 volumes:
   timesheet-data:
+    driver: local
+  postgres-data:
     driver: local

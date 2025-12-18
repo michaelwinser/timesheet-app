@@ -23,11 +23,16 @@ class ClassificationSuggestion:
     reasoning: str
 
 
-def get_classified_examples(db=None, limit: int = 50) -> list[dict]:
+def get_classified_examples(db=None, user_id: int = None, limit: int = 50) -> list[dict]:
     """Get classified events to use as few-shot examples.
 
     Prioritizes manual classifications over rule-based ones.
     Returns full event data with all properties and project assignments.
+
+    Args:
+        db: Database connection
+        user_id: User ID to filter examples for
+        limit: Maximum number of examples to return
     """
     from services.classifier import EventProperties
 
@@ -35,7 +40,10 @@ def get_classified_examples(db=None, limit: int = 50) -> list[dict]:
         db = get_db()
 
     # Get manual classifications first, then rule-based
-    rows = db.execute("""
+    where_clause = "WHERE e.user_id = %s" if user_id is not None else ""
+    params = [user_id, limit] if user_id is not None else [limit]
+
+    rows = db.execute(f"""
         SELECT
             e.*,
             p.name as project_name,
@@ -43,14 +51,15 @@ def get_classified_examples(db=None, limit: int = 50) -> list[dict]:
         FROM time_entries te
         JOIN events e ON te.event_id = e.id
         JOIN projects p ON te.project_id = p.id
+        {where_clause}
         ORDER BY
             CASE te.classification_source
                 WHEN 'manual' THEN 0
                 ELSE 1
             END,
             te.classified_at DESC
-        LIMIT ?
-    """, (limit,))
+        LIMIT %s
+    """, tuple(params))
 
     examples = []
     for row in rows:
@@ -78,16 +87,23 @@ def get_classified_examples(db=None, limit: int = 50) -> list[dict]:
     return examples
 
 
-def get_classification_rules(db=None) -> list[dict]:
+def get_classification_rules(db=None, user_id: int = None) -> list[dict]:
     """Get all enabled classification rules with their conditions.
 
     These represent explicit user-defined classification logic.
+
+    Args:
+        db: Database connection
+        user_id: User ID to filter rules for
     """
     if db is None:
         db = get_db()
 
     # Get rules with their conditions
-    rows = db.execute("""
+    where_clause = "WHERE cr.user_id = %s AND cr.is_enabled = true" if user_id is not None else "WHERE cr.is_enabled = true"
+    params = (user_id,) if user_id is not None else ()
+
+    rows = db.execute(f"""
         SELECT
             cr.id,
             cr.name,
@@ -99,9 +115,9 @@ def get_classification_rules(db=None) -> list[dict]:
         FROM classification_rules cr
         JOIN projects p ON cr.project_id = p.id
         LEFT JOIN rule_conditions rc ON cr.id = rc.rule_id
-        WHERE cr.is_enabled = 1
+        {where_clause}
         ORDER BY cr.priority DESC, cr.id
-    """)
+    """, params)
 
     # Group conditions by rule
     rules_dict: dict[int, dict] = {}
@@ -124,29 +140,39 @@ def get_classification_rules(db=None) -> list[dict]:
     return list(rules_dict.values())
 
 
-def get_available_projects(db=None) -> list[dict]:
-    """Get all available projects for classification."""
+def get_available_projects(db=None, user_id: int = None) -> list[dict]:
+    """Get all available projects for classification.
+
+    Args:
+        db: Database connection
+        user_id: User ID to filter projects for
+    """
     if db is None:
         db = get_db()
 
-    rows = db.execute("SELECT id, name, client FROM projects WHERE is_visible = 1 ORDER BY name")
+    where_clause = "WHERE user_id = %s AND is_visible = true" if user_id is not None else "WHERE is_visible = true"
+    params = (user_id,) if user_id is not None else ()
+
+    rows = db.execute(f"SELECT id, name, client FROM projects {where_clause} ORDER BY name", params)
     return [{"id": row["id"], "name": row["name"], "client": row["client"]} for row in rows]
 
 
 async def classify_event_with_llm(
     event_id: int,
+    user_id: int,
     db=None,
 ) -> ClassificationSuggestion | None:
     """Classify a single event using Claude API.
 
     Args:
         event_id: ID of the event to classify
+        user_id: User ID for filtering
         db: Database connection (uses default if None)
 
     Returns:
         ClassificationSuggestion with the suggested project, or None if failed
     """
-    results = await classify_events_batch([event_id], db)
+    results = await classify_events_batch([event_id], user_id, db)
     if results and results[0].get("suggestion"):
         s = results[0]["suggestion"]
         return ClassificationSuggestion(
@@ -266,12 +292,18 @@ Respond ONLY with the JSON array, no other text."""
 
 async def classify_events_batch(
     event_ids: list[int],
+    user_id: int,
     db=None,
 ) -> list[dict]:
     """Classify multiple events in a SINGLE Claude API call.
 
     This is much more efficient than making individual calls per event.
     Returns list of results with event_id, suggestion, and any errors.
+
+    Args:
+        event_ids: List of event IDs to classify
+        user_id: User ID for filtering
+        db: Database connection
     """
     try:
         import anthropic
@@ -289,10 +321,10 @@ async def classify_events_batch(
         return []
 
     # Get all events
-    placeholders = ",".join("?" * len(event_ids))
+    placeholders = ",".join("%s" * len(event_ids))
     events = db.execute(
-        f"SELECT * FROM events WHERE id IN ({placeholders})",
-        tuple(event_ids)
+        f"SELECT * FROM events WHERE id IN ({placeholders}) AND user_id = %s",
+        tuple(event_ids) + (user_id,)
     )
     events_list = [dict(e) for e in events]
 
@@ -300,9 +332,9 @@ async def classify_events_batch(
         return []
 
     # Get examples, projects, and rules
-    examples = get_classified_examples(db, limit=50)
-    projects = get_available_projects(db)
-    rules = get_classification_rules(db)
+    examples = get_classified_examples(db, user_id, limit=50)
+    projects = get_available_projects(db, user_id)
+    rules = get_classification_rules(db, user_id)
 
     if not projects:
         return []
@@ -395,11 +427,15 @@ async def classify_events_batch(
     return results
 
 
-async def infer_rules_from_classifications(db=None) -> dict:
+async def infer_rules_from_classifications(user_id: int, db=None) -> dict:
     """Ask the LLM to infer classification rules from past classifications.
 
     This does NOT use the existing rules - it tries to discover patterns
     from the classified examples alone.
+
+    Args:
+        user_id: User ID for filtering
+        db: Database connection
     """
     try:
         import anthropic
@@ -414,8 +450,8 @@ async def infer_rules_from_classifications(db=None) -> dict:
         db = get_db()
 
     # Get classified examples (without rules)
-    examples = get_classified_examples(db, limit=100)  # Get more for pattern detection
-    projects = get_available_projects(db)
+    examples = get_classified_examples(db, user_id, limit=100)  # Get more for pattern detection
+    projects = get_available_projects(db, user_id)
 
     if not examples:
         return {"rules": [], "error": "No classified examples found"}
@@ -536,11 +572,16 @@ Respond ONLY with the JSON object, no other text."""
         return {"rules": [], "error": f"Failed to parse LLM response: {e}", "raw": response_text}
 
 
-def preview_classification_prompt(event_ids: int | list[int], db=None) -> dict | None:
+def preview_classification_prompt(event_ids: int | list[int], user_id: int, db=None) -> dict | None:
     """Preview what prompt would be sent to Claude for event(s).
 
     Useful for debugging and understanding the classification context.
     Accepts a single event_id or a list of event_ids.
+
+    Args:
+        event_ids: Single event ID or list of event IDs
+        user_id: User ID for filtering
+        db: Database connection
     """
     if db is None:
         db = get_db()
@@ -550,19 +591,19 @@ def preview_classification_prompt(event_ids: int | list[int], db=None) -> dict |
         event_ids = [event_ids]
 
     # Get all events
-    placeholders = ",".join("?" * len(event_ids))
+    placeholders = ",".join("%s" * len(event_ids))
     events = db.execute(
-        f"SELECT * FROM events WHERE id IN ({placeholders})",
-        tuple(event_ids)
+        f"SELECT * FROM events WHERE id IN ({placeholders}) AND user_id = %s",
+        tuple(event_ids) + (user_id,)
     )
     events_list = [dict(e) for e in events]
 
     if not events_list:
         return None
 
-    examples = get_classified_examples(db, limit=50)
-    projects = get_available_projects(db)
-    rules = get_classification_rules(db)
+    examples = get_classified_examples(db, user_id, limit=50)
+    projects = get_available_projects(db, user_id)
+    rules = get_classification_rules(db, user_id)
 
     prompt = build_batch_classification_prompt(events_list, examples, projects, rules)
 

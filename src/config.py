@@ -20,9 +20,10 @@ class Config:
     # Anthropic API (for LLM classification features)
     ANTHROPIC_API_KEY: str = os.environ.get("ANTHROPIC_API_KEY", "")
 
-    # Database
-    DATABASE_PATH: Path = Path(
-        os.environ.get("DATABASE_PATH", "timesheet.db")
+    # Database - PostgreSQL connection string
+    DATABASE_URL: str = os.environ.get(
+        "DATABASE_URL",
+        "postgresql://timesheet:changeMe123!@localhost:5432/timesheet"
     )
 
     # Application

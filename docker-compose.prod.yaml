@@ -3,7 +3,9 @@
 # Usage:
 #   1. Copy this file to your TrueNAS system
 #   2. Create a .env file with your production credentials
-#   3. Create the data directory: mkdir -p /mnt/pool/apps/timesheet/data
+#   3. Create the data directories:
+#      mkdir -p /mnt/pool/apps/timesheet/data
+#      mkdir -p /mnt/pool/apps/timesheet/postgres
 #   4. Deploy: docker-compose -f docker-compose.prod.yaml up -d
 #
 # Note: You can also use TrueNAS Scale's Custom App UI instead of docker-compose
@@ -11,6 +13,34 @@
 version: "3.8"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: timesheet-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-timesheet}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-timesheet}
+    volumes:
+      # Host path volume for PostgreSQL data persistence
+      # Replace with your actual TrueNAS path
+      - /mnt/pool/apps/timesheet/postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timesheet}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
   timesheet-app:
     # Use pre-built image from Docker Hub (recommended)
     # Build and push: docker build -t michaelwinser/timesheet-app:latest .
@@ -21,6 +51,10 @@ services:
     # build: .
 
     container_name: timesheet-app
+
+    depends_on:
+      postgres:
+        condition: service_healthy
 
     ports:
       # Map to a specific port on TrueNAS host
@@ -33,6 +67,9 @@ services:
       # REQUIRED ENVIRONMENT VARIABLES
       # =====================================================================
       # Set these in your .env file or TrueNAS environment variable settings
+
+      # PostgreSQL connection
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-timesheet}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-timesheet}
 
       # Google OAuth credentials
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
@@ -52,9 +89,6 @@ services:
 
       # Anthropic API for LLM classification features
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-
-      # Database location (inside container, mapped to host path below)
-      - DATABASE_PATH=/data/timesheet.db
 
       # Production settings
       - ENVIRONMENT=production

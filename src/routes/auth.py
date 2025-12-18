@@ -1,5 +1,6 @@
-"""Authentication routes for Google OAuth."""
+"""Authentication routes for Google OAuth with multi-user support."""
 
+import logging
 from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
@@ -10,6 +11,7 @@ from db import get_db
 from models import AuthStatus
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_oauth_flow() -> Flow:
@@ -31,11 +33,71 @@ def get_oauth_flow() -> Flow:
     return flow
 
 
-def get_stored_credentials() -> Credentials | None:
-    """Get stored OAuth credentials from database."""
+def get_or_create_user(email: str, name: str = None) -> dict:
+    """Get existing user or create new one.
+
+    Args:
+        email: User email from Google OAuth
+        name: User display name from Google OAuth
+
+    Returns:
+        User dict with id, email, name
+    """
+    db = get_db()
+
+    # Try to find existing user
+    user = db.execute_one(
+        "SELECT id, email, name FROM users WHERE email = %s",
+        (email,)
+    )
+
+    if user:
+        # Update last login time
+        db.execute(
+            "UPDATE users SET last_login_at = CURRENT_TIMESTAMP WHERE id = %s",
+            (user['id'],)
+        )
+        logger.info(f"User logged in: {email} (id={user['id']})")
+        return user
+
+    # Create new user
+    user_id = db.execute_insert(
+        """
+        INSERT INTO users (email, name, last_login_at)
+        VALUES (%s, %s, CURRENT_TIMESTAMP)
+        RETURNING id
+        """,
+        (email, name)
+    )
+
+    logger.info(f"New user created: {email} (id={user_id})")
+
+    return {
+        'id': user_id,
+        'email': email,
+        'name': name
+    }
+
+
+def get_stored_credentials(user_id: int) -> Credentials | None:
+    """Get stored OAuth credentials from database for a specific user.
+
+    Args:
+        user_id: User ID to get credentials for
+
+    Returns:
+        Credentials object or None if not found
+    """
     db = get_db()
     row = db.execute_one(
-        "SELECT access_token, refresh_token, token_expiry FROM auth_tokens ORDER BY id DESC LIMIT 1"
+        """
+        SELECT access_token, refresh_token, token_expiry
+        FROM auth_tokens
+        WHERE user_id = %s
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (user_id,)
     )
     if row is None:
         return None
@@ -49,20 +111,36 @@ def get_stored_credentials() -> Credentials | None:
     )
 
 
-def store_credentials(credentials: Credentials) -> None:
-    """Store OAuth credentials in database."""
+def store_credentials(user_id: int, credentials: Credentials) -> None:
+    """Store OAuth credentials in database for a specific user.
+
+    Uses PostgreSQL's ON CONFLICT to upsert (update existing or insert new).
+
+    Args:
+        user_id: User ID to store credentials for
+        credentials: OAuth credentials from Google
+    """
     db = get_db()
+
+    # Upsert - replace existing credentials for this user
     db.execute(
         """
-        INSERT INTO auth_tokens (access_token, refresh_token, token_expiry)
-        VALUES (?, ?, ?)
+        INSERT INTO auth_tokens (user_id, access_token, refresh_token, token_expiry)
+        VALUES (%s, %s, %s, %s)
+        ON CONFLICT (user_id) DO UPDATE SET
+            access_token = EXCLUDED.access_token,
+            refresh_token = EXCLUDED.refresh_token,
+            token_expiry = EXCLUDED.token_expiry,
+            created_at = CURRENT_TIMESTAMP
         """,
         (
+            user_id,
             credentials.token,
             credentials.refresh_token,
             credentials.expiry.isoformat() if credentials.expiry else None,
         ),
     )
+    logger.debug(f"Stored credentials for user_id={user_id}")
 
 
 @router.get("/login")
@@ -111,12 +189,18 @@ async def callback(request: Request, code: str = None, error: str = None):
         config.GOOGLE_CLIENT_ID
     )
 
-    # Store user email in session
-    request.session["user_email"] = id_info["email"]
-    request.session["user_name"] = id_info.get("name", "")
+    # Get or create user record
+    user = get_or_create_user(
+        email=id_info["email"],
+        name=id_info.get("name", "")
+    )
 
-    # Store credentials in database
-    store_credentials(credentials)
+    # Store user info in session
+    request.session["user_email"] = user['email']
+    request.session["user_name"] = user.get('name', '')
+
+    # Store credentials in database (linked to user)
+    store_credentials(user['id'], credentials)
 
     # Redirect to next_url from session, or home page if not set
     next_url = request.session.pop("next_url", "/")
@@ -126,9 +210,14 @@ async def callback(request: Request, code: str = None, error: str = None):
 @router.post("/logout")
 async def logout(request: Request):
     """Clear stored OAuth tokens and session."""
-    # Clear OAuth tokens from database
-    db = get_db()
-    db.execute("DELETE FROM auth_tokens")
+    # Get user_id from request state (set by UserContextMiddleware)
+    user_id = getattr(request.state, 'user_id', None)
+
+    if user_id:
+        # Clear OAuth tokens from database for this user only
+        db = get_db()
+        db.execute("DELETE FROM auth_tokens WHERE user_id = %s", (user_id,))
+        logger.info(f"User logged out: user_id={user_id}")
 
     # Clear session
     request.session.clear()
@@ -140,8 +229,13 @@ async def logout(request: Request):
 @router.get("/status", response_model=AuthStatus)
 async def status(request: Request):
     """Check authentication status."""
-    credentials = get_stored_credentials()
+    user_id = getattr(request.state, 'user_id', None)
     user_email = request.session.get("user_email")
+
+    if not user_id:
+        return AuthStatus(authenticated=False, email=None)
+
+    credentials = get_stored_credentials(user_id)
 
     if credentials is None:
         return AuthStatus(authenticated=False, email=None)
