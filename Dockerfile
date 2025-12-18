@@ -65,4 +65,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 # Start the application
 # Note: Migrations run automatically in main.py on startup
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Uses shell form to expand PORT env var (Railway/Render inject this)
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
