@@ -121,6 +121,21 @@ let allRules = [];
 
 // Load metadata on page load
 document.addEventListener('DOMContentLoaded', async function() {
+    // Apply appropriate text colors to rule project badges
+    document.querySelectorAll('.rule-project').forEach(badge => {
+        const bgColor = badge.style.backgroundColor;
+        if (bgColor) {
+            let hexColor = bgColor;
+            if (bgColor.startsWith('rgb')) {
+                const rgb = bgColor.match(/\d+/g);
+                if (rgb && rgb.length >= 3) {
+                    hexColor = '#' + rgb.slice(0, 3).map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+                }
+            }
+            applyTextColorClass(badge, hexColor);
+        }
+    });
+
     const [propsResponse, condsResponse] = await Promise.all([
         api.get('/api/properties'),
         api.get('/api/conditions')

@@ -124,7 +124,10 @@
             <td class="spreadsheet-cell">
                 {% if project.is_billable %}
                     {% if project.sheets_spreadsheet_url %}
-                    <a href="{{ project.sheets_spreadsheet_url }}" target="_blank" class="btn-small">Open</a>
+                    <a href="{{ project.sheets_spreadsheet_url }}" target="_blank" class="btn-small sheets-link">
+                        <img src="/static/img/icons/logo_sheets_2020q4_color_1x_web_32dp.png" alt="" class="sheets-icon">
+                        Open
+                    </a>
                     <button class="btn-small" onclick="showArchiveModal({{ project.id }}, '{{ project.name }}')">Archive</button>
                     {% else %}
                     <button class="btn-small btn-primary" onclick="createSpreadsheet({{ project.id }})">Create</button>

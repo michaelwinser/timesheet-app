@@ -145,7 +145,10 @@
             </div>
 
             <div id="sheets-link" class="sheets-link-container hidden">
-                <a href="#" target="_blank" id="sheets-url">Open in Google Sheets</a>
+                <a href="#" target="_blank" id="sheets-url" class="sheets-link">
+                    <img src="/static/img/icons/logo_sheets_2020q4_color_1x_web_32dp.png" alt="" class="sheets-icon">
+                    Open in Sheets
+                </a>
                 <span class="last-exported" id="last-exported"></span>
             </div>
 
@@ -464,6 +467,13 @@ function downloadCSV(invoiceId) {
 
 // Export to Google Sheets
 async function exportSheets(force = false) {
+    const btn = document.getElementById('sheets-btn');
+    const originalText = btn.textContent;
+
+    // Show loading state
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Exporting...';
+
     try {
         const url = `/api/invoices/${currentInvoiceId}/export/sheets` + (force ? '?force=true' : '');
         const response = await fetch(url, {
@@ -477,6 +487,10 @@ async function exportSheets(force = false) {
             const detail = warning.detail || warning;
             const lastExported = detail.last_exported_at ? new Date(detail.last_exported_at).toLocaleString() : 'unknown';
             const lastModified = detail.spreadsheet_modified_at ? new Date(detail.spreadsheet_modified_at).toLocaleString() : 'unknown';
+
+            // Restore button before showing confirm
+            btn.disabled = false;
+            btn.textContent = originalText;
 
             if (confirm(`This spreadsheet was modified since the last export.\n\nLast exported: ${lastExported}\nLast modified: ${lastModified}\n\nOverwrite anyway?`)) {
                 return exportSheets(true);  // Retry with force=true
@@ -502,9 +516,6 @@ async function exportSheets(force = false) {
         document.getElementById('sheets-link').classList.remove('hidden');
 
         showToast(`Exported to Google Sheets`, 'success');
-
-        // Open spreadsheet in new tab
-        window.open(result.spreadsheet_url, '_blank');
     } catch (error) {
         if (error.message && error.message.includes('Not authenticated')) {
             // Might need to re-authenticate with Sheets scope
@@ -512,6 +523,10 @@ async function exportSheets(force = false) {
         } else {
             showToast('Failed to export to Sheets: ' + error.message, 'error');
         }
+    } finally {
+        // Restore button state
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
 }
 

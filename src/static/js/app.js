@@ -1,5 +1,6 @@
 /**
  * Week view interactions.
+ * Note: getLuminance, shouldUseDarkText, applyTextColorClass are defined in api.js
  */
 
 /**
@@ -76,6 +77,7 @@ async function classifyEvent(eventId, projectId, projectColor) {
         // Update entry side
         entrySide.dataset.entryId = entry.id;
         entrySide.style.backgroundColor = projectColor || '#00aa44';
+        applyTextColorClass(entrySide, projectColor || '#00aa44');
 
         // Update project select
         const projectSelect = entrySide.querySelector('.card-row-project select');
@@ -160,6 +162,7 @@ async function reclassifyEvent(eventId, entryId, projectId, projectColor) {
             const entry = await api.updateEntry(entryId, { project_id: parseInt(projectId) });
             card.dataset.project = entry.project_name;
             entrySide.style.backgroundColor = projectColor || '#00aa44';
+            applyTextColorClass(entrySide, projectColor || '#00aa44');
             eventSide.dataset.projectColor = projectColor || '#00aa44';
         } catch (error) {
             alert('Reclassify failed: ' + error.message);

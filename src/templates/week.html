@@ -153,12 +153,12 @@
                         <input type="text" class="duration-input" value="{{ '%.2f'|format(event.hours or 0) }}" data-entry-id="{{ event.entry_id }}" onchange="updateHours({{ event.entry_id }}, this.value)">
                         <span>hrs</span>
                         <button class="btn-round" onclick="roundUp({{ event.id }}, {{ event.entry_id }})">+15m</button>
-                    </div>
-                    <!-- Row 4: Actions -->
-                    <div class="card-row-actions">
                         {% if event.invoice_id %}
                         <a href="/invoices" class="badge badge-billed" title="Billed: {{ event.invoice_number }}">$</a>
                         {% endif %}
+                    </div>
+                    <!-- Row 4: Actions -->
+                    <div class="card-row-actions">
                         <label class="checkbox-dna">
                             <input type="checkbox" {% if event.did_not_attend %}checked{% endif %} onchange="toggleDidNotAttend({{ event.id }})"> DNA
                         </label>
@@ -317,10 +317,31 @@
 
     // Auto-sync, auto-classify, and restore visibility preferences on page load
     document.addEventListener('DOMContentLoaded', async function() {
+        applyInitialTextColors();
         syncEventsQuiet();
         await autoClassifyEvents();
         restoreProjectVisibility();
     });
+
+    /**
+     * Apply appropriate text color classes to all entry cards based on their background color.
+     */
+    function applyInitialTextColors() {
+        document.querySelectorAll('.card-entry').forEach(entry => {
+            const bgColor = entry.style.backgroundColor;
+            if (bgColor) {
+                // Convert rgb(r, g, b) to hex if needed
+                let hexColor = bgColor;
+                if (bgColor.startsWith('rgb')) {
+                    const rgb = bgColor.match(/\d+/g);
+                    if (rgb && rgb.length >= 3) {
+                        hexColor = '#' + rgb.slice(0, 3).map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
+                    }
+                }
+                applyTextColorClass(entry, hexColor);
+            }
+        });
+    }
 
     /**
      * Auto-classify unclassified events using rules.
