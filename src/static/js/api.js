@@ -24,17 +24,29 @@ function showToast(message, type = 'info', duration = 3000) {
     }, duration);
 }
 
+/**
+ * Handle API response, redirecting to login on 401.
+ */
+async function handleResponse(response) {
+    if (response.status === 401) {
+        // Not authenticated - redirect to login
+        window.location.href = '/login?next=' + encodeURIComponent(window.location.pathname);
+        throw new Error('Not authenticated');
+    }
+    if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Request failed' }));
+        throw new Error(error.detail || 'Request failed');
+    }
+    return response.json();
+}
+
 const api = {
     /**
      * Make a GET request.
      */
     async get(path) {
         const response = await fetch(path);
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-            throw new Error(error.detail || 'Request failed');
-        }
-        return response.json();
+        return handleResponse(response);
     },
 
     /**
@@ -46,11 +58,7 @@ const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-            throw new Error(error.detail || 'Request failed');
-        }
-        return response.json();
+        return handleResponse(response);
     },
 
     /**
@@ -62,11 +70,7 @@ const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data),
         });
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-            throw new Error(error.detail || 'Request failed');
-        }
-        return response.json();
+        return handleResponse(response);
     },
 
     /**
@@ -74,11 +78,7 @@ const api = {
      */
     async delete(path) {
         const response = await fetch(path, { method: 'DELETE' });
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({ detail: 'Request failed' }));
-            throw new Error(error.detail || 'Request failed');
-        }
-        return response.json();
+        return handleResponse(response);
     },
 
     // --- Domain methods ---

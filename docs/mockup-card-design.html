@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Design Mockup v2</title>
+    <style>
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2a2a2a;
+            --bg-tertiary: #333;
+            --text-primary: #eee;
+            --text-secondary: #aaa;
+            --border-color: #444;
+            --accent-warning: #ffaa00;
+            --accent-success: #00aa44;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 2rem;
+            line-height: 1.5;
+        }
+
+        h1 {
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        h2 {
+            margin: 2rem 0 1rem;
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+        }
+
+        .cards-container {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .card-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .card-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Base card styles */
+        .card {
+            width: 220px;
+            padding: 0.75rem;
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            position: relative;
+        }
+
+        /* Dog-ear flip indicator - uses clip-path to create triangle that clips content */
+        .dog-ear {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+            transition: width 0.15s ease, height 0.15s ease;
+            background: var(--text-secondary);
+            clip-path: polygon(100% 0, 100% 100%, 0 100%);
+            border-bottom-right-radius: 6px;
+        }
+
+        .dog-ear:hover {
+            width: 40px;
+            height: 40px;
+        }
+
+        .dog-ear .flip-icon {
+            position: absolute;
+            bottom: 4px;
+            right: 4px;
+            width: 14px;
+            height: 14px;
+            color: var(--bg-primary);
+            transition: all 0.15s ease;
+            opacity: 0.7;
+        }
+
+        .dog-ear:hover .flip-icon {
+            bottom: 8px;
+            right: 8px;
+            width: 18px;
+            height: 18px;
+            opacity: 1;
+        }
+
+        /* Adjust dog-ear color for entry cards (colored backgrounds) */
+        .card-entry .dog-ear {
+            background: rgba(255,255,255,0.6);
+        }
+
+        .card-entry .dog-ear:hover {
+            background: rgba(255,255,255,0.8);
+        }
+
+        .card-entry .dog-ear .flip-icon {
+            color: inherit;
+        }
+
+        /* Event card (unclassified) */
+        .card-event {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--accent-warning);
+            color: var(--text-primary);
+        }
+
+        /* Event card (classified - viewing event side) */
+        .card-event-classified {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--accent-success);
+            color: var(--text-primary);
+        }
+
+        /* Time entry card */
+        .card-entry {
+            border: none;
+            color: #fff;
+        }
+
+        /* Row styles */
+        .row-title {
+            font-weight: 600;
+            font-size: 0.875rem;
+            line-height: 1.3;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.35rem;
+        }
+
+        .title-text {
+            flex: 1;
+            cursor: help;
+        }
+
+        .btn-calendar-link {
+            flex-shrink: 0;
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0.6;
+            text-decoration: none;
+            color: inherit;
+            margin-top: 1px;
+        }
+
+        .btn-calendar-link:hover {
+            opacity: 1;
+        }
+
+        .btn-calendar-link svg {
+            width: 14px;
+            height: 14px;
+        }
+
+        .row-project {
+            font-size: 0.75rem;
+        }
+
+        .row-project select {
+            width: 100%;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            border-radius: 3px;
+            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(0,0,0,0.2);
+            color: inherit;
+        }
+
+        .card-event select,
+        .card-event-classified select {
+            background: var(--bg-secondary);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .row-time {
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .time-display {
+            opacity: 0.85;
+        }
+
+        .duration-input {
+            width: 50px;
+            padding: 0.2rem 0.4rem;
+            font-size: 0.8rem;
+            border-radius: 3px;
+            border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(0,0,0,0.2);
+            color: inherit;
+            text-align: center;
+        }
+
+        .btn-round {
+            padding: 0.15rem 0.4rem;
+            font-size: 0.7rem;
+            border-radius: 3px;
+            border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1);
+            color: inherit;
+            cursor: pointer;
+        }
+
+        .btn-round:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        /* Bottom row */
+        .row-actions {
+            display: flex;
+            align-items: center;
+            margin-top: 0.25rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-right: 20px; /* Space for dog-ear */
+        }
+
+        .card-event .row-actions,
+        .card-event-classified .row-actions {
+            border-top-color: var(--border-color);
+        }
+
+        .actions-left {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .checkbox-dna {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.7rem;
+            opacity: 0.8;
+            cursor: pointer;
+        }
+
+        .checkbox-dna:hover {
+            opacity: 1;
+        }
+
+        .checkbox-dna input {
+            width: 14px;
+            height: 14px;
+        }
+
+        .btn-icon {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: none;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            color: inherit;
+            opacity: 0.7;
+        }
+
+        .btn-icon:hover {
+            opacity: 1;
+            background: rgba(255,255,255,0.2);
+        }
+
+        .card-event .btn-icon,
+        .card-event-classified .btn-icon {
+            background: var(--bg-secondary);
+        }
+
+        .card-event .btn-icon:hover,
+        .card-event-classified .btn-icon:hover {
+            background: var(--bg-primary);
+        }
+
+        /* Project colors for time entries */
+        .project-blue { background: #2563eb; }
+        .project-green { background: #16a34a; }
+        .project-purple { background: #9333ea; }
+        .project-orange { background: #ea580c; }
+
+        /* Tooltip styles */
+        .tooltip {
+            position: relative;
+        }
+
+        .tooltip .tooltip-content {
+            visibility: hidden;
+            opacity: 0;
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 0.75rem;
+            width: 240px;
+            z-index: 100;
+            font-weight: normal;
+            font-size: 0.75rem;
+            line-height: 1.4;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            transition: opacity 0.15s, visibility 0.15s;
+            margin-bottom: 8px;
+        }
+
+        .tooltip:hover .tooltip-content {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .tooltip-content strong {
+            display: block;
+            font-size: 0.8rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .tooltip-content .tooltip-row {
+            color: var(--text-secondary);
+            margin-bottom: 0.35rem;
+        }
+
+        .tooltip-content .tooltip-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .tooltip-content .tooltip-label {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        /* Notes section */
+        .notes {
+            margin-top: 3rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            font-size: 0.875rem;
+        }
+
+        .notes h3 {
+            margin-bottom: 0.75rem;
+            font-size: 1rem;
+        }
+
+        .notes ul {
+            margin-left: 1.5rem;
+        }
+
+        .notes li {
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary);
+        }
+
+        .notes code {
+            background: var(--bg-tertiary);
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-size: 0.8rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>Card Design Mockup v2</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 2rem;">Hover over titles to see tooltip. Click dog-ear corner to flip.</p>
+
+    <h2>Unclassified Event</h2>
+    <div class="cards-container">
+        <div class="card-wrapper">
+            <span class="card-label">Event View</span>
+            <div class="card card-event">
+                <div class="row-title">
+                    <span class="title-text tooltip">
+                        Weekly Team Standup
+                        <div class="tooltip-content">
+                            <strong>Weekly Team Standup</strong>
+                            <div class="tooltip-row"><span class="tooltip-label">Description:</span> Sync on progress and blockers</div>
+                            <div class="tooltip-row"><span class="tooltip-label">Attendees:</span> alice@co.com, bob@co.com, carol@co.com</div>
+                        </div>
+                    </span>
+                    <a href="#" class="btn-calendar-link" title="Open in Google Calendar" target="_blank">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
+                <div class="row-project">
+                    <select>
+                        <option value="">Select project...</option>
+                        <option>Client Work</option>
+                        <option>Internal</option>
+                    </select>
+                </div>
+                <div class="row-time">
+                    <span class="time-display">2:00 PM - 2:30 PM</span>
+                </div>
+                <div class="row-actions">
+                    <div class="actions-left">
+                        <label class="checkbox-dna">
+                            <input type="checkbox"> DNA
+                        </label>
+                        <button class="btn-icon" title="Create rule">&#9881;</button>
+                    </div>
+                </div>
+                <!-- No dog-ear for unclassified -->
+            </div>
+        </div>
+    </div>
+
+    <h2>Classified Event (Both Sides)</h2>
+    <div class="cards-container">
+        <div class="card-wrapper">
+            <span class="card-label">Event View (flipped from entry)</span>
+            <div class="card card-event-classified">
+                <div class="row-title">
+                    <span class="title-text tooltip">
+                        Weekly Team Standup
+                        <div class="tooltip-content">
+                            <strong>Weekly Team Standup</strong>
+                            <div class="tooltip-row"><span class="tooltip-label">Description:</span> Sync on progress and blockers</div>
+                            <div class="tooltip-row"><span class="tooltip-label">Attendees:</span> alice@co.com, bob@co.com, carol@co.com</div>
+                        </div>
+                    </span>
+                    <a href="#" class="btn-calendar-link" title="Open in Google Calendar" target="_blank">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
+                <div class="row-project">
+                    <select>
+                        <option>Internal Meetings</option>
+                        <option>Client Work</option>
+                    </select>
+                </div>
+                <div class="row-time">
+                    <span class="time-display">2:00 PM - 2:30 PM</span>
+                </div>
+                <div class="row-actions">
+                    <div class="actions-left">
+                        <label class="checkbox-dna">
+                            <input type="checkbox"> DNA
+                        </label>
+                        <button class="btn-icon" title="Create rule">&#9881;</button>
+                    </div>
+                </div>
+                <div class="dog-ear" title="Flip to time entry">
+                    <svg class="flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M17 1l4 4-4 4"></path>
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                        <path d="M7 23l-4-4 4-4"></path>
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-wrapper">
+            <span class="card-label">Time Entry View</span>
+            <div class="card card-entry project-green">
+                <div class="row-title">
+                    <span class="title-text tooltip">
+                        Weekly Team Standup
+                        <div class="tooltip-content">
+                            <strong>Weekly Team Standup</strong>
+                            <div class="tooltip-row"><span class="tooltip-label">Description:</span> Sync on progress and blockers</div>
+                            <div class="tooltip-row"><span class="tooltip-label">Attendees:</span> alice@co.com, bob@co.com, carol@co.com</div>
+                        </div>
+                    </span>
+                    <a href="#" class="btn-calendar-link" title="Open in Google Calendar" target="_blank">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
+                <div class="row-project">
+                    <select>
+                        <option>Internal Meetings</option>
+                        <option>Client Work</option>
+                    </select>
+                </div>
+                <div class="row-time">
+                    <input type="text" class="duration-input" value="0.50">
+                    <span>hrs</span>
+                    <button class="btn-round">+15m</button>
+                </div>
+                <div class="row-actions">
+                    <div class="actions-left">
+                        <label class="checkbox-dna">
+                            <input type="checkbox"> DNA
+                        </label>
+                        <button class="btn-icon" title="Create rule">&#9881;</button>
+                    </div>
+                </div>
+                <div class="dog-ear" title="Flip to event">
+                    <svg class="flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M17 1l4 4-4 4"></path>
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                        <path d="M7 23l-4-4 4-4"></path>
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h2>Various Project Colors</h2>
+    <div class="cards-container">
+        <div class="card-wrapper">
+            <span class="card-label">Blue Project</span>
+            <div class="card card-entry project-blue">
+                <div class="row-title">
+                    <span class="title-text tooltip">
+                        Client Design Review
+                        <div class="tooltip-content">
+                            <strong>Client Design Review</strong>
+                            <div class="tooltip-row"><span class="tooltip-label">Description:</span> Review Q1 mockups with stakeholders</div>
+                            <div class="tooltip-row"><span class="tooltip-label">Attendees:</span> client@acme.com, pm@co.com</div>
+                        </div>
+                    </span>
+                    <a href="#" class="btn-calendar-link" title="Open in Google Calendar" target="_blank">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
+                <div class="row-project">
+                    <select><option>Acme Corp</option></select>
+                </div>
+                <div class="row-time">
+                    <input type="text" class="duration-input" value="1.00">
+                    <span>hrs</span>
+                    <button class="btn-round">+15m</button>
+                </div>
+                <div class="row-actions">
+                    <div class="actions-left">
+                        <label class="checkbox-dna"><input type="checkbox"> DNA</label>
+                        <button class="btn-icon">&#9881;</button>
+                    </div>
+                </div>
+                <div class="dog-ear" title="Flip to event">
+                    <svg class="flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M17 1l4 4-4 4"></path>
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                        <path d="M7 23l-4-4 4-4"></path>
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-wrapper">
+            <span class="card-label">Purple Project</span>
+            <div class="card card-entry project-purple">
+                <div class="row-title">
+                    <span class="title-text tooltip">
+                        Sprint Planning
+                        <div class="tooltip-content">
+                            <strong>Sprint Planning</strong>
+                            <div class="tooltip-row"><span class="tooltip-label">Description:</span> Plan Sprint 24 work items</div>
+                            <div class="tooltip-row"><span class="tooltip-label">Attendees:</span> team@co.com (12 people)</div>
+                        </div>
+                    </span>
+                    <a href="#" class="btn-calendar-link" title="Open in Google Calendar" target="_blank">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
+                <div class="row-project">
+                    <select><option>Product Dev</option></select>
+                </div>
+                <div class="row-time">
+                    <input type="text" class="duration-input" value="2.00">
+                    <span>hrs</span>
+                    <button class="btn-round">+15m</button>
+                </div>
+                <div class="row-actions">
+                    <div class="actions-left">
+                        <label class="checkbox-dna"><input type="checkbox"> DNA</label>
+                        <button class="btn-icon">&#9881;</button>
+                    </div>
+                </div>
+                <div class="dog-ear" title="Flip to event">
+                    <svg class="flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M17 1l4 4-4 4"></path>
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                        <path d="M7 23l-4-4 4-4"></path>
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="card-wrapper">
+            <span class="card-label">Orange Project</span>
+            <div class="card card-entry project-orange">
+                <div class="row-title">
+                    <span class="title-text tooltip">
+                        Training Session
+                        <div class="tooltip-content">
+                            <strong>Training Session</strong>
+                            <div class="tooltip-row"><span class="tooltip-label">Description:</span> AWS certification prep</div>
+                            <div class="tooltip-row"><span class="tooltip-label">Attendees:</span> (just you)</div>
+                        </div>
+                    </span>
+                    <a href="#" class="btn-calendar-link" title="Open in Google Calendar" target="_blank">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                            <polyline points="15 3 21 3 21 9"></polyline>
+                            <line x1="10" y1="14" x2="21" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
+                <div class="row-project">
+                    <select><option>Learning</option></select>
+                </div>
+                <div class="row-time">
+                    <input type="text" class="duration-input" value="1.50">
+                    <span>hrs</span>
+                    <button class="btn-round">+15m</button>
+                </div>
+                <div class="row-actions">
+                    <div class="actions-left">
+                        <label class="checkbox-dna"><input type="checkbox"> DNA</label>
+                        <button class="btn-icon">&#9881;</button>
+                    </div>
+                </div>
+                <div class="dog-ear" title="Flip to event">
+                    <svg class="flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M17 1l4 4-4 4"></path>
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                        <path d="M7 23l-4-4 4-4"></path>
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                    </svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="notes">
+        <h3>Design Notes - v2 Updates</h3>
+        <ul>
+            <li><strong>Dog-ear flip:</strong> Bottom-right corner fold that enlarges on hover - click to flip between views</li>
+            <li><strong>Title tooltip:</strong> Hover over title to see description + attendees popup</li>
+            <li><strong>Calendar link:</strong> External link icon next to title opens event in Google Calendar (not Meet)</li>
+            <li><strong>DNA:</strong> Compact "Did Not Attend" checkbox</li>
+            <li><strong>Row order:</strong> Title &rarr; Project &rarr; Time/Duration &rarr; Actions</li>
+            <li><strong>Unclassified events:</strong> No dog-ear (nothing to flip to yet)</li>
+        </ul>
+    </div>
+</body>
+</html>

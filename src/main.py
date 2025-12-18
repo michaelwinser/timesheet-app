@@ -50,9 +50,10 @@ class UserContextMiddleware(BaseHTTPMiddleware):
                 request.state.user_email = user['email']
                 request.state.user_name = user.get('name')
             else:
-                # User record doesn't exist - this shouldn't happen
-                # but could occur if user deleted after login
-                logger.warning(f"User email in session but not in DB: {user_email}")
+                # User record doesn't exist - clear the stale session
+                # This can happen after a database reset
+                logger.warning(f"User email in session but not in DB: {user_email} - clearing session")
+                request.session.clear()
                 request.state.user_id = None
         else:
             request.state.user_id = None
@@ -76,7 +77,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if any(request.url.path.startswith(prefix) for prefix in self.PUBLIC_PREFIXES):
             return await call_next(request)
 
-        # Check if user is authenticated (has email in session)
+        # Check if user is authenticated (has email in session AND exists in DB)
         user_email = request.session.get("user_email")
         if not user_email:
             # Redirect to login with next parameter
@@ -85,7 +86,21 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 next_url += f"?{request.url.query}"
             return RedirectResponse(url=f"/login?next={next_url}")
 
-        # User is authenticated, proceed
+        # Verify user exists in database (handles stale sessions after DB reset)
+        db = get_db()
+        user = db.execute_one(
+            "SELECT id FROM users WHERE email = %s",
+            (user_email,)
+        )
+        if not user:
+            logger.warning(f"Stale session for non-existent user: {user_email} - redirecting to login")
+            request.session.clear()
+            next_url = str(request.url.path)
+            if request.url.query:
+                next_url += f"?{request.url.query}"
+            return RedirectResponse(url=f"/login?next={next_url}")
+
+        # User is authenticated and exists, proceed
         return await call_next(request)
 
 

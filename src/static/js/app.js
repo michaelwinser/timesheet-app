@@ -76,29 +76,35 @@ async function classifyEvent(eventId, projectId, projectColor) {
         // Update entry side
         entrySide.dataset.entryId = entry.id;
         entrySide.style.backgroundColor = projectColor || '#00aa44';
-        const projectSelect = entrySide.querySelector('.entry-project-select');
-        projectSelect.value = entry.project_id;
-        entrySide.querySelector('.hours-value').textContent = entry.hours.toFixed(2);
-        entrySide.querySelector('.entry-description').textContent = entry.description || event.title;
 
-        // Add flip button to event side if not present
-        const eventActions = eventSide.querySelector('.event-actions');
-        if (!eventActions.querySelector('button.btn-small:not(.btn-rule)')) {
-            const flipBtn = document.createElement('button');
-            flipBtn.className = 'btn-small';
-            flipBtn.textContent = 'Flip';
-            flipBtn.onclick = () => flipCard(eventId);
-            eventActions.appendChild(flipBtn);
+        // Update project select
+        const projectSelect = entrySide.querySelector('.card-row-project select');
+        if (projectSelect) {
+            projectSelect.value = entry.project_id;
         }
 
-        // Add project badge to event side
-        if (!eventSide.querySelector('.project-badge')) {
-            const badge = document.createElement('div');
-            badge.className = 'project-badge';
-            badge.style.backgroundColor = projectColor || '#00aa44';
-            eventSide.insertBefore(badge, eventSide.firstChild);
-        } else {
-            eventSide.querySelector('.project-badge').style.backgroundColor = projectColor || '#00aa44';
+        // Update duration input
+        const durationInput = entrySide.querySelector('.duration-input');
+        if (durationInput) {
+            durationInput.value = entry.hours.toFixed(2);
+            durationInput.dataset.entryId = entry.id;
+        }
+
+        // Add dog-ear to event side if not present
+        if (!eventSide.querySelector('.dog-ear')) {
+            const dogEar = document.createElement('div');
+            dogEar.className = 'dog-ear';
+            dogEar.title = 'Flip to time entry';
+            dogEar.onclick = () => flipCard(eventId);
+            dogEar.innerHTML = `
+                <svg class="flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M17 1l4 4-4 4"></path>
+                    <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                    <path d="M7 23l-4-4 4-4"></path>
+                    <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                </svg>
+            `;
+            eventSide.appendChild(dogEar);
         }
         eventSide.dataset.projectColor = projectColor || '#00aa44';
 
@@ -109,7 +115,8 @@ async function classifyEvent(eventId, projectId, projectColor) {
     } catch (error) {
         alert('Classification failed: ' + error.message);
         // Reset dropdown
-        card.querySelector('.project-select').value = '';
+        const select = card.querySelector('.card-row-project select');
+        if (select) select.value = '';
     }
 }
 
@@ -134,15 +141,12 @@ async function reclassifyEvent(eventId, entryId, projectId, projectColor) {
             eventSide.classList.remove('hidden');
 
             // Reset event side dropdown
-            eventSide.querySelector('.project-select').value = '';
+            const eventSelect = eventSide.querySelector('.card-row-project select');
+            if (eventSelect) eventSelect.value = '';
 
-            // Remove flip button from event side (but keep the rule button)
-            const flipBtn = eventSide.querySelector('.event-actions button.btn-small:not(.btn-rule)');
-            if (flipBtn) flipBtn.remove();
-
-            // Remove project badge from event side
-            const badge = eventSide.querySelector('.project-badge');
-            if (badge) badge.remove();
+            // Remove dog-ear from event side
+            const dogEar = eventSide.querySelector('.dog-ear');
+            if (dogEar) dogEar.remove();
             eventSide.dataset.projectColor = '';
 
         } catch (error) {
@@ -156,12 +160,6 @@ async function reclassifyEvent(eventId, entryId, projectId, projectColor) {
             const entry = await api.updateEntry(entryId, { project_id: parseInt(projectId) });
             card.dataset.project = entry.project_name;
             entrySide.style.backgroundColor = projectColor || '#00aa44';
-
-            // Update project badge on event side
-            const badge = eventSide.querySelector('.project-badge');
-            if (badge) {
-                badge.style.backgroundColor = projectColor || '#00aa44';
-            }
             eventSide.dataset.projectColor = projectColor || '#00aa44';
         } catch (error) {
             alert('Reclassify failed: ' + error.message);
@@ -188,8 +186,8 @@ function flipCard(eventId) {
 async function roundUp(eventId, entryId) {
     const card = document.querySelector(`[data-event-id="${eventId}"]`);
     const entrySide = card.querySelector('.card-entry');
-    const hoursSpan = entrySide.querySelector('.hours-value');
-    const currentHours = parseFloat(hoursSpan.textContent);
+    const durationInput = entrySide.querySelector('.duration-input');
+    const currentHours = parseFloat(durationInput.value);
     const roundedHours = Math.ceil(currentHours * 4) / 4; // Round to nearest 0.25
 
     if (roundedHours === currentHours) {
@@ -197,17 +195,34 @@ async function roundUp(eventId, entryId) {
         const newHours = currentHours + 0.25;
         try {
             await api.updateEntry(entryId, { hours: newHours });
-            hoursSpan.textContent = newHours.toFixed(2);
+            durationInput.value = newHours.toFixed(2);
         } catch (error) {
             alert('Update failed: ' + error.message);
         }
     } else {
         try {
             await api.updateEntry(entryId, { hours: roundedHours });
-            hoursSpan.textContent = roundedHours.toFixed(2);
+            durationInput.value = roundedHours.toFixed(2);
         } catch (error) {
             alert('Update failed: ' + error.message);
         }
+    }
+}
+
+/**
+ * Update hours directly from duration input.
+ */
+async function updateHours(entryId, value) {
+    const hours = parseFloat(value);
+    if (isNaN(hours) || hours < 0) {
+        alert('Invalid hours value');
+        return;
+    }
+
+    try {
+        await api.updateEntry(entryId, { hours: hours });
+    } catch (error) {
+        alert('Update failed: ' + error.message);
     }
 }
 

@@ -211,28 +211,35 @@ def sync_calendar_events(
 
             matching_rule = matcher.match(event_data)
             if matching_rule:
-                # Calculate hours from start/end time
-                start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-                end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-                hours = (end_dt - start_dt).total_seconds() / 3600
+                if matching_rule.is_did_not_attend_rule:
+                    # Set did_not_attend flag on the event
+                    db.execute(
+                        "UPDATE events SET did_not_attend = TRUE WHERE id = %s",
+                        (event_db_id,),
+                    )
+                elif matching_rule.is_project_rule and matching_rule.project_id:
+                    # Calculate hours from start/end time
+                    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                    hours = (end_dt - start_dt).total_seconds() / 3600
 
-                db.execute_insert(
-                    """
-                    INSERT INTO time_entries (user_id, event_id, project_id, hours, description, classification_source, rule_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (
-                        user_id,
-                        event_db_id,
-                        matching_rule.project_id,
-                        hours,
-                        event.get("summary", ""),
-                        "rule",
-                        matching_rule.id,
-                    ),
-                )
-                events_classified += 1
+                    db.execute_insert(
+                        """
+                        INSERT INTO time_entries (user_id, event_id, project_id, hours, description, classification_source, rule_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (
+                            user_id,
+                            event_db_id,
+                            matching_rule.project_id,
+                            hours,
+                            event.get("summary", ""),
+                            "rule",
+                            matching_rule.id,
+                        ),
+                    )
+                    events_classified += 1
 
     return {
         "events_fetched": len(events),

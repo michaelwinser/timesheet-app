@@ -2,6 +2,8 @@
 
 {% block title %}Week of {{ week_start.strftime('%b %d') }} - Timesheet{% endblock %}
 
+{% block main_class %}full-width{% endblock %}
+
 {% block content %}
 <div class="week-header">
     <div class="week-nav">
@@ -33,76 +35,139 @@
             <div class="event-card {% if event.is_classified %}classified{% else %}unclassified{% endif %} {% if event.did_not_attend %}did-not-attend{% endif %}"
                  data-event-id="{{ event.id }}"
                  data-title="{{ event.title }}"
+                 data-description="{{ event.description or '' }}"
+                 data-attendees="{{ event.attendees | join(', ') if event.attendees else '' }}"
                  data-project="{{ event.project_name or '' }}"
-                 data-did-not-attend="{{ 'true' if event.did_not_attend else 'false' }}">
-
-                <!-- Did Not Attend Badge -->
-                {% if event.did_not_attend %}
-                <div class="did-not-attend-badge" title="Did not attend">✗</div>
-                {% endif %}
+                 data-did-not-attend="{{ 'true' if event.did_not_attend else 'false' }}"
+                 data-google-event-id="{{ event.google_event_id or '' }}">
 
                 <!-- Event side (unclassified view) -->
                 <div class="card-side card-event {% if event.is_classified %}hidden{% endif %}"
                      data-project-color="{{ event.project_color or '' }}">
-                    {% if event.is_classified %}
-                    <div class="project-badge" style="background-color: {{ event.project_color }}"></div>
-                    {% endif %}
-                    <div class="event-title">{{ event.title }}</div>
-                    <div class="event-time">
-                        {{ event.start_time[11:16] }} - {{ event.end_time[11:16] }}
+                    <!-- Row 1: Title with tooltip + calendar link -->
+                    <div class="card-row-title">
+                        <span class="title-text title-tooltip">
+                            {{ event.title }}
+                            <div class="tooltip-content">
+                                <strong>{{ event.title }}</strong>
+                                {% if event.my_response_status %}
+                                <div class="tooltip-row"><span class="tooltip-label">My status:</span> {{ event.my_response_status }}</div>
+                                {% endif %}
+                                {% if event.attendees %}
+                                <div class="tooltip-row"><span class="tooltip-label">Attendees:</span> {{ event.attendees | join(', ') }}</div>
+                                {% endif %}
+                                {% if event.description %}
+                                <div class="tooltip-row"><span class="tooltip-label">Description:</span> {{ event.description[:100] }}{% if event.description|length > 100 %}...{% endif %}</div>
+                                {% endif %}
+                            </div>
+                        </span>
+                        {% if event.google_event_id %}
+                        <a href="https://calendar.google.com/calendar/event?eid={{ event.google_event_id }}" class="btn-calendar-link" title="Open in Google Calendar" target="_blank">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                        </a>
+                        {% endif %}
+                    </div>
+                    <!-- Row 2: Project dropdown -->
+                    <div class="card-row-project">
+                        <select onchange="classifyEvent({{ event.id }}, this.value, this.options[this.selectedIndex].dataset.color)" {% if event.did_not_attend %}disabled{% endif %}>
+                            <option value="">Select project...</option>
+                            {% for project in projects %}
+                            <option value="{{ project.id }}" data-color="{{ project.color or '#00aa44' }}">{{ project.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <!-- Row 3: Time -->
+                    <div class="card-row-time">
+                        <span>{{ event.start_time[11:16] }} - {{ event.end_time[11:16] }}</span>
                         {% if event.my_response_status and event.my_response_status != 'accepted' %}
                         <span class="response-status" title="Response: {{ event.my_response_status }}">
                             {% if event.my_response_status == 'declined' %}✗{% elif event.my_response_status == 'tentative' %}?{% elif event.my_response_status == 'needsAction' %}•{% endif %}
                         </span>
                         {% endif %}
                     </div>
-                    {% if event.attendees %}
-                    <div class="event-attendees">
-                        {{ event.attendees | length }} attendee(s)
+                    <!-- Row 4: Actions -->
+                    <div class="card-row-actions">
+                        <label class="checkbox-dna">
+                            <input type="checkbox" {% if event.did_not_attend %}checked{% endif %} onchange="toggleDidNotAttend({{ event.id }})"> DNA
+                        </label>
+                        <button class="btn-icon" onclick="showCreateRuleModal({{ event.id }})" title="Create Rule">&#9881;</button>
+                    </div>
+                    {% if event.is_classified %}
+                    <div class="dog-ear" onclick="flipCard({{ event.id }})" title="Flip to time entry">
+                        <svg class="flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M17 1l4 4-4 4"></path>
+                            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                            <path d="M7 23l-4-4 4-4"></path>
+                            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                        </svg>
                     </div>
                     {% endif %}
-                    {% if event.meeting_link %}
-                    <a href="{{ event.meeting_link }}" target="_blank" class="event-link">Join</a>
-                    {% endif %}
-                    <div class="event-actions">
-                        <select class="project-select" onchange="classifyEvent({{ event.id }}, this.value, this.options[this.selectedIndex].dataset.color)" {% if event.did_not_attend %}disabled{% endif %}>
-                            <option value="">Classify...</option>
-                            {% for project in projects %}
-                            <option value="{{ project.id }}" data-color="{{ project.color or '#00aa44' }}">{{ project.name }}</option>
-                            {% endfor %}
-                        </select>
-                        <button class="btn-small btn-attendance {% if event.did_not_attend %}active{% endif %}"
-                                onclick="toggleDidNotAttend({{ event.id }})"
-                                title="{% if event.did_not_attend %}Mark as attended{% else %}Mark as did not attend{% endif %}">
-                            {% if event.did_not_attend %}✓{% else %}✗{% endif %}
-                        </button>
-                        <button class="btn-small btn-rule" onclick="showCreateRuleModal({{ event.id }})" title="Create Rule">⚙</button>
-                        {% if event.is_classified %}
-                        <button class="btn-small" onclick="flipCard({{ event.id }})">Flip</button>
-                        {% endif %}
-                    </div>
                 </div>
 
                 <!-- Time entry side (classified view) -->
                 <div class="card-side card-entry {% if not event.is_classified %}hidden{% endif %}"
                      data-entry-id="{{ event.entry_id }}"
                      style="background-color: {{ event.project_color }}">
-                    <div class="entry-header">
-                        <select class="project-select entry-project-select" onchange="reclassifyEvent({{ event.id }}, {{ event.entry_id }}, this.value, this.options[this.selectedIndex].dataset.color)">
+                    <!-- Row 1: Title with tooltip + calendar link -->
+                    <div class="card-row-title">
+                        <span class="title-text title-tooltip">
+                            {{ event.title }}
+                            <div class="tooltip-content">
+                                <strong>{{ event.title }}</strong>
+                                {% if event.my_response_status %}
+                                <div class="tooltip-row"><span class="tooltip-label">My status:</span> {{ event.my_response_status }}</div>
+                                {% endif %}
+                                {% if event.attendees %}
+                                <div class="tooltip-row"><span class="tooltip-label">Attendees:</span> {{ event.attendees | join(', ') }}</div>
+                                {% endif %}
+                                {% if event.description %}
+                                <div class="tooltip-row"><span class="tooltip-label">Description:</span> {{ event.description[:100] }}{% if event.description|length > 100 %}...{% endif %}</div>
+                                {% endif %}
+                            </div>
+                        </span>
+                        {% if event.google_event_id %}
+                        <a href="https://calendar.google.com/calendar/event?eid={{ event.google_event_id }}" class="btn-calendar-link" title="Open in Google Calendar" target="_blank">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                                <polyline points="15 3 21 3 21 9"></polyline>
+                                <line x1="10" y1="14" x2="21" y2="3"></line>
+                            </svg>
+                        </a>
+                        {% endif %}
+                    </div>
+                    <!-- Row 2: Project dropdown -->
+                    <div class="card-row-project">
+                        <select onchange="reclassifyEvent({{ event.id }}, {{ event.entry_id }}, this.value, this.options[this.selectedIndex].dataset.color)">
                             <option value="">— Unclassify —</option>
                             {% for project in projects %}
                             <option value="{{ project.id }}" data-color="{{ project.color or '#00aa44' }}" {% if project.id == event.project_id %}selected{% endif %}>{{ project.name }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="entry-hours">
-                        <span class="hours-value">{{ "%.2f"|format(event.hours or 0) }}</span> hrs
-                        <button class="btn-small" onclick="roundUp({{ event.id }}, {{ event.entry_id }})">+15m</button>
+                    <!-- Row 3: Duration with +15m -->
+                    <div class="card-row-time">
+                        <input type="text" class="duration-input" value="{{ '%.2f'|format(event.hours or 0) }}" data-entry-id="{{ event.entry_id }}" onchange="updateHours({{ event.entry_id }}, this.value)">
+                        <span>hrs</span>
+                        <button class="btn-round" onclick="roundUp({{ event.id }}, {{ event.entry_id }})">+15m</button>
                     </div>
-                    <div class="entry-description">{{ event.entry_description or event.title }}</div>
-                    <div class="entry-actions">
-                        <button class="btn-small btn-rule" onclick="showCreateRuleModal({{ event.id }})" title="Create Rule">⚙</button>
-                        <button class="btn-small" onclick="flipCard({{ event.id }})">Flip</button>
+                    <!-- Row 4: Actions -->
+                    <div class="card-row-actions">
+                        <label class="checkbox-dna">
+                            <input type="checkbox" {% if event.did_not_attend %}checked{% endif %} onchange="toggleDidNotAttend({{ event.id }})"> DNA
+                        </label>
+                        <button class="btn-icon" onclick="showCreateRuleModal({{ event.id }})" title="Create Rule">&#9881;</button>
+                    </div>
+                    <div class="dog-ear" onclick="flipCard({{ event.id }})" title="Flip to event">
+                        <svg class="flip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M17 1l4 4-4 4"></path>
+                            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                            <path d="M7 23l-4-4 4-4"></path>
+                            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                        </svg>
                     </div>
                 </div>
             </div>
@@ -203,6 +268,14 @@
             </div>
 
             <div class="form-row">
+                <label for="modal-target-type">Action:</label>
+                <select id="modal-target-type" onchange="toggleModalProjectSelect()">
+                    <option value="project">Classify to Project</option>
+                    <option value="did_not_attend">Mark as Did Not Attend</option>
+                </select>
+            </div>
+
+            <div class="form-row" id="modal-project-row">
                 <label for="modal-rule-project">Project:</label>
                 <select id="modal-rule-project">
                     {% for project in projects %}
@@ -294,6 +367,19 @@
     let conditionTypes = [];
 
     /**
+     * Toggle project select visibility based on target type.
+     */
+    function toggleModalProjectSelect() {
+        const targetType = document.getElementById('modal-target-type').value;
+        const projectRow = document.getElementById('modal-project-row');
+        if (targetType === 'did_not_attend') {
+            projectRow.classList.add('hidden');
+        } else {
+            projectRow.classList.remove('hidden');
+        }
+    }
+
+    /**
      * Show the create rule modal for an event.
      */
     async function showCreateRuleModal(eventId) {
@@ -301,6 +387,12 @@
         const modal = document.getElementById('rule-modal');
         const loading = document.getElementById('rule-modal-loading');
         const form = document.getElementById('rule-modal-form');
+
+        // Get the event card to check current project
+        const card = document.querySelector(`.event-card[data-event-id="${eventId}"]`);
+        const currentProjectId = card?.querySelector('.card-entry')?.dataset?.entryId
+            ? card.querySelector('.entry-project-select')?.value
+            : null;
 
         modal.classList.remove('hidden');
         loading.classList.remove('hidden');
@@ -320,6 +412,15 @@
             // Pre-fill rule name with event title
             const eventTitle = eventProps.title || 'Untitled';
             document.getElementById('modal-rule-name').value = `${eventTitle} Rule`;
+
+            // Reset target type to project and show project row
+            document.getElementById('modal-target-type').value = 'project';
+            toggleModalProjectSelect();
+
+            // Pre-select the event's current project if classified
+            if (currentProjectId) {
+                document.getElementById('modal-rule-project').value = currentProjectId;
+            }
 
             // Build the properties list with checkboxes
             const listContainer = document.getElementById('modal-properties-list');
@@ -393,6 +494,7 @@
      */
     async function saveRuleFromModal() {
         const name = document.getElementById('modal-rule-name').value.trim();
+        const targetType = document.getElementById('modal-target-type').value;
         const projectId = parseInt(document.getElementById('modal-rule-project').value);
         const priority = parseInt(document.getElementById('modal-rule-priority').value);
 
@@ -431,13 +533,20 @@
         }
 
         try {
-            await api.post('/api/rules', {
+            const ruleData = {
                 name,
-                project_id: projectId,
+                target_type: targetType,
                 priority,
                 is_enabled: true,
                 conditions
-            });
+            };
+
+            // Only include project_id for project rules
+            if (targetType === 'project') {
+                ruleData.project_id = projectId;
+            }
+
+            await api.post('/api/rules', ruleData);
 
             showToast('Rule created successfully!', 'success');
             hideRuleModal();
@@ -497,40 +606,26 @@
                 card.classList.remove('did-not-attend');
             }
 
-            // Update the button
-            const btn = card.querySelector('.btn-attendance');
-            if (newValue) {
-                btn.classList.add('active');
-                btn.textContent = '✓';
-                btn.title = 'Mark as attended';
-            } else {
-                btn.classList.remove('active');
-                btn.textContent = '✗';
-                btn.title = 'Mark as did not attend';
-            }
+            // Update all DNA checkboxes on this card (both event side and entry side)
+            const checkboxes = card.querySelectorAll('.checkbox-dna input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = newValue);
 
-            // Toggle the did-not-attend badge
-            let badge = card.querySelector('.did-not-attend-badge');
-            if (newValue && !badge) {
-                badge = document.createElement('div');
-                badge.className = 'did-not-attend-badge';
-                badge.title = 'Did not attend';
-                badge.textContent = '✗';
-                card.insertBefore(badge, card.firstChild);
-            } else if (!newValue && badge) {
-                badge.remove();
-            }
-
-            // Disable/enable the project select
-            const select = card.querySelector('.project-select');
-            if (select) {
-                select.disabled = newValue;
-            }
+            // Disable/enable the project selects
+            const selects = card.querySelectorAll('.card-row-project select');
+            selects.forEach(select => {
+                // Only disable on event side, entry side can still reclassify
+                if (select.closest('.card-event')) {
+                    select.disabled = newValue;
+                }
+            });
 
             showToast(newValue ? 'Marked as did not attend' : 'Marked as attended', 'success');
 
         } catch (error) {
             showToast('Error updating attendance: ' + error.message, 'error');
+            // Revert checkbox state on error
+            const checkboxes = card.querySelectorAll('.checkbox-dna input[type="checkbox"]');
+            checkboxes.forEach(cb => cb.checked = currentValue);
         }
     }
 </script>

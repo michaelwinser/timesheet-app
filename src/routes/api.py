@@ -220,6 +220,158 @@ async def update_project_visibility(
     return _row_to_project(row)
 
 
+@router.get("/projects/export")
+async def export_projects(user_id: int = Depends(get_user_id)):
+    """Export all projects as JSON.
+
+    Returns a JSON object with:
+    - version: Export format version
+    - exported_at: Timestamp
+    - projects: List of project objects (without internal IDs)
+    """
+    db = get_db()
+
+    rows = db.execute(
+        "SELECT * FROM projects WHERE user_id = %s ORDER BY name",
+        (user_id,)
+    )
+
+    projects = []
+    for row in rows:
+        projects.append({
+            "name": row["name"],
+            "client": row["client"],
+            "color": row["color"],
+            "is_visible": row["is_visible"],
+            "does_not_accumulate_hours": bool(row.get("does_not_accumulate_hours", False)),
+            "is_billable": bool(row.get("is_billable", False)),
+            "bill_rate": row.get("bill_rate"),
+            "is_hidden_by_default": bool(row.get("is_hidden_by_default", False)),
+            "is_archived": bool(row.get("is_archived", False)),
+        })
+
+    return {
+        "version": 1,
+        "exported_at": datetime.now().isoformat(),
+        "projects": projects,
+    }
+
+
+@router.post("/projects/import")
+async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
+    """Import projects from JSON.
+
+    Request body:
+    {
+        "version": 1,
+        "projects": [
+            {"name": "Project Name", "color": "#00aa44", ...}
+        ],
+        "mode": "merge"  // "merge" (default) or "replace"
+    }
+
+    In merge mode: Creates new projects, updates existing by name match
+    In replace mode: Deletes all existing projects first, then imports
+
+    Returns:
+    {
+        "imported": 5,
+        "updated": 2,
+        "skipped": 0
+    }
+    """
+    db = get_db()
+
+    projects = request.get("projects", [])
+    mode = request.get("mode", "merge")
+
+    if not projects:
+        raise HTTPException(status_code=400, detail="No projects to import")
+
+    if mode not in ("merge", "replace"):
+        raise HTTPException(status_code=400, detail="mode must be 'merge' or 'replace'")
+
+    imported = 0
+    updated = 0
+    skipped = 0
+
+    if mode == "replace":
+        # Delete all existing projects (cascade will handle time_entries and rules)
+        db.execute("DELETE FROM projects WHERE user_id = %s", (user_id,))
+
+    for proj in projects:
+        name = proj.get("name", "").strip()
+        if not name:
+            skipped += 1
+            continue
+
+        # Check if project exists by name
+        existing = db.execute_one(
+            "SELECT id FROM projects WHERE user_id = %s AND name = %s",
+            (user_id, name)
+        )
+
+        if existing and mode == "merge":
+            # Update existing project
+            db.execute(
+                """
+                UPDATE projects SET
+                    client = %s,
+                    color = %s,
+                    is_visible = %s,
+                    does_not_accumulate_hours = %s,
+                    is_billable = %s,
+                    bill_rate = %s,
+                    is_hidden_by_default = %s,
+                    is_archived = %s
+                WHERE id = %s AND user_id = %s
+                """,
+                (
+                    proj.get("client"),
+                    proj.get("color", "#00aa44"),
+                    proj.get("is_visible", True),
+                    proj.get("does_not_accumulate_hours", False),
+                    proj.get("is_billable", False),
+                    proj.get("bill_rate"),
+                    proj.get("is_hidden_by_default", False),
+                    proj.get("is_archived", False),
+                    existing["id"],
+                    user_id,
+                ),
+            )
+            updated += 1
+        else:
+            # Create new project
+            db.execute_insert(
+                """
+                INSERT INTO projects (user_id, name, client, color, is_visible,
+                    does_not_accumulate_hours, is_billable, bill_rate,
+                    is_hidden_by_default, is_archived)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    user_id,
+                    name,
+                    proj.get("client"),
+                    proj.get("color", "#00aa44"),
+                    proj.get("is_visible", True),
+                    proj.get("does_not_accumulate_hours", False),
+                    proj.get("is_billable", False),
+                    proj.get("bill_rate"),
+                    proj.get("is_hidden_by_default", False),
+                    proj.get("is_archived", False),
+                ),
+            )
+            imported += 1
+
+    return {
+        "imported": imported,
+        "updated": updated,
+        "skipped": skipped,
+    }
+
+
 # --- Calendar Sync ---
 
 @router.post("/sync", response_model=SyncResponse)
@@ -868,6 +1020,9 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
                         )
                         attendance_updated.append(match_info)
                 elif matching_rule.is_project_rule:
+                    # Skip project rules without a valid project_id (data integrity issue)
+                    if matching_rule.project_id is None:
+                        continue
                     # Only classify if event doesn't have a time entry yet
                     has_entry = db.execute_one(
                         "SELECT id FROM time_entries WHERE event_id = %s",

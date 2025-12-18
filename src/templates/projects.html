@@ -128,9 +128,33 @@
 
 <div class="import-export">
     <h2>Import / Export</h2>
-    <a href="/api/projects/export" class="btn btn-secondary">Export CSV</a>
-    <input type="file" id="import-file" accept=".csv" style="display: none" onchange="importProjects(this)">
-    <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">Import CSV</button>
+    <p class="hint">Export your projects to a JSON file for backup, or import projects from a previous export.</p>
+    <div class="import-export-actions">
+        <button class="btn btn-secondary" onclick="exportProjects()">Export JSON</button>
+        <input type="file" id="import-file" accept=".json" style="display: none" onchange="handleImportFile(this)">
+        <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">Import JSON</button>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div id="import-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h2>Import Projects</h2>
+        <div id="import-preview"></div>
+        <div class="form-row">
+            <label>Import Mode:</label>
+            <select id="import-mode">
+                <option value="merge">Merge (update existing, add new)</option>
+                <option value="replace">Replace (delete all, then import)</option>
+            </select>
+        </div>
+        <p class="hint" id="merge-hint">Merge mode will update projects with matching names and create new projects for others.</p>
+        <p class="hint hidden" id="replace-hint" style="color: #dc3545;">Replace mode will DELETE all existing projects before importing!</p>
+        <div class="form-actions">
+            <button class="btn btn-primary" onclick="doImport()">Import</button>
+            <button class="btn btn-secondary" onclick="hideImportModal()">Cancel</button>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -291,9 +315,129 @@ async function saveProject(projectId) {
     }
 }
 
-function importProjects(input) {
-    // TODO: CSV import
-    alert('Import not yet implemented');
+// --- Import / Export ---
+
+let pendingImportData = null;
+
+async function exportProjects() {
+    try {
+        const data = await api.get('/api/projects/export');
+
+        // Create and download JSON file
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `projects-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast(`Exported ${data.projects.length} projects`, 'success');
+    } catch (error) {
+        showToast('Export failed: ' + error.message, 'error');
+    }
 }
+
+function handleImportFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+
+            if (!data.projects || !Array.isArray(data.projects)) {
+                throw new Error('Invalid format: missing projects array');
+            }
+
+            pendingImportData = data;
+            showImportModal(data);
+        } catch (error) {
+            showToast('Invalid JSON file: ' + error.message, 'error');
+        }
+    };
+    reader.readAsText(file);
+
+    // Reset input so same file can be selected again
+    input.value = '';
+}
+
+function showImportModal(data) {
+    const preview = document.getElementById('import-preview');
+    const projectNames = data.projects.map(p => p.name).slice(0, 10);
+    const moreCount = data.projects.length - 10;
+
+    preview.innerHTML = `
+        <p><strong>${data.projects.length}</strong> project(s) found:</p>
+        <ul class="import-preview-list">
+            ${projectNames.map(n => `<li>${escapeHtml(n)}</li>`).join('')}
+            ${moreCount > 0 ? `<li>...and ${moreCount} more</li>` : ''}
+        </ul>
+    `;
+
+    document.getElementById('import-modal').classList.remove('hidden');
+    document.getElementById('import-mode').value = 'merge';
+    updateModeHints();
+
+    // Add listener for mode changes
+    document.getElementById('import-mode').onchange = updateModeHints;
+}
+
+function updateModeHints() {
+    const mode = document.getElementById('import-mode').value;
+    document.getElementById('merge-hint').classList.toggle('hidden', mode !== 'merge');
+    document.getElementById('replace-hint').classList.toggle('hidden', mode !== 'replace');
+}
+
+function hideImportModal() {
+    document.getElementById('import-modal').classList.add('hidden');
+    pendingImportData = null;
+}
+
+async function doImport() {
+    if (!pendingImportData) return;
+
+    const mode = document.getElementById('import-mode').value;
+
+    if (mode === 'replace') {
+        if (!confirm('This will DELETE all existing projects before importing. Are you sure?')) {
+            return;
+        }
+    }
+
+    try {
+        const result = await api.post('/api/projects/import', {
+            ...pendingImportData,
+            mode: mode
+        });
+
+        const messages = [];
+        if (result.imported > 0) messages.push(`${result.imported} imported`);
+        if (result.updated > 0) messages.push(`${result.updated} updated`);
+        if (result.skipped > 0) messages.push(`${result.skipped} skipped`);
+
+        showToast(messages.join(', ') || 'No changes made', 'success');
+        hideImportModal();
+        location.reload();
+    } catch (error) {
+        showToast('Import failed: ' + error.message, 'error');
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Close modal when clicking outside
+document.getElementById('import-modal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        hideImportModal();
+    }
+});
 </script>
 {% endblock %}

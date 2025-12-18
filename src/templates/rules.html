@@ -22,6 +22,14 @@
     </div>
 
     <div class="form-row">
+        <label for="rule-target-type">Action:</label>
+        <select id="rule-target-type" onchange="toggleProjectSelect()">
+            <option value="project">Classify to Project</option>
+            <option value="did_not_attend">Mark as Did Not Attend</option>
+        </select>
+    </div>
+
+    <div class="form-row" id="project-row">
         <label for="rule-project">Project:</label>
         <select id="rule-project">
             {% for project in projects %}
@@ -58,11 +66,15 @@
 <!-- Rules List -->
 <div class="rules-list">
     {% for rule in rules %}
-    <div class="rule-card" data-rule-id="{{ rule.id }}">
+    <div class="rule-card" data-rule-id="{{ rule.id }}" data-target-type="{{ rule.target_type or 'project' }}">
         <div class="rule-header">
             <div class="rule-info">
                 <span class="rule-name">{{ rule.name }}</span>
+                {% if rule.target_type == 'did_not_attend' %}
+                <span class="rule-target did-not-attend">Did Not Attend</span>
+                {% else %}
                 <span class="rule-project" style="background-color: {{ rule.project_color or '#00aa44' }}">{{ rule.project_name }}</span>
+                {% endif %}
                 <span class="rule-priority">Priority: {{ rule.priority }}</span>
                 {% if not rule.is_enabled %}
                 <span class="rule-disabled">Disabled</span>
@@ -122,10 +134,22 @@ function showAddRule() {
     document.getElementById('rule-form-title').textContent = 'Add Rule';
     document.getElementById('rule-id').value = '';
     document.getElementById('rule-name').value = '';
+    document.getElementById('rule-target-type').value = 'project';
     document.getElementById('rule-priority').value = '50';
     document.getElementById('rule-enabled').checked = true;
     document.getElementById('conditions-list').innerHTML = '';
+    toggleProjectSelect();
     addCondition(); // Start with one empty condition
+}
+
+function toggleProjectSelect() {
+    const targetType = document.getElementById('rule-target-type').value;
+    const projectRow = document.getElementById('project-row');
+    if (targetType === 'did_not_attend') {
+        projectRow.classList.add('hidden');
+    } else {
+        projectRow.classList.remove('hidden');
+    }
 }
 
 function hideRuleForm() {
@@ -139,7 +163,11 @@ async function editRule(ruleId) {
     document.getElementById('rule-form-title').textContent = 'Edit Rule';
     document.getElementById('rule-id').value = rule.id;
     document.getElementById('rule-name').value = rule.name;
-    document.getElementById('rule-project').value = rule.project_id;
+    document.getElementById('rule-target-type').value = rule.target_type || 'project';
+    toggleProjectSelect();
+    if (rule.project_id) {
+        document.getElementById('rule-project').value = rule.project_id;
+    }
     document.getElementById('rule-priority').value = rule.priority;
     document.getElementById('rule-enabled').checked = rule.is_enabled;
 
@@ -196,6 +224,7 @@ function updateConditionTypes(select) {
 async function saveRule() {
     const ruleId = document.getElementById('rule-id').value;
     const name = document.getElementById('rule-name').value.trim();
+    const targetType = document.getElementById('rule-target-type').value;
     const projectId = parseInt(document.getElementById('rule-project').value);
     const priority = parseInt(document.getElementById('rule-priority').value);
     const isEnabled = document.getElementById('rule-enabled').checked;
@@ -229,11 +258,16 @@ async function saveRule() {
 
     const data = {
         name,
-        project_id: projectId,
+        target_type: targetType,
         priority,
         is_enabled: isEnabled,
         conditions
     };
+
+    // Only include project_id for project rules
+    if (targetType === 'project') {
+        data.project_id = projectId;
+    }
 
     try {
         if (ruleId) {
@@ -274,10 +308,17 @@ async function applyRules() {
 
     try {
         const result = await api.post('/api/rules/apply', {});
-        if (result.classified === 0) {
-            resultDiv.innerHTML = 'No unclassified events matched any rules.';
+        const parts = [];
+        if (result.classified > 0) {
+            parts.push(`Classified ${result.classified} event(s)`);
+        }
+        if (result.attendance_updated > 0) {
+            parts.push(`Marked ${result.attendance_updated} as did not attend`);
+        }
+        if (parts.length === 0) {
+            resultDiv.innerHTML = 'No events matched any rules.';
         } else {
-            resultDiv.innerHTML = `Classified ${result.classified} event(s). <a href="/">View calendar</a>`;
+            resultDiv.innerHTML = `${parts.join('. ')}. <a href="/">View calendar</a>`;
         }
     } catch (error) {
         resultDiv.innerHTML = 'Error applying rules: ' + error.message;
