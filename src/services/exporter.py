@@ -49,7 +49,8 @@ def export_harvest_csv(start_date: str, end_date: str, user_id: int) -> str:
 
     for row in rows:
         # Format date as MM/DD/YYYY for Harvest
-        event_date = datetime.fromisoformat(row["start_time"])
+        start_time = row["start_time"]
+        event_date = start_time if isinstance(start_time, datetime) else datetime.fromisoformat(start_time)
         date_str = event_date.strftime("%m/%d/%Y")
 
         writer.writerow([

@@ -457,8 +457,8 @@ async def bulk_classify(request: BulkClassifyRequest, user_id: int = Depends(get
             continue
 
         # Calculate hours from event duration
-        start = datetime.fromisoformat(event["start_time"])
-        end = datetime.fromisoformat(event["end_time"])
+        start = event["start_time"] if isinstance(event["start_time"], datetime) else datetime.fromisoformat(event["start_time"])
+        end = event["end_time"] if isinstance(event["end_time"], datetime) else datetime.fromisoformat(event["end_time"])
         hours = (end - start).total_seconds() / 3600
 
         db.execute(
@@ -779,8 +779,10 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
                 matched.append(match_info)
             else:
                 # Calculate hours from event duration
-                start = datetime.fromisoformat(event["start_time"].replace("Z", "+00:00"))
-                end = datetime.fromisoformat(event["end_time"].replace("Z", "+00:00"))
+                start_time = event["start_time"]
+                end_time = event["end_time"]
+                start = start_time if isinstance(start_time, datetime) else datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                end = end_time if isinstance(end_time, datetime) else datetime.fromisoformat(end_time.replace("Z", "+00:00"))
                 hours = (end - start).total_seconds() / 3600
 
                 db.execute_insert(

@@ -77,16 +77,21 @@ async def week_view(request: Request, date: str):
         day_date = monday + timedelta(days=i)
         day_events = []
         for row in rows:
-            event_date = datetime.fromisoformat(row["start_time"]).date()
+            start_time = row["start_time"]
+            event_date = start_time.date() if isinstance(start_time, datetime) else datetime.fromisoformat(start_time).date()
             if event_date == day_date:
                 attendees = json.loads(row["attendees"]) if row["attendees"] else []
+                # Convert datetime objects to ISO strings for template
+                start_str = start_time.isoformat() if isinstance(start_time, datetime) else start_time
+                end_time_val = row["end_time"]
+                end_str = end_time_val.isoformat() if isinstance(end_time_val, datetime) else end_time_val
                 day_events.append({
                     "id": row["id"],
                     "google_event_id": row["google_event_id"],
                     "title": row["title"] or "Untitled",
                     "description": row["description"],
-                    "start_time": row["start_time"],
-                    "end_time": row["end_time"],
+                    "start_time": start_str,
+                    "end_time": end_str,
                     "attendees": attendees,
                     "meeting_link": row["meeting_link"],
                     "is_classified": row["entry_id"] is not None,
