@@ -1,10 +1,10 @@
-# Makefile for timesheet-app Docker operations
+# Makefile for timesheet-app
 #
 # Usage:
+#   make dev         - Run locally (no Docker)
+#   make run         - Start with Docker Compose
 #   make build       - Build Docker image
 #   make push        - Push Docker image to DockerHub
-#   make build-push  - Build and push in one command
-#   make login       - Login to DockerHub
 
 # Docker image configuration
 IMAGE_NAME = michaelwinser/timesheet-app
@@ -18,34 +18,46 @@ PLATFORM ?= linux/amd64
 
 .PHONY: help
 help:
-	@echo "Timesheet App Docker Build Commands"
+	@echo "Timesheet App Commands"
 	@echo ""
+	@echo "Local Development:"
+	@echo "  make install            Install Python dependencies"
+	@echo "  make dev                Run app locally with uvicorn (requires PostgreSQL)"
+	@echo "  make db-up              Start PostgreSQL container only"
+	@echo "  make psql               Connect to PostgreSQL shell"
+	@echo "  make db-reset           Reset database (WARNING: deletes all data)"
+	@echo ""
+	@echo "Docker Compose:"
+	@echo "  make run                Start all services (app + postgres)"
+	@echo "  make stop               Stop all services"
+	@echo "  make ps                 Show container status"
+	@echo "  make logs               Follow app logs"
+	@echo "  make logs-all           Follow all service logs"
+	@echo "  make shell              Shell into app container"
+	@echo "  make restart            Restart services"
+	@echo "  make rebuild            Rebuild and restart (no cache)"
+	@echo "  make clean              Stop and remove containers (keeps data)"
+	@echo "  make clean-all          Stop and remove containers AND volumes (DELETES DATA)"
+	@echo ""
+	@echo "Docker Build:"
 	@echo "  make build              Build for specific platform (default: amd64)"
 	@echo "  make build-local        Build for current machine architecture"
-	@echo "  make build-multiarch    Build for both amd64 and arm64 (RECOMMENDED for publishing)"
-	@echo "  make buildx-setup       Set up Docker buildx (run once, or auto-runs with build-multiarch)"
+	@echo "  make build-multiarch    Build for amd64 and arm64 (RECOMMENDED for publishing)"
 	@echo "  make push               Push Docker image to DockerHub"
 	@echo "  make login              Login to DockerHub"
-	@echo "  make tag                Tag image with custom version"
-	@echo "  make run                Start container with docker-compose"
-	@echo "  make test               Run health check on container"
+	@echo "  make tag TAG=v1.0.0     Tag and push with custom version"
+	@echo ""
+	@echo "Production:"
+	@echo "  make run-prod           Start with docker-compose.prod.yaml"
+	@echo "  make stop-prod          Stop production services"
+	@echo "  make logs-prod          Follow production logs"
+	@echo ""
+	@echo "Testing:"
+	@echo "  make test               Run health check"
 	@echo ""
 	@echo "Options:"
 	@echo "  VERSION=<tag>           Specify version tag (default: latest)"
 	@echo "  PLATFORM=<arch>         Specify platform (default: linux/amd64)"
-	@echo ""
-	@echo "Publishing Workflow (Apple Silicon → TrueNAS Intel/AMD):"
-	@echo "  1. make login                              # Login to DockerHub"
-	@echo "  2. make build-multiarch VERSION=v1.0.0     # Build for both architectures"
-	@echo "     (This builds and pushes automatically)"
-	@echo ""
-	@echo "Local Development on Apple Silicon:"
-	@echo "  make build-local        # Build for arm64 (faster, for local testing)"
-	@echo "  make run                # Run locally"
-	@echo ""
-	@echo "Other Examples:"
-	@echo "  make build VERSION=v1.0.0 PLATFORM=linux/amd64"
-	@echo "  make tag TAG=v1.0.0"
 
 .PHONY: build
 build:
@@ -154,9 +166,17 @@ test:
 
 .PHONY: clean
 clean:
-	@echo "Cleaning up Docker resources..."
+	@echo "Stopping and removing containers (keeping volumes)..."
+	docker-compose down
+	@echo "✓ Cleanup complete (data preserved)"
+
+.PHONY: clean-all
+clean-all:
+	@echo "WARNING: This will delete all data including the PostgreSQL database!"
+	@echo "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
+	@sleep 5
 	docker-compose down -v
-	@echo "✓ Cleanup complete"
+	@echo "✓ Full cleanup complete (volumes removed)"
 
 # Development helpers
 .PHONY: rebuild
@@ -172,3 +192,82 @@ inspect:
 	@echo "Image details for $(IMAGE_NAME):$(VERSION):"
 	@docker inspect $(IMAGE_NAME):$(VERSION) | grep -A 5 "Architecture"
 	@docker images $(IMAGE_NAME)
+
+# =============================================================================
+# Local Development (no Docker for app)
+# =============================================================================
+
+.PHONY: install
+install:
+	pip install -r requirements.txt
+	@echo "✓ Dependencies installed"
+
+.PHONY: dev
+dev:
+	@echo "Starting app locally (requires PostgreSQL at localhost:5432)..."
+	@echo "Tip: Run 'make db-up' first to start PostgreSQL in Docker"
+	@echo ""
+	cd src && uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# =============================================================================
+# Database Operations
+# =============================================================================
+
+.PHONY: db-up
+db-up:
+	@echo "Starting PostgreSQL container..."
+	docker-compose up -d postgres
+	@echo "Waiting for PostgreSQL to be ready..."
+	@sleep 3
+	@docker-compose exec postgres pg_isready -U timesheet || (echo "✗ PostgreSQL not ready" && exit 1)
+	@echo "✓ PostgreSQL is ready at localhost:5432"
+
+.PHONY: psql
+psql:
+	docker-compose exec postgres psql -U timesheet -d timesheet
+
+.PHONY: db-reset
+db-reset:
+	@echo "WARNING: This will delete all database data!"
+	@echo "Press Ctrl+C to cancel, or wait 5 seconds to continue..."
+	@sleep 5
+	docker-compose down -v postgres
+	docker-compose up -d postgres
+	@sleep 3
+	@echo "✓ Database reset complete"
+
+# =============================================================================
+# Additional Docker Compose Commands
+# =============================================================================
+
+.PHONY: ps
+ps:
+	docker-compose ps
+
+.PHONY: logs-all
+logs-all:
+	docker-compose logs -f
+
+.PHONY: restart
+restart:
+	docker-compose restart
+	@echo "✓ Services restarted"
+
+# =============================================================================
+# Production Deployment
+# =============================================================================
+
+.PHONY: run-prod
+run-prod:
+	@echo "Starting production services..."
+	docker-compose -f docker-compose.prod.yaml up -d
+	@echo "✓ Production services started"
+
+.PHONY: stop-prod
+stop-prod:
+	docker-compose -f docker-compose.prod.yaml down
+	@echo "✓ Production services stopped"
+
+.PHONY: logs-prod
+logs-prod:
+	docker-compose -f docker-compose.prod.yaml logs -f
