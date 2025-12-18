@@ -10,9 +10,8 @@ An MCP (Model Context Protocol) server that exposes timesheet functionality to A
 
 ## Requirements
 
-- Python 3.11+
-- PostgreSQL database
-- MCP Python SDK (`mcp>=1.0.0`)
+- Docker with the timesheet-app container running, OR
+- Python 3.11+ with PostgreSQL database
 
 ## Claude Desktop Configuration
 
@@ -20,6 +19,35 @@ Add the following to your Claude Desktop configuration file:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+### Option 1: Docker (Recommended)
+
+Use `docker exec` to run the MCP server inside the already-running container:
+
+```json
+{
+  "mcpServers": {
+    "timesheet": {
+      "command": "docker",
+      "args": [
+        "exec", "-i",
+        "-e", "TIMESHEET_USER_EMAIL=your-email@example.com",
+        "timesheet-app",
+        "python", "-m", "mcp_server"
+      ]
+    }
+  }
+}
+```
+
+This approach:
+- Uses the existing Docker container (must be running)
+- Shares the same database connection as the web app
+- No additional configuration needed for DATABASE_URL
+
+### Option 2: Local Python
+
+Run directly with a local Python environment:
 
 ```json
 {
@@ -39,16 +67,18 @@ Add the following to your Claude Desktop configuration file:
 
 ### Configuration Notes
 
-1. **command**: Path to the Python interpreter in your virtual environment
-2. **cwd**: Must be the `src` directory of the timesheet app
-3. **DATABASE_URL**: PostgreSQL connection string
-4. **TIMESHEET_USER_EMAIL**: Your email address (must exist in the database)
+- **TIMESHEET_USER_EMAIL**: Your email address (must exist in the database)
+- **DATABASE_URL**: Only needed for Option 2 (container already has this)
 
 ## Running Manually
 
 For testing, you can run the server directly:
 
 ```bash
+# Via Docker (container must be running)
+docker exec -i -e TIMESHEET_USER_EMAIL="..." timesheet-app python -m mcp_server
+
+# Via local Python
 cd /path/to/timesheet-app/src
 DATABASE_URL="postgresql://..." TIMESHEET_USER_EMAIL="..." python -m mcp_server
 ```
