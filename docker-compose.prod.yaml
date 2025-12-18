@@ -1,14 +1,44 @@
 # Docker Compose configuration for TrueNAS production deployment
 #
 # Usage:
-#   1. Copy this file to your TrueNAS system
-#   2. Create a .env file with your production credentials
-#   3. Create the data directories:
-#      mkdir -p /mnt/pool/apps/timesheet/data
-#      mkdir -p /mnt/pool/apps/timesheet/postgres
-#   4. Deploy: docker-compose -f docker-compose.prod.yaml up -d
+#   1. Create deployment directory on TrueNAS:
+#      mkdir -p /mnt/pool/apps/timesheet
 #
-# Note: You can also use TrueNAS Scale's Custom App UI instead of docker-compose
+#   2. Copy this file to TrueNAS:
+#      scp docker-compose.prod.yaml truenas:/mnt/pool/apps/timesheet/docker-compose.yaml
+#
+#   3. Create .env file on TrueNAS with your secrets:
+#      ssh truenas
+#      cd /mnt/pool/apps/timesheet
+#      cat > .env << 'EOF'
+#      # Paths (adjust to your TrueNAS pool)
+#      DATA_PATH=/mnt/pool/apps/timesheet/data
+#      POSTGRES_PATH=/mnt/pool/apps/timesheet/postgres
+#
+#      # PostgreSQL
+#      POSTGRES_USER=timesheet
+#      POSTGRES_PASSWORD=<generate-secure-password>
+#      POSTGRES_DB=timesheet
+#
+#      # Google OAuth (from Google Cloud Console)
+#      GOOGLE_CLIENT_ID=<your-client-id>
+#      GOOGLE_CLIENT_SECRET=<your-client-secret>
+#      OAUTH_REDIRECT_URI=http://<truenas-ip>:8000/auth/callback
+#
+#      # App secrets (generate with: python -c "import secrets; print(secrets.token_hex(32))")
+#      SECRET_KEY=<generate-random-key>
+#
+#      # Optional: Anthropic API for LLM features
+#      ANTHROPIC_API_KEY=
+#      EOF
+#
+#   4. Create data directories:
+#      mkdir -p ${DATA_PATH} ${POSTGRES_PATH}
+#
+#   5. Deploy:
+#      docker-compose up -d
+#
+# The .env file is automatically read by docker-compose from the same directory.
 
 version: "3.8"
 
@@ -22,10 +52,11 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-timesheet}
     volumes:
       # Host path volume for PostgreSQL data persistence
-      # Replace with your actual TrueNAS path
-      - /mnt/pool/apps/timesheet/postgres:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      # Set POSTGRES_PATH in .env file
+      - ${POSTGRES_PATH}:/var/lib/postgresql/data
+    # Don't expose PostgreSQL externally in production
+    # ports:
+    #   - "5432:5432"
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timesheet}"]
@@ -97,12 +128,9 @@ services:
 
     volumes:
       # Host path volume for data persistence
-      # Replace /mnt/pool/apps/timesheet/data with your actual TrueNAS path
+      # Set DATA_PATH in .env file
       # This allows easy backups via TrueNAS snapshots
-      - /mnt/pool/apps/timesheet/data:/data
-
-      # Alternative: Use named volume (less flexible for backups)
-      # - timesheet-prod-data:/data
+      - ${DATA_PATH}:/data
 
     # Restart policy - always restart unless explicitly stopped
     restart: unless-stopped
@@ -125,9 +153,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-# Optional: Named volume configuration
-# Uncomment if using named volume instead of host path
-# volumes:
-#   timesheet-prod-data:
-#     driver: local
