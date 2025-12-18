@@ -28,8 +28,7 @@ WORKDIR /app
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /data && \
-    chown -R appuser:appuser /app /data
+    chown -R appuser:appuser /app
 
 # Copy Python packages from builder stage to a location accessible by appuser
 COPY --from=builder --chown=appuser:appuser /root/.local /home/appuser/.local
@@ -46,12 +45,6 @@ ENV PATH=/home/appuser/.local/bin:$PATH
 
 # Disable Python output buffering (important for Docker logs)
 ENV PYTHONUNBUFFERED=1
-
-# Volume mount point for persistent data
-VOLUME /data
-
-# Default environment variables (can be overridden)
-ENV DATABASE_PATH=/data/timesheet.db
 
 # Expose application port
 EXPOSE 8000
