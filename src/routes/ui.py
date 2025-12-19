@@ -255,6 +255,13 @@ async def project_detail_page(request: Request, project_id: int):
     project["fingerprint_emails"] = json.loads(project.get("fingerprint_emails") or "[]")
     project["fingerprint_keywords"] = json.loads(project.get("fingerprint_keywords") or "[]")
 
+    # Generate the rule preview from fingerprints
+    generated_rule = _build_fingerprint_query(
+        project["fingerprint_domains"],
+        project["fingerprint_emails"],
+        project["fingerprint_keywords"],
+    )
+
     # Get project statistics
     stats = db.execute_one(
         """
@@ -287,8 +294,36 @@ async def project_detail_page(request: Request, project_id: int):
             "project": project,
             "stats": dict(stats) if stats else {"week_hours": 0, "month_hours": 0, "total_hours": 0},
             "rules": rules,
+            "generated_rule": generated_rule,
         },
     )
+
+
+def _build_fingerprint_query(domains: list, emails: list, keywords: list) -> str:
+    """Build a query string from fingerprint patterns."""
+    parts = []
+
+    if domains:
+        if len(domains) == 1:
+            parts.append(f"domain:{domains[0]}")
+        else:
+            parts.append("(" + " OR ".join(f"domain:{d}" for d in domains) + ")")
+
+    if emails:
+        if len(emails) == 1:
+            parts.append(f"email:{emails[0]}")
+        else:
+            parts.append("(" + " OR ".join(f"email:{e}" for e in emails) + ")")
+
+    if keywords:
+        if len(keywords) == 1:
+            kw = keywords[0]
+            parts.append(f'title:"{kw}"' if " " in kw else f"title:{kw}")
+        else:
+            kw_parts = [f'title:"{k}"' if " " in k else f"title:{k}" for k in keywords]
+            parts.append("(" + " OR ".join(kw_parts) + ")")
+
+    return " OR ".join(parts) if parts else ""
 
 
 @router.get("/rules", response_class=HTMLResponse)

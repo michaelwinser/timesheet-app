@@ -1565,6 +1565,37 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
             rule["_parsed_query"] = None
         parsed_rules.append(rule)
 
+    # Load project fingerprints for implicit matching
+    projects = db.execute(
+        """
+        SELECT id, name, fingerprint_domains, fingerprint_emails, fingerprint_keywords
+        FROM projects
+        WHERE user_id = %s AND is_archived = FALSE
+        """,
+        (user_id,)
+    )
+    fingerprint_matchers = []
+    for proj in projects:
+        domains = json.loads(proj.get("fingerprint_domains") or "[]")
+        emails = json.loads(proj.get("fingerprint_emails") or "[]")
+        keywords = json.loads(proj.get("fingerprint_keywords") or "[]")
+
+        if domains or emails or keywords:
+            # Build query from fingerprint
+            fp_query = _build_fingerprint_query_for_apply(domains, emails, keywords)
+            if fp_query:
+                try:
+                    parsed = parse_query(fp_query)
+                    fingerprint_matchers.append({
+                        "project_id": proj["id"],
+                        "project_name": proj["name"],
+                        "_parsed_query": parsed,
+                        "name": f"Fingerprint: {proj['name']}",
+                        "target_type": "project",
+                    })
+                except ParseError:
+                    pass
+
     # Also load legacy condition-based rules for backward compatibility
     legacy_rules = load_rules_with_conditions(db, user_id, enabled_only=True)
     legacy_matcher = RuleMatcher(legacy_rules)
@@ -1584,6 +1615,14 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
                 evaluator = QueryEvaluator(event_dict)
                 if evaluator.evaluate(rule["_parsed_query"]):
                     matching_rule = rule
+                    break
+
+        # Next try fingerprint patterns
+        if not matching_rule:
+            for fp_matcher in fingerprint_matchers:
+                evaluator = QueryEvaluator(event_dict)
+                if evaluator.evaluate(fp_matcher["_parsed_query"]):
+                    matching_rule = fp_matcher
                     break
 
         # Fall back to legacy condition-based rules
@@ -1671,6 +1710,31 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
         "entries": classified,
         "did_not_attend_events": attendance_updated,
     }
+
+
+def _build_fingerprint_query_for_apply(domains: list, emails: list, keywords: list) -> str:
+    """Build a query string from fingerprint patterns for rule application.
+
+    Creates an OR query that matches any of the patterns.
+    """
+    parts = []
+
+    for d in domains:
+        parts.append(f"domain:{d}")
+
+    for e in emails:
+        parts.append(f"email:{e}")
+
+    for k in keywords:
+        parts.append(f'title:"{k}"' if " " in k else f"title:{k}")
+
+    if not parts:
+        return ""
+
+    if len(parts) == 1:
+        return parts[0]
+
+    return "(" + " OR ".join(parts) + ")"
 
 
 # =============================================================================
