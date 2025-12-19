@@ -231,6 +231,66 @@ async def projects_page(request: Request):
     )
 
 
+@router.get("/projects/{project_id}", response_class=HTMLResponse)
+async def project_detail_page(request: Request, project_id: int):
+    """Project detail page with fingerprint settings."""
+    user_id = get_user_id(request)
+
+    db = get_db()
+
+    # Get the project
+    project = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
+
+    if not project:
+        return RedirectResponse(url="/projects", status_code=302)
+
+    project = dict(project)
+
+    # Parse fingerprint JSON fields
+    import json
+    project["fingerprint_domains"] = json.loads(project.get("fingerprint_domains") or "[]")
+    project["fingerprint_emails"] = json.loads(project.get("fingerprint_emails") or "[]")
+    project["fingerprint_keywords"] = json.loads(project.get("fingerprint_keywords") or "[]")
+
+    # Get project statistics
+    stats = db.execute_one(
+        """
+        SELECT
+            COALESCE(SUM(CASE WHEN DATE(e.start_time) >= DATE_TRUNC('week', CURRENT_DATE) THEN te.hours ELSE 0 END), 0) as week_hours,
+            COALESCE(SUM(CASE WHEN DATE(e.start_time) >= DATE_TRUNC('month', CURRENT_DATE) THEN te.hours ELSE 0 END), 0) as month_hours,
+            COALESCE(SUM(te.hours), 0) as total_hours
+        FROM time_entries te
+        JOIN events e ON te.event_id = e.id
+        WHERE te.project_id = %s AND te.user_id = %s
+        """,
+        (project_id, user_id)
+    )
+
+    # Get custom rules for this project
+    rules = db.execute(
+        """
+        SELECT * FROM classification_rules
+        WHERE user_id = %s AND project_id = %s AND is_generated = FALSE
+        ORDER BY display_order, priority DESC
+        """,
+        (user_id, project_id)
+    )
+    rules = [dict(r) for r in rules]
+
+    return templates.TemplateResponse(
+        "project_detail.html",
+        {
+            "request": request,
+            "project": project,
+            "stats": dict(stats) if stats else {"week_hours": 0, "month_hours": 0, "total_hours": 0},
+            "rules": rules,
+        },
+    )
+
+
 @router.get("/rules", response_class=HTMLResponse)
 async def rules_page(request: Request):
     """Rule management page."""

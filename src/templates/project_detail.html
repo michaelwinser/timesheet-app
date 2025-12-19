@@ -1,0 +1,433 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }} - Projects - Timesheet{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <a href="/projects" class="back-link">&larr; Back to Projects</a>
+</div>
+
+<div class="project-detail">
+    <div class="project-header">
+        <div class="project-color-badge" style="background-color: {{ project.color or '#00aa44' }}"></div>
+        <h1>{{ project.name }}</h1>
+        <div class="project-badges">
+            {% if project.does_not_accumulate_hours %}<span class="badge badge-muted">No hrs</span>{% endif %}
+            {% if project.is_billable %}<span class="badge badge-success">${{ project.bill_rate or '' }}</span>{% endif %}
+            {% if project.is_hidden_by_default %}<span class="badge badge-warning">Hidden</span>{% endif %}
+            {% if project.is_archived %}<span class="badge badge-danger">Archived</span>{% endif %}
+        </div>
+    </div>
+
+    <!-- Basic Settings -->
+    <section class="project-section">
+        <h2>Settings</h2>
+        <form id="project-settings-form" class="settings-form">
+            <div class="form-row">
+                <label for="project-name">Name:</label>
+                <input type="text" id="project-name" value="{{ project.name }}" required>
+            </div>
+            <div class="form-row">
+                <label for="project-client">Client:</label>
+                <input type="text" id="project-client" value="{{ project.client or '' }}" placeholder="(optional)">
+            </div>
+            <div class="form-row">
+                <label for="project-short-code">Short Code:</label>
+                <input type="text" id="project-short-code" value="{{ project.short_code or '' }}" placeholder="ABC" maxlength="10" style="width: 100px;">
+            </div>
+            <div class="form-row">
+                <label for="project-color">Color:</label>
+                <input type="color" id="project-color" value="{{ project.color or '#00aa44' }}">
+            </div>
+            <div class="form-row checkbox-row">
+                <label><input type="checkbox" id="project-no-hours" {% if project.does_not_accumulate_hours %}checked{% endif %}> No hours (Noise)</label>
+                <label><input type="checkbox" id="project-billable" {% if project.is_billable %}checked{% endif %}> Billable</label>
+                <label><input type="checkbox" id="project-hidden" {% if project.is_hidden_by_default %}checked{% endif %}> Hidden by default</label>
+                <label><input type="checkbox" id="project-archived" {% if project.is_archived %}checked{% endif %}> Archived</label>
+            </div>
+            <div class="form-row" id="bill-rate-row" {% if not project.is_billable %}style="display: none"{% endif %}>
+                <label for="project-bill-rate">Bill Rate:</label>
+                <span>$</span>
+                <input type="number" id="project-bill-rate" value="{{ project.bill_rate or '' }}" step="0.01" min="0" placeholder="0.00" style="width: 100px;">
+                <span>/hr</span>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+            </div>
+        </form>
+    </section>
+
+    <!-- Matching Patterns (Fingerprint) -->
+    <section class="project-section">
+        <h2>Matching Patterns</h2>
+        <p class="hint">Events matching these patterns will be automatically classified to this project.</p>
+
+        <div class="fingerprint-group">
+            <h3>Domains</h3>
+            <p class="hint">Match attendees from these email domains</p>
+            <div id="fingerprint-domains" class="tag-list">
+                {% for domain in project.fingerprint_domains %}
+                <span class="tag" data-value="{{ domain }}">{{ domain }} <button type="button" class="tag-remove" onclick="removeTag('domains', '{{ domain }}')">&times;</button></span>
+                {% endfor %}
+            </div>
+            <div class="tag-input-row">
+                <input type="text" id="new-domain" placeholder="example.com" onkeypress="handleTagKeypress(event, 'domains')">
+                <button type="button" class="btn btn-small" onclick="addTag('domains')">Add</button>
+            </div>
+        </div>
+
+        <div class="fingerprint-group">
+            <h3>Email Addresses</h3>
+            <p class="hint">Match specific attendee email addresses</p>
+            <div id="fingerprint-emails" class="tag-list">
+                {% for email in project.fingerprint_emails %}
+                <span class="tag" data-value="{{ email }}">{{ email }} <button type="button" class="tag-remove" onclick="removeTag('emails', '{{ email }}')">&times;</button></span>
+                {% endfor %}
+            </div>
+            <div class="tag-input-row">
+                <input type="text" id="new-email" placeholder="user@example.com" onkeypress="handleTagKeypress(event, 'emails')">
+                <button type="button" class="btn btn-small" onclick="addTag('emails')">Add</button>
+            </div>
+        </div>
+
+        <div class="fingerprint-group">
+            <h3>Title Keywords</h3>
+            <p class="hint">Match events with these words in the title</p>
+            <div id="fingerprint-keywords" class="tag-list">
+                {% for keyword in project.fingerprint_keywords %}
+                <span class="tag" data-value="{{ keyword }}">{{ keyword }} <button type="button" class="tag-remove" onclick="removeTag('keywords', '{{ keyword }}')">&times;</button></span>
+                {% endfor %}
+            </div>
+            <div class="tag-input-row">
+                <input type="text" id="new-keyword" placeholder="standup" onkeypress="handleTagKeypress(event, 'keywords')">
+                <button type="button" class="btn btn-small" onclick="addTag('keywords')">Add</button>
+            </div>
+        </div>
+
+        <div class="generated-rule-preview">
+            <h3>Generated Rule Preview</h3>
+            <code id="generated-rule">{{ generated_rule or '(no patterns defined)' }}</code>
+            <div class="preview-actions">
+                <span id="match-count">Matches 0 events</span>
+                <button type="button" class="btn btn-small" onclick="previewMatches()">Preview</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Custom Rules -->
+    <section class="project-section">
+        <h2>Custom Rules</h2>
+        <p class="hint">Additional rules using query syntax for complex matching.</p>
+
+        <div id="custom-rules-list" class="rules-list">
+            {% for rule in rules %}
+            <div class="rule-item" data-rule-id="{{ rule.id }}">
+                <span class="drag-handle">≡</span>
+                <code class="rule-query">{{ rule.query }}</code>
+                <button class="btn-small" onclick="editRule({{ rule.id }})">Edit</button>
+                <button class="btn-small btn-danger" onclick="deleteRule({{ rule.id }})">Delete</button>
+            </div>
+            {% else %}
+            <p class="no-rules">No custom rules. Use matching patterns above for simple cases.</p>
+            {% endfor %}
+        </div>
+
+        <button class="btn btn-secondary" onclick="showAddRuleModal()">+ Add Custom Rule</button>
+    </section>
+
+    <!-- Statistics -->
+    <section class="project-section">
+        <h2>Statistics</h2>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <span class="stat-label">This Week</span>
+                <span class="stat-value">{{ "%.1f"|format(stats.week_hours) }} hrs</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">This Month</span>
+                <span class="stat-value">{{ "%.1f"|format(stats.month_hours) }} hrs</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">All Time</span>
+                <span class="stat-value">{{ "%.1f"|format(stats.total_hours) }} hrs</span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Danger Zone -->
+    <section class="project-section danger-zone">
+        <h2>Danger Zone</h2>
+        <button class="btn btn-danger" onclick="deleteProject()">Delete Project</button>
+        <p class="hint">This will remove the project. Time entries will be orphaned.</p>
+    </section>
+</div>
+
+<!-- Add Rule Modal -->
+<div id="add-rule-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h2>Add Custom Rule</h2>
+        <div class="form-row">
+            <label for="rule-query">Query:</label>
+            <input type="text" id="rule-query" placeholder='domain:example.com title:"meeting"' style="width: 100%;">
+        </div>
+        <p class="hint">Examples: <code>domain:foo.com</code>, <code>title:"weekly meeting"</code>, <code>(domain:a.com OR domain:b.com)</code></p>
+        <div id="rule-preview-results" class="preview-results"></div>
+        <div class="form-actions">
+            <button class="btn btn-primary" onclick="saveRule()">Save Rule</button>
+            <button class="btn btn-secondary" onclick="hideAddRuleModal()">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- Preview Modal -->
+<div id="preview-modal" class="modal-overlay hidden">
+    <div class="modal-content modal-wide">
+        <h2>Matching Events</h2>
+        <div id="preview-list" class="preview-list"></div>
+        <div class="form-actions">
+            <button class="btn btn-secondary" onclick="hidePreviewModal()">Close</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const projectId = {{ project.id }};
+let fingerprints = {
+    domains: {{ project.fingerprint_domains | tojson }},
+    emails: {{ project.fingerprint_emails | tojson }},
+    keywords: {{ project.fingerprint_keywords | tojson }}
+};
+
+// Toggle bill rate visibility
+document.getElementById('project-billable').addEventListener('change', function() {
+    document.getElementById('bill-rate-row').style.display = this.checked ? '' : 'none';
+});
+
+// Save settings form
+document.getElementById('project-settings-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const data = {
+        name: document.getElementById('project-name').value,
+        client: document.getElementById('project-client').value || null,
+        short_code: document.getElementById('project-short-code').value || null,
+        color: document.getElementById('project-color').value,
+        does_not_accumulate_hours: document.getElementById('project-no-hours').checked,
+        is_billable: document.getElementById('project-billable').checked,
+        bill_rate: document.getElementById('project-bill-rate').value ? parseFloat(document.getElementById('project-bill-rate').value) : null,
+        is_hidden_by_default: document.getElementById('project-hidden').checked,
+        is_archived: document.getElementById('project-archived').checked
+    };
+
+    try {
+        await api.put(`/api/projects/${projectId}`, data);
+        showToast('Settings saved', 'success');
+    } catch (error) {
+        showToast('Failed to save: ' + error.message, 'error');
+    }
+});
+
+// Fingerprint tag management
+function addTag(type) {
+    const input = document.getElementById(`new-${type.slice(0, -1)}`);
+    const value = input.value.trim().toLowerCase();
+
+    if (!value) return;
+    if (fingerprints[type].includes(value)) {
+        showToast('Already added', 'error');
+        return;
+    }
+
+    fingerprints[type].push(value);
+    input.value = '';
+    renderTags(type);
+    saveFingerprints();
+    updateGeneratedRule();
+}
+
+function removeTag(type, value) {
+    fingerprints[type] = fingerprints[type].filter(v => v !== value);
+    renderTags(type);
+    saveFingerprints();
+    updateGeneratedRule();
+}
+
+function renderTags(type) {
+    const container = document.getElementById(`fingerprint-${type}`);
+    container.innerHTML = fingerprints[type].map(value =>
+        `<span class="tag" data-value="${value}">${value} <button type="button" class="tag-remove" onclick="removeTag('${type}', '${value}')">&times;</button></span>`
+    ).join('');
+}
+
+function handleTagKeypress(event, type) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        addTag(type);
+    }
+}
+
+async function saveFingerprints() {
+    try {
+        await api.put(`/api/projects/${projectId}/fingerprint`, {
+            domains: fingerprints.domains,
+            emails: fingerprints.emails,
+            keywords: fingerprints.keywords
+        });
+    } catch (error) {
+        showToast('Failed to save patterns: ' + error.message, 'error');
+    }
+}
+
+function updateGeneratedRule() {
+    const parts = [];
+
+    if (fingerprints.domains.length > 0) {
+        if (fingerprints.domains.length === 1) {
+            parts.push(`domain:${fingerprints.domains[0]}`);
+        } else {
+            parts.push('(' + fingerprints.domains.map(d => `domain:${d}`).join(' OR ') + ')');
+        }
+    }
+
+    if (fingerprints.emails.length > 0) {
+        if (fingerprints.emails.length === 1) {
+            parts.push(`email:${fingerprints.emails[0]}`);
+        } else {
+            parts.push('(' + fingerprints.emails.map(e => `email:${e}`).join(' OR ') + ')');
+        }
+    }
+
+    if (fingerprints.keywords.length > 0) {
+        if (fingerprints.keywords.length === 1) {
+            const kw = fingerprints.keywords[0];
+            parts.push(kw.includes(' ') ? `title:"${kw}"` : `title:${kw}`);
+        } else {
+            parts.push('(' + fingerprints.keywords.map(k => k.includes(' ') ? `title:"${k}"` : `title:${k}`).join(' OR ') + ')');
+        }
+    }
+
+    const rule = parts.length > 0 ? parts.join(' OR ') : '(no patterns defined)';
+    document.getElementById('generated-rule').textContent = rule;
+}
+
+async function previewMatches() {
+    // Build the query from fingerprints
+    const parts = [];
+    fingerprints.domains.forEach(d => parts.push(`domain:${d}`));
+    fingerprints.emails.forEach(e => parts.push(`email:${e}`));
+    fingerprints.keywords.forEach(k => parts.push(k.includes(' ') ? `title:"${k}"` : `title:${k}`));
+
+    if (parts.length === 0) {
+        showToast('Add some patterns first', 'error');
+        return;
+    }
+
+    const query = parts.length === 1 ? parts[0] : '(' + parts.join(' OR ') + ')';
+
+    try {
+        const result = await api.post('/api/rules/preview', { query });
+        showPreviewModal(result.events);
+        document.getElementById('match-count').textContent = `Matches ${result.events.length} events`;
+    } catch (error) {
+        showToast('Preview failed: ' + error.message, 'error');
+    }
+}
+
+function showPreviewModal(events) {
+    const list = document.getElementById('preview-list');
+    if (events.length === 0) {
+        list.innerHTML = '<p>No matching events found.</p>';
+    } else {
+        list.innerHTML = events.slice(0, 50).map(e =>
+            `<div class="preview-item">
+                <span class="preview-date">${e.start_time ? e.start_time.slice(0, 10) : ''}</span>
+                <span class="preview-title">${escapeHtml(e.title || 'Untitled')}</span>
+            </div>`
+        ).join('');
+        if (events.length > 50) {
+            list.innerHTML += `<p class="hint">...and ${events.length - 50} more</p>`;
+        }
+    }
+    document.getElementById('preview-modal').classList.remove('hidden');
+}
+
+function hidePreviewModal() {
+    document.getElementById('preview-modal').classList.add('hidden');
+}
+
+// Custom rules
+function showAddRuleModal() {
+    document.getElementById('rule-query').value = '';
+    document.getElementById('rule-preview-results').innerHTML = '';
+    document.getElementById('add-rule-modal').classList.remove('hidden');
+}
+
+function hideAddRuleModal() {
+    document.getElementById('add-rule-modal').classList.add('hidden');
+}
+
+async function saveRule() {
+    const query = document.getElementById('rule-query').value.trim();
+    if (!query) {
+        showToast('Query is required', 'error');
+        return;
+    }
+
+    try {
+        await api.post('/api/rules', {
+            project_id: projectId,
+            query: query,
+            target_type: 'project'
+        });
+        showToast('Rule created', 'success');
+        hideAddRuleModal();
+        location.reload();
+    } catch (error) {
+        showToast('Failed to create rule: ' + error.message, 'error');
+    }
+}
+
+async function deleteRule(ruleId) {
+    if (!confirm('Delete this rule?')) return;
+
+    try {
+        await api.delete(`/api/rules/${ruleId}`);
+        showToast('Rule deleted', 'success');
+        location.reload();
+    } catch (error) {
+        showToast('Failed to delete: ' + error.message, 'error');
+    }
+}
+
+async function deleteProject() {
+    if (!confirm('Delete this project? Time entries will be orphaned.')) return;
+
+    try {
+        await api.delete(`/api/projects/${projectId}`);
+        window.location.href = '/projects';
+    } catch (error) {
+        showToast('Failed to delete: ' + error.message, 'error');
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Close modals when clicking outside
+document.querySelectorAll('.modal-overlay').forEach(modal => {
+    modal.addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.classList.add('hidden');
+        }
+    });
+});
+
+// Initialize
+updateGeneratedRule();
+</script>
+{% endblock %}

@@ -197,6 +197,55 @@ async def delete_project(project_id: int, user_id: int = Depends(get_user_id)):
     return {"status": "deleted"}
 
 
+class FingerprintUpdate(BaseModel):
+    """Update project fingerprint patterns."""
+    domains: list[str] | None = None
+    emails: list[str] | None = None
+    keywords: list[str] | None = None
+
+
+@router.put("/projects/{project_id}/fingerprint")
+async def update_project_fingerprint(
+    project_id: int,
+    fingerprint: FingerprintUpdate,
+    user_id: int = Depends(get_user_id)
+):
+    """Update a project's fingerprint patterns for auto-rule generation."""
+    import json
+
+    db = get_db()
+
+    # Verify project belongs to user
+    row = db.execute_one(
+        "SELECT * FROM projects WHERE id = %s AND user_id = %s",
+        (project_id, user_id)
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    updates = []
+    params = []
+
+    if fingerprint.domains is not None:
+        updates.append("fingerprint_domains = %s")
+        params.append(json.dumps(fingerprint.domains))
+    if fingerprint.emails is not None:
+        updates.append("fingerprint_emails = %s")
+        params.append(json.dumps(fingerprint.emails))
+    if fingerprint.keywords is not None:
+        updates.append("fingerprint_keywords = %s")
+        params.append(json.dumps(fingerprint.keywords))
+
+    if updates:
+        params.extend([project_id, user_id])
+        db.execute(
+            f"UPDATE projects SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
+            tuple(params),
+        )
+
+    return {"status": "updated"}
+
+
 @router.post("/projects/{project_id}/spreadsheet")
 async def create_project_spreadsheet(
     project_id: int,
@@ -1296,6 +1345,70 @@ async def get_suggestion(event_id: int, user_id: int = Depends(get_user_id)):
     if suggestion is None:
         return {"suggestion": None}
     return {"suggestion": suggestion}
+
+
+class RulePreviewRequest(BaseModel):
+    """Preview which events match a query."""
+    query: str
+    limit: int = 100
+
+
+@router.post("/rules/preview")
+async def preview_rule_matches(
+    request: RulePreviewRequest,
+    user_id: int = Depends(get_user_id)
+):
+    """Preview which events match a query string.
+
+    Returns list of events that would match the given query.
+    Used for live preview in rule creation UI.
+    """
+    from services.query_parser import parse_query, ParseError
+    from services.query_evaluator import QueryEvaluator
+    import json
+
+    db = get_db()
+
+    # Validate and parse query
+    try:
+        ast = parse_query(request.query)
+    except ParseError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid query: {str(e)}")
+
+    if not ast.items:
+        return {"events": [], "total": 0}
+
+    # Get recent events for matching (last 90 days by default)
+    events = db.execute(
+        """
+        SELECT * FROM events
+        WHERE user_id = %s
+          AND start_time >= CURRENT_DATE - INTERVAL '90 days'
+        ORDER BY start_time DESC
+        """,
+        (user_id,)
+    )
+
+    # Match events against query
+    matching = []
+    for event in events:
+        event_dict = dict(event)
+        evaluator = QueryEvaluator(event_dict)
+        if evaluator.evaluate(ast):
+            matching.append({
+                "id": event_dict["id"],
+                "title": event_dict.get("title"),
+                "start_time": event_dict.get("start_time").isoformat() if event_dict.get("start_time") else None,
+                "attendees": json.loads(event_dict.get("attendees") or "[]"),
+            })
+            if len(matching) >= request.limit:
+                break
+
+    return {
+        "events": matching,
+        "total": len(matching),
+        "query_parsed": str(ast)
+    }
 
 
 @router.post("/rules/apply")

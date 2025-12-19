@@ -81,7 +81,7 @@
                        class="project-color-picker">
             </td>
             <td class="name-cell">
-                <span class="display-value">{{ project.name }}</span>
+                <span class="display-value"><a href="/projects/{{ project.id }}">{{ project.name }}</a></span>
                 <input type="text" class="edit-input hidden" value="{{ project.name }}">
             </td>
             <td class="short-code-cell">
