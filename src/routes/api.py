@@ -322,6 +322,7 @@ async def export_projects(user_id: int = Depends(get_user_id)):
     - exported_at: Timestamp
     - projects: List of project objects (without internal IDs)
     """
+    import json as json_module
     db = get_db()
 
     rows = db.execute(
@@ -329,9 +330,38 @@ async def export_projects(user_id: int = Depends(get_user_id)):
         (user_id,)
     )
 
+    # Helper to parse JSONB fields
+    def parse_jsonb(val):
+        if val is None:
+            return []
+        if isinstance(val, list):
+            return val
+        if isinstance(val, str):
+            return json_module.loads(val) if val else []
+        return []
+
+    # Get all rules grouped by project
+    rules_rows = db.execute(
+        "SELECT * FROM classification_rules WHERE user_id = %s ORDER BY project_id, display_order",
+        (user_id,)
+    )
+    rules_by_project = {}
+    for rule in rules_rows:
+        pid = rule.get("project_id")
+        if pid:
+            if pid not in rules_by_project:
+                rules_by_project[pid] = []
+            rules_by_project[pid].append({
+                "query": rule.get("query"),
+                "name": rule.get("name"),
+                "priority": rule.get("priority", 0),
+                "is_enabled": bool(rule.get("is_enabled", True)),
+                "target_type": rule.get("target_type", "project"),
+            })
+
     projects = []
     for row in rows:
-        projects.append({
+        project_data = {
             "name": row["name"],
             "client": row["client"],
             "color": row["color"],
@@ -340,10 +370,17 @@ async def export_projects(user_id: int = Depends(get_user_id)):
             "bill_rate": row.get("bill_rate"),
             "is_hidden_by_default": bool(row.get("is_hidden_by_default", False)),
             "is_archived": bool(row.get("is_archived", False)),
-        })
+            # Fingerprints
+            "fingerprint_domains": parse_jsonb(row.get("fingerprint_domains")),
+            "fingerprint_emails": parse_jsonb(row.get("fingerprint_emails")),
+            "fingerprint_keywords": parse_jsonb(row.get("fingerprint_keywords")),
+            # Rules for this project
+            "rules": rules_by_project.get(row["id"], []),
+        }
+        projects.append(project_data)
 
     return {
-        "version": 1,
+        "version": 2,
         "exported_at": datetime.now().isoformat(),
         "projects": projects,
     }
@@ -391,11 +428,18 @@ async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
         # Delete all existing projects (cascade will handle time_entries and rules)
         db.execute("DELETE FROM projects WHERE user_id = %s", (user_id,))
 
+    import json as json_module
+
     for proj in projects:
         name = proj.get("name", "").strip()
         if not name:
             skipped += 1
             continue
+
+        # Prepare fingerprint JSON
+        fp_domains = json_module.dumps(proj.get("fingerprint_domains", []))
+        fp_emails = json_module.dumps(proj.get("fingerprint_emails", []))
+        fp_keywords = json_module.dumps(proj.get("fingerprint_keywords", []))
 
         # Check if project exists by name
         existing = db.execute_one(
@@ -403,7 +447,9 @@ async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
             (user_id, name)
         )
 
+        project_id = None
         if existing and mode == "merge":
+            project_id = existing["id"]
             # Update existing project
             db.execute(
                 """
@@ -414,7 +460,10 @@ async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
                     is_billable = %s,
                     bill_rate = %s,
                     is_hidden_by_default = %s,
-                    is_archived = %s
+                    is_archived = %s,
+                    fingerprint_domains = %s,
+                    fingerprint_emails = %s,
+                    fingerprint_keywords = %s
                 WHERE id = %s AND user_id = %s
                 """,
                 (
@@ -425,19 +474,28 @@ async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
                     proj.get("bill_rate"),
                     proj.get("is_hidden_by_default", False),
                     proj.get("is_archived", False),
-                    existing["id"],
+                    fp_domains,
+                    fp_emails,
+                    fp_keywords,
+                    project_id,
                     user_id,
                 ),
+            )
+            # Delete existing rules for this project (will be replaced)
+            db.execute(
+                "DELETE FROM classification_rules WHERE user_id = %s AND project_id = %s",
+                (user_id, project_id)
             )
             updated += 1
         else:
             # Create new project
-            db.execute_insert(
+            project_id = db.execute_insert(
                 """
                 INSERT INTO projects (user_id, name, client, color,
                     does_not_accumulate_hours, is_billable, bill_rate,
-                    is_hidden_by_default, is_archived)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    is_hidden_by_default, is_archived,
+                    fingerprint_domains, fingerprint_emails, fingerprint_keywords)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -450,9 +508,36 @@ async def import_projects(request: dict, user_id: int = Depends(get_user_id)):
                     proj.get("bill_rate"),
                     proj.get("is_hidden_by_default", False),
                     proj.get("is_archived", False),
+                    fp_domains,
+                    fp_emails,
+                    fp_keywords,
                 ),
             )
             imported += 1
+
+        # Import rules for this project
+        rules = proj.get("rules", [])
+        for i, rule in enumerate(rules):
+            if rule.get("query"):
+                db.execute_insert(
+                    """
+                    INSERT INTO classification_rules (
+                        user_id, project_id, name, query, priority,
+                        is_enabled, target_type, display_order
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        user_id,
+                        project_id,
+                        rule.get("name", rule.get("query", "")[:50]),
+                        rule.get("query"),
+                        rule.get("priority", 0),
+                        rule.get("is_enabled", True),
+                        rule.get("target_type", "project"),
+                        i,
+                    ),
+                )
 
     return {
         "imported": imported,
