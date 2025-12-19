@@ -210,16 +210,28 @@ body {
 
 .filter-bar {
     margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
 }
 
-.filter-bar input {
-    width: 100%;
-    max-width: 300px;
+.filter-bar input[type="text"] {
+    width: 250px;
     padding: 0.5rem;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background: var(--bg-secondary);
     color: var(--text-primary);
+}
+
+.filter-checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
 }
 
 /* Week container with sidebar */

@@ -20,6 +20,10 @@
 
 <div class="filter-bar">
     <input type="text" id="filter-input" placeholder="Filter events..." onkeyup="filterEvents()">
+    <label class="filter-checkbox">
+        <input type="checkbox" id="show-dna-checkbox" onchange="filterEvents()">
+        <span>Show meetings I did not attend</span>
+    </label>
 </div>
 
 <div class="week-container">
@@ -368,7 +372,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/app.js?v=8"></script>
+<script src="/static/js/app.js?v=10"></script>
 <script>
     // Initialize with current week dates
     window.weekStart = "{{ week_start }}";
@@ -385,6 +389,7 @@
         syncEventsQuiet();
         await autoClassifyEvents();
         restoreProjectVisibility();
+        filterEvents();  // Apply initial filters (hides DNA events by default)
         updateProjectSummary();
     });
 

@@ -242,17 +242,38 @@ async function updateHours(entryId, value) {
 }
 
 /**
- * Filter events by text.
+ * Filter events by text, DNA status, and project visibility.
  */
 function filterEvents() {
     const filter = document.getElementById('filter-input').value.toLowerCase();
+    const showDna = document.getElementById('show-dna-checkbox')?.checked ?? false;
     const cards = document.querySelectorAll('.event-card');
+
+    // Build set of visible project names based on sidebar checkboxes
+    const visibleProjects = new Set();
+    document.querySelectorAll('.summary-item[data-project-name]').forEach(item => {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (checkbox && checkbox.checked) {
+            visibleProjects.add(item.dataset.projectName);
+        }
+    });
 
     cards.forEach(card => {
         const title = (card.dataset.title || '').toLowerCase();
         const project = (card.dataset.project || '').toLowerCase();
-        const matches = title.includes(filter) || project.includes(filter);
-        card.style.display = matches ? '' : 'none';
+        const projectName = card.dataset.project || '';
+        const isDna = card.dataset.didNotAttend === 'true';
+
+        // Check text filter
+        const matchesText = title.includes(filter) || project.includes(filter);
+
+        // Check DNA filter (hide DNA events unless checkbox is checked)
+        const matchesDna = showDna || !isDna;
+
+        // Check project visibility (unclassified events always pass this check)
+        const matchesProject = !projectName || visibleProjects.has(projectName);
+
+        card.style.display = (matchesText && matchesDna && matchesProject) ? '' : 'none';
     });
 }
 
@@ -345,55 +366,22 @@ function updateProjectSummary() {
  * This does NOT affect the database or rule matching - it's purely visual.
  */
 function toggleProjectVisibility(projectId, isVisible) {
-    // Get project name from the sidebar item's data attribute
-    const summaryItem = document.querySelector(`.summary-item[data-project-id="${projectId}"]`);
-    const projectName = summaryItem ? summaryItem.dataset.projectName : '';
-
-    console.log('toggleProjectVisibility:', { projectId, isVisible, projectName, summaryItemFound: !!summaryItem });
-
-    // Don't try to hide events if we couldn't find the project name
-    if (!projectName) {
-        console.warn('  WARNING: No project name found for projectId:', projectId);
-        return;
-    }
-
-    // Update event card visibility based on project
-    const cards = document.querySelectorAll('.event-card');
-    let matchCount = 0;
-    cards.forEach(card => {
-        const cardProject = card.dataset.project || '';
-        if (cardProject === projectName) {
-            matchCount++;
-            card.style.display = isVisible ? '' : 'none';
-        }
-    });
-    console.log('  matched cards:', matchCount);
-
     // Store visibility preferences in sessionStorage for this week
     const visibilityKey = `projectVisibility_${window.weekStart}`;
     let visibility = JSON.parse(sessionStorage.getItem(visibilityKey) || '{}');
     visibility[projectId] = isVisible;
     sessionStorage.setItem(visibilityKey, JSON.stringify(visibility));
+
+    // Reapply all filters (text, DNA, project visibility)
+    filterEvents();
 }
 
 /**
  * Initialize project visibility based on checkbox states.
  * Called on page load to hide events for unchecked projects.
+ * Now delegates to filterEvents() which handles all filtering.
  */
 function initProjectVisibility() {
-    // Process ALL summary items and apply visibility based on checkbox state
-    const items = document.querySelectorAll('.summary-item[data-project-id]');
-    items.forEach(item => {
-        const checkbox = item.querySelector('input[type="checkbox"]');
-        if (checkbox && !checkbox.checked) {
-            const projectId = parseInt(item.dataset.projectId);
-            const projectName = item.dataset.projectName;
-            // Directly hide cards without storing to sessionStorage (avoid polluting storage on init)
-            document.querySelectorAll('.event-card').forEach(card => {
-                if (card.dataset.project === projectName) {
-                    card.style.display = 'none';
-                }
-            });
-        }
-    });
+    // filterEvents() now handles project visibility along with text/DNA filters
+    // This function exists for backwards compatibility with restoreProjectVisibility()
 }
