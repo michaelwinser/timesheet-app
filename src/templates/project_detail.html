@@ -64,42 +64,42 @@
 
         <div class="fingerprint-group">
             <h3>Domains</h3>
-            <p class="hint">Match attendees from these email domains</p>
+            <p class="hint">Match attendees from these email domains. Paste email addresses to extract domains automatically.</p>
             <div id="fingerprint-domains" class="tag-list">
                 {% for domain in project.fingerprint_domains %}
                 <span class="tag" data-value="{{ domain }}">{{ domain }} <button type="button" class="tag-remove" onclick="removeTag('domains', '{{ domain }}')">&times;</button></span>
                 {% endfor %}
             </div>
             <div class="tag-input-row">
-                <input type="text" id="new-domain" placeholder="example.com" onkeypress="handleTagKeypress(event, 'domains')">
+                <input type="text" id="new-domain" placeholder="example.com or paste attendee list" onkeypress="handleTagKeypress(event, 'domains')">
                 <button type="button" class="btn btn-small" onclick="addTag('domains')">Add</button>
             </div>
         </div>
 
         <div class="fingerprint-group">
             <h3>Email Addresses</h3>
-            <p class="hint">Match specific attendee email addresses</p>
+            <p class="hint">Match specific attendee email addresses. Paste formatted text to extract emails.</p>
             <div id="fingerprint-emails" class="tag-list">
                 {% for email in project.fingerprint_emails %}
                 <span class="tag" data-value="{{ email }}">{{ email }} <button type="button" class="tag-remove" onclick="removeTag('emails', '{{ email }}')">&times;</button></span>
                 {% endfor %}
             </div>
             <div class="tag-input-row">
-                <input type="text" id="new-email" placeholder="user@example.com" onkeypress="handleTagKeypress(event, 'emails')">
+                <input type="text" id="new-email" placeholder="user@example.com or paste attendee list" onkeypress="handleTagKeypress(event, 'emails')">
                 <button type="button" class="btn btn-small" onclick="addTag('emails')">Add</button>
             </div>
         </div>
 
         <div class="fingerprint-group">
             <h3>Title Keywords</h3>
-            <p class="hint">Match events with these words in the title</p>
+            <p class="hint">Match events with these words in the title. Separate multiple keywords with commas.</p>
             <div id="fingerprint-keywords" class="tag-list">
                 {% for keyword in project.fingerprint_keywords %}
                 <span class="tag" data-value="{{ keyword }}">{{ keyword }} <button type="button" class="tag-remove" onclick="removeTag('keywords', '{{ keyword }}')">&times;</button></span>
                 {% endfor %}
             </div>
             <div class="tag-input-row">
-                <input type="text" id="new-keyword" placeholder="standup" onkeypress="handleTagKeypress(event, 'keywords')">
+                <input type="text" id="new-keyword" placeholder="standup, weekly, sync" onkeypress="handleTagKeypress(event, 'keywords')">
                 <button type="button" class="btn btn-small" onclick="addTag('keywords')">Add</button>
             </div>
         </div>
@@ -230,21 +230,109 @@ document.getElementById('project-settings-form').addEventListener('submit', asyn
 });
 
 // Fingerprint tag management
+
+/**
+ * Extract email addresses from text.
+ * Handles formats like: "Name <email@domain.com>" or just "email@domain.com"
+ */
+function extractEmails(text) {
+    const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    const matches = text.match(emailRegex) || [];
+    return [...new Set(matches.map(e => e.toLowerCase()))];
+}
+
+/**
+ * Extract domains from email addresses in text.
+ */
+function extractDomains(text) {
+    const emails = extractEmails(text);
+    const domains = emails.map(e => e.split('@')[1]);
+    return [...new Set(domains)];
+}
+
+/**
+ * Parse input value and extract appropriate values based on type.
+ */
+function parseInputValues(type, rawValue) {
+    const values = [];
+
+    if (type === 'domains') {
+        // Extract domains from any email addresses found
+        const domains = extractDomains(rawValue);
+        if (domains.length > 0) {
+            values.push(...domains);
+        } else {
+            // Treat as comma-separated domain list
+            rawValue.split(/[,\s]+/).forEach(v => {
+                v = v.trim().toLowerCase();
+                // Remove any leading @ or protocol
+                v = v.replace(/^@/, '').replace(/^https?:\/\//, '');
+                if (v && v.includes('.')) {
+                    values.push(v);
+                }
+            });
+        }
+    } else if (type === 'emails') {
+        // Extract email addresses
+        const emails = extractEmails(rawValue);
+        if (emails.length > 0) {
+            values.push(...emails);
+        } else {
+            // Treat as comma-separated email list
+            rawValue.split(/[,\s]+/).forEach(v => {
+                v = v.trim().toLowerCase();
+                if (v && v.includes('@')) {
+                    values.push(v);
+                }
+            });
+        }
+    } else if (type === 'keywords') {
+        // Split by comma, keep phrases intact
+        rawValue.split(',').forEach(v => {
+            v = v.trim().toLowerCase();
+            if (v) {
+                values.push(v);
+            }
+        });
+    }
+
+    return values;
+}
+
 function addTag(type) {
     const input = document.getElementById(`new-${type.slice(0, -1)}`);
-    const value = input.value.trim().toLowerCase();
+    const rawValue = input.value.trim();
 
-    if (!value) return;
-    if (fingerprints[type].includes(value)) {
-        showToast('Already added', 'error');
+    if (!rawValue) return;
+
+    const values = parseInputValues(type, rawValue);
+
+    if (values.length === 0) {
+        showToast('No valid values found', 'error');
         return;
     }
 
-    fingerprints[type].push(value);
+    let addedCount = 0;
+    for (const value of values) {
+        if (!fingerprints[type].includes(value)) {
+            fingerprints[type].push(value);
+            addedCount++;
+        }
+    }
+
+    if (addedCount === 0) {
+        showToast('All values already added', 'error');
+        return;
+    }
+
     input.value = '';
     renderTags(type);
     saveFingerprints();
     updateGeneratedRule();
+
+    if (addedCount > 1) {
+        showToast(`Added ${addedCount} ${type}`, 'success');
+    }
 }
 
 function removeTag(type, value) {
