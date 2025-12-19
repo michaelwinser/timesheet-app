@@ -1576,9 +1576,9 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
     )
     fingerprint_matchers = []
     for proj in projects:
-        domains = json.loads(proj.get("fingerprint_domains") or "[]")
-        emails = json.loads(proj.get("fingerprint_emails") or "[]")
-        keywords = json.loads(proj.get("fingerprint_keywords") or "[]")
+        domains = _parse_jsonb_list(proj.get("fingerprint_domains"))
+        emails = _parse_jsonb_list(proj.get("fingerprint_emails"))
+        keywords = _parse_jsonb_list(proj.get("fingerprint_keywords"))
 
         if domains or emails or keywords:
             # Build query from fingerprint
@@ -1710,6 +1710,18 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
         "entries": classified,
         "did_not_attend_events": attendance_updated,
     }
+
+
+def _parse_jsonb_list(val) -> list:
+    """Parse a JSONB list field that may be a string or already-parsed list."""
+    if val is None:
+        return []
+    if isinstance(val, list):
+        return val
+    if isinstance(val, str):
+        import json
+        return json.loads(val) if val else []
+    return []
 
 
 def _build_fingerprint_query_for_apply(domains: list, emails: list, keywords: list) -> str:

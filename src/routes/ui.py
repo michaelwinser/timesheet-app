@@ -249,11 +249,18 @@ async def project_detail_page(request: Request, project_id: int):
 
     project = dict(project)
 
-    # Parse fingerprint JSON fields
+    # Parse fingerprint fields (may be JSON string or already-parsed list from JSONB)
     import json
-    project["fingerprint_domains"] = json.loads(project.get("fingerprint_domains") or "[]")
-    project["fingerprint_emails"] = json.loads(project.get("fingerprint_emails") or "[]")
-    project["fingerprint_keywords"] = json.loads(project.get("fingerprint_keywords") or "[]")
+    for field in ("fingerprint_domains", "fingerprint_emails", "fingerprint_keywords"):
+        val = project.get(field)
+        if val is None:
+            project[field] = []
+        elif isinstance(val, str):
+            project[field] = json.loads(val) if val else []
+        elif isinstance(val, list):
+            project[field] = val
+        else:
+            project[field] = []
 
     # Generate the rule preview from fingerprints
     generated_rule = _build_fingerprint_query(
