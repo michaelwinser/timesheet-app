@@ -381,20 +381,19 @@ function toggleProjectVisibility(projectId, isVisible) {
  * Called on page load to hide events for unchecked projects.
  */
 function initProjectVisibility() {
-    console.log('initProjectVisibility called');
-    const checkboxes = document.querySelectorAll('.summary-item input[type="checkbox"]');
-    console.log('  found checkboxes:', checkboxes.length);
-    let uncheckedCount = 0;
-    checkboxes.forEach(checkbox => {
-        if (!checkbox.checked) {
-            uncheckedCount++;
-            const summaryItem = checkbox.closest('.summary-item');
-            if (summaryItem) {
-                const projectId = parseInt(summaryItem.dataset.projectId);
-                console.log('  hiding project:', projectId, summaryItem.dataset.projectName);
-                toggleProjectVisibility(projectId, false);
-            }
+    // Process ALL summary items and apply visibility based on checkbox state
+    const items = document.querySelectorAll('.summary-item[data-project-id]');
+    items.forEach(item => {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        if (checkbox && !checkbox.checked) {
+            const projectId = parseInt(item.dataset.projectId);
+            const projectName = item.dataset.projectName;
+            // Directly hide cards without storing to sessionStorage (avoid polluting storage on init)
+            document.querySelectorAll('.event-card').forEach(card => {
+                if (card.dataset.project === projectName) {
+                    card.style.display = 'none';
+                }
+            });
         }
     });
-    console.log('  unchecked projects:', uncheckedCount);
 }
