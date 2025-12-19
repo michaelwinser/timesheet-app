@@ -92,25 +92,30 @@ class QueryEvaluator:
             return self._evaluate_term(item)
         return False
 
+    def _normalize_for_match(self, text: str) -> str:
+        """Normalize text for matching by stripping quotes."""
+        # Strip both straight and curly quotes
+        return text.replace('"', '').replace("'", '').replace('"', '').replace('"', '').replace(''', '').replace(''', '')
+
     def _evaluate_term(self, term: Term) -> bool:
         """Evaluate a single term against the event."""
         prop = term.property
-        value = term.value.lower()
+        value = self._normalize_for_match(term.value.lower())
 
         # String properties (contains matching, case-insensitive)
         if prop == 'title':
-            title = (self.event.get('title') or '').lower()
+            title = self._normalize_for_match((self.event.get('title') or '').lower())
             return value in title
 
         if prop == 'description':
-            desc = (self.event.get('description') or '').lower()
+            desc = self._normalize_for_match((self.event.get('description') or '').lower())
             return value in desc
 
         # Attendee matching
         if prop == 'attendees':
             # Match against name or email (contains)
             for email in self.attendees:
-                if value in email.lower():
+                if value in self._normalize_for_match(email.lower()):
                     return True
             return False
 
