@@ -6,7 +6,8 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 from db import get_db
-from services.classifier import load_rules_with_conditions, RuleMatcher
+from services.query_parser import parse_query, ParseError
+from services.query_evaluator import QueryEvaluator
 
 
 def sync_calendar_events(
@@ -50,9 +51,63 @@ def sync_calendar_events(
     events_updated = 0
     events_classified = 0
 
-    # Load rules for auto-classification
-    rules = load_rules_with_conditions(db, user_id, enabled_only=True)
-    matcher = RuleMatcher(rules)
+    # Load query-based rules for auto-classification
+    rules_rows = db.execute(
+        """
+        SELECT cr.*, p.name as project_name
+        FROM classification_rules cr
+        LEFT JOIN projects p ON cr.project_id = p.id
+        WHERE cr.user_id = %s AND cr.is_enabled = TRUE
+        ORDER BY cr.priority DESC, cr.display_order
+        """,
+        (user_id,)
+    )
+    parsed_rules = []
+    for rule in rules_rows:
+        rule = dict(rule)
+        if rule.get("query"):
+            try:
+                rule["_parsed_query"] = parse_query(rule["query"])
+                parsed_rules.append(rule)
+            except ParseError:
+                pass
+
+    # Load project fingerprints for implicit matching
+    def parse_jsonb(val):
+        if val is None:
+            return []
+        if isinstance(val, list):
+            return val
+        if isinstance(val, str):
+            return json.loads(val) if val else []
+        return []
+
+    projects = db.execute(
+        """
+        SELECT id, name, fingerprint_domains, fingerprint_emails, fingerprint_keywords
+        FROM projects
+        WHERE user_id = %s AND is_archived = FALSE
+        """,
+        (user_id,)
+    )
+    fingerprint_matchers = []
+    for proj in projects:
+        domains = parse_jsonb(proj.get("fingerprint_domains"))
+        emails = parse_jsonb(proj.get("fingerprint_emails"))
+        keywords = parse_jsonb(proj.get("fingerprint_keywords"))
+
+        if domains or emails or keywords:
+            fp_query = _build_fingerprint_query(domains, emails, keywords)
+            if fp_query:
+                try:
+                    fingerprint_matchers.append({
+                        "project_id": proj["id"],
+                        "project_name": proj["name"],
+                        "_parsed_query": parse_query(fp_query),
+                        "target_type": "project",
+                    })
+                except ParseError:
+                    pass
 
     for event in events:
         google_event_id = event["id"]
@@ -193,7 +248,7 @@ def sync_calendar_events(
 
         # Skip if entry exists - never overwrite existing classifications
         if not already_classified:
-            # Build event dict for matcher (use DB column names)
+            # Build event dict for matching (use DB column names)
             event_data = {
                 "id": event_db_id,
                 "title": event.get("summary", ""),
@@ -210,15 +265,32 @@ def sync_calendar_events(
                 "visibility": visibility,
             }
 
-            matching_rule = matcher.match(event_data)
+            # Find matching rule
+            matching_rule = None
+            for rule in parsed_rules:
+                if rule.get("_parsed_query") and rule["_parsed_query"].items:
+                    evaluator = QueryEvaluator(event_data)
+                    if evaluator.evaluate(rule["_parsed_query"]):
+                        matching_rule = rule
+                        break
+
+            # Try fingerprint patterns if no explicit rule matched
+            if not matching_rule:
+                for fp_matcher in fingerprint_matchers:
+                    evaluator = QueryEvaluator(event_data)
+                    if evaluator.evaluate(fp_matcher["_parsed_query"]):
+                        matching_rule = fp_matcher
+                        break
+
             if matching_rule:
-                if matching_rule.is_did_not_attend_rule:
+                target_type = matching_rule.get("target_type", "project")
+                if target_type == "did_not_attend":
                     # Set did_not_attend flag on the event
                     db.execute(
                         "UPDATE events SET did_not_attend = TRUE WHERE id = %s",
                         (event_db_id,),
                     )
-                elif matching_rule.is_project_rule and matching_rule.project_id:
+                elif target_type == "project" and matching_rule.get("project_id"):
                     # Calculate hours from start/end time
                     start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
                     end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
@@ -233,11 +305,11 @@ def sync_calendar_events(
                         (
                             user_id,
                             event_db_id,
-                            matching_rule.project_id,
+                            matching_rule.get("project_id"),
                             hours,
                             event.get("summary", ""),
                             "rule",
-                            matching_rule.id,
+                            matching_rule.get("id"),
                         ),
                     )
                     events_classified += 1
@@ -248,3 +320,25 @@ def sync_calendar_events(
         "events_updated": events_updated,
         "events_classified": events_classified,
     }
+
+
+def _build_fingerprint_query(domains: list, emails: list, keywords: list) -> str:
+    """Build a query string from fingerprint patterns."""
+    parts = []
+
+    for d in domains:
+        parts.append(f"domain:{d}")
+
+    for e in emails:
+        parts.append(f"email:{e}")
+
+    for k in keywords:
+        parts.append(f'title:"{k}"' if " " in k else f"title:{k}")
+
+    if not parts:
+        return ""
+
+    if len(parts) == 1:
+        return parts[0]
+
+    return "(" + " OR ".join(parts) + ")"

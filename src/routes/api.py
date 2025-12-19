@@ -16,17 +16,7 @@ from models import (
 )
 from services.calendar import sync_calendar_events
 from services.exporter import export_harvest_csv
-from services.classifier import (
-    load_rules_with_conditions,
-    create_rule,
-    update_rule,
-    delete_rule,
-    get_property_definitions,
-    ConditionEvaluator,
-    test_rules_against_event,
-    get_event_properties,
-    suggest_classification,
-)
+from services.classifier import get_event_properties
 from routes.auth import get_stored_credentials
 
 router = APIRouter()
@@ -1095,10 +1085,15 @@ async def export_invoice_sheets(
 
 @router.get("/rules")
 async def list_rules(enabled_only: bool = False, user_id: int = Depends(get_user_id)):
-    """List all classification rules with their conditions (user's rules only)."""
+    """List all classification rules (user's rules only)."""
     db = get_db()
-    rules = load_rules_with_conditions(db, user_id, enabled_only=enabled_only)
-    return [r.to_dict() for r in rules]
+    query = "SELECT * FROM classification_rules WHERE user_id = %s"
+    params = [user_id]
+    if enabled_only:
+        query += " AND is_enabled = TRUE"
+    query += " ORDER BY priority DESC, display_order"
+    rules = db.execute(query, tuple(params))
+    return [dict(r) for r in rules]
 
 
 @router.get("/rules/{rule_id}")
@@ -1121,24 +1116,30 @@ async def get_rule(rule_id: int, user_id: int = Depends(get_user_id)):
 async def create_classification_rule(request: dict, user_id: int = Depends(get_user_id)):
     """Create a new classification rule.
 
-    New query-based format (v2):
+    Request body:
     {
         "query": "domain:example.com title:standup",
         "target_type": "project",  // or "did_not_attend"
         "project_id": 1,  // required for project rules
     }
-
-    Legacy conditions-based format (still supported):
-    {
-        "name": "Rule name",
-        "target_type": "project",
-        "project_id": 1,
-        "conditions": [...]
-    }
     """
     from services.query_parser import parse_query, ParseError
 
     db = get_db()
+
+    # Require query
+    if "query" not in request:
+        raise HTTPException(status_code=400, detail="Query is required")
+
+    query = request["query"].strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+    # Validate query syntax
+    try:
+        parse_query(query)
+    except ParseError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid query: {str(e)}")
 
     target_type = request.get("target_type", "project")
 
@@ -1159,73 +1160,33 @@ async def create_classification_rule(request: dict, user_id: int = Depends(get_u
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
 
-    # Check if this is a query-based rule (v2) or conditions-based (legacy)
-    if "query" in request:
-        # V2 query-based rule
-        query = request["query"].strip()
-        if not query:
-            raise HTTPException(status_code=400, detail="Query cannot be empty")
+    # Generate a name from the query if not provided
+    name = request.get("name", query[:50])
 
-        # Validate query syntax
-        try:
-            parse_query(query)
-        except ParseError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid query: {str(e)}")
-
-        # Generate a name from the query if not provided
-        name = request.get("name", query[:50])
-
-        # Insert directly with query string
-        rule_id = db.execute_insert(
-            """
-            INSERT INTO classification_rules (
-                user_id, name, project_id, target_type, query,
-                priority, is_enabled, stop_processing, is_generated
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING id
-            """,
-            (
-                user_id, name, project_id, target_type, query,
-                request.get("priority", 0),
-                request.get("is_enabled", True),
-                request.get("stop_processing", True),
-                request.get("is_generated", False),
-            )
+    # Insert the rule
+    rule_id = db.execute_insert(
+        """
+        INSERT INTO classification_rules (
+            user_id, name, project_id, target_type, query,
+            priority, is_enabled, stop_processing, is_generated
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            user_id, name, project_id, target_type, query,
+            request.get("priority", 0),
+            request.get("is_enabled", True),
+            request.get("stop_processing", True),
+            request.get("is_generated", False),
         )
+    )
 
-        # Return the created rule
-        row = db.execute_one(
-            "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
-            (rule_id, user_id)
-        )
-        return dict(row)
-
-    else:
-        # Legacy conditions-based rule
-        if "name" not in request:
-            raise HTTPException(status_code=400, detail="Rule name is required")
-        if "conditions" not in request or not request["conditions"]:
-            raise HTTPException(status_code=400, detail="At least one condition is required")
-
-        rule_id = create_rule(
-            db=db,
-            user_id=user_id,
-            name=request["name"],
-            project_id=project_id,
-            conditions=request["conditions"],
-            priority=request.get("priority", 0),
-            is_enabled=request.get("is_enabled", True),
-            stop_processing=request.get("stop_processing", True),
-            target_type=target_type,
-        )
-
-        # Return the created rule
-        rules = load_rules_with_conditions(db, user_id, enabled_only=False)
-        for rule in rules:
-            if rule.id == rule_id:
-                return rule.to_dict()
-
-        return {"id": rule_id}
+    # Return the created rule
+    row = db.execute_one(
+        "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
+        (rule_id, user_id)
+    )
+    return dict(row)
 
 
 @router.put("/rules/{rule_id}")
@@ -1236,21 +1197,11 @@ async def update_classification_rule(
 ):
     """Update a classification rule.
 
-    V2 query-based update:
+    Request body (all fields optional):
     {
         "query": "domain:example.com",
         "is_enabled": true,
-    }
-
-    Legacy conditions-based update (all fields optional):
-    {
         "name": "New name",
-        "target_type": "project",  // or "did_not_attend"
-        "project_id": 2,  // required if target_type is "project"
-        "priority": 50,
-        "is_enabled": false,
-        "stop_processing": true,
-        "conditions": [...]  // If provided, replaces all conditions
     }
     """
     from services.query_parser import parse_query, ParseError
@@ -1265,7 +1216,9 @@ async def update_classification_rule(
     if existing is None:
         raise HTTPException(status_code=404, detail="Rule not found")
 
-    # Check if updating query (v2)
+    updates = []
+    params = []
+
     if "query" in request:
         query = request["query"].strip()
         if not query:
@@ -1277,68 +1230,32 @@ async def update_classification_rule(
         except ParseError as e:
             raise HTTPException(status_code=400, detail=f"Invalid query: {str(e)}")
 
-        updates = ["query = %s"]
-        params = [query]
+        updates.append("query = %s")
+        params.append(query)
 
-        if "is_enabled" in request:
-            updates.append("is_enabled = %s")
-            params.append(request["is_enabled"])
+    if "is_enabled" in request:
+        updates.append("is_enabled = %s")
+        params.append(request["is_enabled"])
 
-        if "name" in request:
-            updates.append("name = %s")
-            params.append(request["name"])
+    if "name" in request:
+        updates.append("name = %s")
+        params.append(request["name"])
 
-        params.extend([rule_id, user_id])
-        db.execute(
-            f"UPDATE classification_rules SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
-            tuple(params)
-        )
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
 
-        # Return updated rule
-        row = db.execute_one(
-            "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
-            (rule_id, user_id)
-        )
-        return dict(row)
-
-    # Legacy conditions-based update
-    target_type = request.get("target_type")
-
-    # Validate target_type if provided
-    if target_type is not None and target_type not in ("project", "did_not_attend"):
-        raise HTTPException(status_code=400, detail="target_type must be 'project' or 'did_not_attend'")
-
-    # Check project exists if changing and target_type requires it
-    if "project_id" in request:
-        # Determine effective target_type
-        effective_target_type = target_type or existing.get("target_type", "project")
-        if effective_target_type == "project":
-            project = db.execute_one(
-                "SELECT * FROM projects WHERE id = %s AND user_id = %s",
-                (request["project_id"], user_id)
-            )
-            if project is None:
-                raise HTTPException(status_code=404, detail="Project not found")
-
-    update_rule(
-        db=db,
-        rule_id=rule_id,
-        name=request.get("name"),
-        project_id=request.get("project_id"),
-        priority=request.get("priority"),
-        is_enabled=request.get("is_enabled"),
-        stop_processing=request.get("stop_processing"),
-        conditions=request.get("conditions"),
-        target_type=target_type,
+    params.extend([rule_id, user_id])
+    db.execute(
+        f"UPDATE classification_rules SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
+        tuple(params)
     )
 
-    # Return the updated rule
-    rules = load_rules_with_conditions(db, user_id, enabled_only=False)
-    for rule in rules:
-        if rule.id == rule_id:
-            return rule.to_dict()
-
-    raise HTTPException(status_code=404, detail="Rule not found")
+    # Return updated rule
+    row = db.execute_one(
+        "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
+        (rule_id, user_id)
+    )
+    return dict(row)
 
 
 @router.delete("/rules/{rule_id}")
@@ -1346,87 +1263,26 @@ async def delete_classification_rule(rule_id: int, user_id: int = Depends(get_us
     """Delete a classification rule."""
     db = get_db()
 
-    # Verify rule belongs to user
-    existing = db.execute_one(
-        "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
+    # Verify rule belongs to user and delete
+    result = db.execute(
+        "DELETE FROM classification_rules WHERE id = %s AND user_id = %s",
         (rule_id, user_id)
     )
-    if existing is None:
+    if result == 0:
         raise HTTPException(status_code=404, detail="Rule not found")
 
-    delete_rule(db, rule_id)
     return {"status": "deleted"}
 
 
-@router.post("/rules/{rule_id}/test")
-async def test_rule(rule_id: int, request: dict, user_id: int = Depends(get_user_id)):
-    """Test a rule against an event.
-
-    Request body:
-    {"event_id": 123}
-    """
-    event_id = request.get("event_id")
-    if not event_id:
-        raise HTTPException(status_code=400, detail="event_id is required")
-
-    results = test_rules_against_event(event_id, user_id)
-
-    # Find the specific rule in results
-    for result in results:
-        if result["rule"]["id"] == rule_id:
-            return result
-
-    raise HTTPException(status_code=404, detail="Rule not found")
-
-
-# --- Properties and Conditions (metadata) ---
-
-@router.get("/properties")
-async def list_properties():
-    """List available properties for rule conditions."""
-    return get_property_definitions()
-
-
-@router.get("/conditions")
-async def list_conditions():
-    """List available condition types."""
-    return ConditionEvaluator.get_available_conditions()
-
-
-# --- Event Analysis (debugging) ---
+# --- Event Analysis ---
 
 @router.get("/events/{event_id}/properties")
 async def get_event_props(event_id: int, user_id: int = Depends(get_user_id)):
-    """Get all computed properties for an event."""
+    """Get all computed properties for an event (used by create rule modal)."""
     props = get_event_properties(event_id, user_id)
     if props is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return props
-
-
-@router.get("/events/{event_id}/test-rules")
-async def test_event_rules(event_id: int, user_id: int = Depends(get_user_id)):
-    """Test all rules against an event."""
-    results = test_rules_against_event(event_id, user_id)
-    if not results:
-        # Check if event exists and belongs to user
-        db = get_db()
-        event = db.execute_one(
-            "SELECT * FROM events WHERE id = %s AND user_id = %s",
-            (event_id, user_id)
-        )
-        if event is None:
-            raise HTTPException(status_code=404, detail="Event not found")
-    return results
-
-
-@router.get("/events/{event_id}/suggest")
-async def get_suggestion(event_id: int, user_id: int = Depends(get_user_id)):
-    """Get classification suggestion for an event."""
-    suggestion = suggest_classification(event_id, user_id)
-    if suggestion is None:
-        return {"suggestion": None}
-    return {"suggestion": suggestion}
 
 
 class RulePreviewRequest(BaseModel):
@@ -1512,7 +1368,6 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
     """
     from services.query_parser import parse_query, ParseError
     from services.query_evaluator import QueryEvaluator
-    from services.classifier import RuleMatcher
     import json
 
     db = get_db()
@@ -1596,10 +1451,6 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
                 except ParseError:
                     pass
 
-    # Also load legacy condition-based rules for backward compatibility
-    legacy_rules = load_rules_with_conditions(db, user_id, enabled_only=True)
-    legacy_matcher = RuleMatcher(legacy_rules)
-
     dry_run = request.get("dry_run", False)
     classified = []
     attendance_updated = []
@@ -1609,7 +1460,7 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
         event_dict = dict(event)
         matching_rule = None
 
-        # First try query-based rules (v2)
+        # First try query-based rules
         for rule in parsed_rules:
             if rule.get("_parsed_query") and rule["_parsed_query"].items:
                 evaluator = QueryEvaluator(event_dict)
@@ -1624,18 +1475,6 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
                 if evaluator.evaluate(fp_matcher["_parsed_query"]):
                     matching_rule = fp_matcher
                     break
-
-        # Fall back to legacy condition-based rules
-        if not matching_rule:
-            legacy_match = legacy_matcher.match(event_dict)
-            if legacy_match:
-                matching_rule = {
-                    "id": legacy_match.id,
-                    "name": legacy_match.name,
-                    "target_type": legacy_match.target_type,
-                    "project_id": legacy_match.project_id,
-                    "project_name": legacy_match.project_name,
-                }
 
         if matching_rule:
             match_info = {
