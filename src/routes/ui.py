@@ -336,18 +336,46 @@ def _build_fingerprint_query(domains: list, emails: list, keywords: list) -> str
 @router.get("/rules", response_class=HTMLResponse)
 async def rules_page(request: Request):
     """Rule management page with query-based rules grouped by target."""
+    import json
     user_id = get_user_id(request)
 
     db = get_db()
 
-    # Get non-archived projects for the dropdown
+    # Get non-archived projects for the dropdown (with fingerprints)
     projects = db.execute(
-        "SELECT * FROM projects WHERE user_id = %s AND is_archived = FALSE ORDER BY name",
+        """SELECT id, name, color, fingerprint_domains, fingerprint_emails, fingerprint_keywords
+           FROM projects WHERE user_id = %s AND is_archived = FALSE ORDER BY name""",
         (user_id,)
     )
     projects = [dict(row) for row in projects]
 
-    # Get all rules
+    # Parse fingerprints and build generated rules
+    def parse_jsonb(val):
+        if val is None:
+            return []
+        if isinstance(val, list):
+            return val
+        if isinstance(val, str):
+            return json.loads(val) if val else []
+        return []
+
+    project_fingerprints = {}  # project_id -> generated query
+    for proj in projects:
+        domains = parse_jsonb(proj.get("fingerprint_domains"))
+        emails = parse_jsonb(proj.get("fingerprint_emails"))
+        keywords = parse_jsonb(proj.get("fingerprint_keywords"))
+
+        if domains or emails or keywords:
+            generated_query = _build_fingerprint_query(domains, emails, keywords)
+            if generated_query:
+                project_fingerprints[proj["id"]] = {
+                    "query": generated_query,
+                    "domains": domains,
+                    "emails": emails,
+                    "keywords": keywords,
+                }
+
+    # Get all explicit rules
     rules = db.execute(
         """
         SELECT cr.*, p.name as project_name, p.color as project_color
@@ -364,6 +392,26 @@ async def rules_page(request: Request):
     project_groups = {}  # project_id -> group
     dna_rules = []
 
+    # First, create groups for projects with fingerprints (even if no explicit rules)
+    for proj in projects:
+        pid = proj["id"]
+        if pid in project_fingerprints:
+            fp = project_fingerprints[pid]
+            project_groups[pid] = {
+                "id": pid,
+                "type": "project",
+                "name": proj["name"],
+                "color": proj.get("color") or "#00aa44",
+                "rules": [],
+                "generated_rule": {
+                    "id": f"fp-{pid}",
+                    "query": fp["query"],
+                    "is_generated": True,
+                    "is_enabled": True,
+                },
+            }
+
+    # Add explicit rules to groups
     for rule in rules:
         if rule.get("target_type") == "did_not_attend":
             dna_rules.append(rule)

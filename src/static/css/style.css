@@ -2562,6 +2562,11 @@ a.group-name:hover {
     font-size: 1.25rem;
 }
 
+.rule-item .drag-handle.disabled {
+    cursor: default;
+    opacity: 0.3;
+}
+
 .rule-item .rule-query {
     flex: 1;
     font-size: 0.85rem;
