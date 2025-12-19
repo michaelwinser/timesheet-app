@@ -2153,6 +2153,25 @@ kbd {
     font-size: 0.9rem;
 }
 
+/* Pattern chips (clickable tags for rule creation) */
+.pattern-chip {
+    cursor: pointer;
+    transition: all 0.15s ease;
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+
+.pattern-chip:hover {
+    border-color: var(--accent-primary);
+    background: var(--bg-secondary);
+}
+
+.pattern-chip.selected {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: #fff;
+}
+
 .tag-remove {
     background: none;
     border: none;

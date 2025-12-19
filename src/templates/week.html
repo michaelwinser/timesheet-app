@@ -306,44 +306,42 @@
     {% endif %}
 </aside>
 </div>
-<!-- Create Rule Modal -->
+<!-- Create Rule Modal (v2 Query-based) -->
 <div id="rule-modal" class="modal-overlay hidden">
-    <div class="modal-content">
+    <div class="modal-content" style="max-width: 650px;">
         <h2>Create Rule from Event</h2>
-        <div id="rule-modal-loading">Loading event properties...</div>
+        <div id="rule-modal-loading">Loading event data...</div>
         <div id="rule-modal-form" class="hidden">
             <div class="form-row">
-                <label for="modal-rule-name">Rule Name:</label>
-                <input type="text" id="modal-rule-name" placeholder="e.g., Client meetings">
-            </div>
-
-            <div class="form-row">
-                <label for="modal-target-type">Action:</label>
+                <label for="modal-target-type">Assign to:</label>
                 <select id="modal-target-type" onchange="toggleModalProjectSelect()">
-                    <option value="project">Classify to Project</option>
-                    <option value="did_not_attend">Mark as Did Not Attend</option>
+                    <optgroup label="Projects">
+                        {% for project in projects %}
+                        <option value="project:{{ project.id }}">{{ project.name }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    <optgroup label="Special">
+                        <option value="dna">Mark as Did Not Attend</option>
+                    </optgroup>
                 </select>
-            </div>
-
-            <div class="form-row" id="modal-project-row">
-                <label for="modal-rule-project">Project:</label>
-                <select id="modal-rule-project">
-                    {% for project in projects %}
-                    <option value="{{ project.id }}">{{ project.name }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <div class="form-row">
-                <label for="modal-rule-priority">Priority:</label>
-                <input type="number" id="modal-rule-priority" value="50" min="0" max="100">
-                <span class="form-hint">Higher = evaluated first</span>
             </div>
 
             <div class="event-properties-section">
-                <h3>Event Properties</h3>
-                <p class="form-hint">Select properties to use as conditions for this rule. The current values from this event will be pre-filled.</p>
-                <div id="modal-properties-list"></div>
+                <h3>Match by</h3>
+                <p class="form-hint">Click patterns to include/exclude them from the query.</p>
+                <div id="modal-patterns-list" class="tag-list" style="margin-bottom: 0.75rem;"></div>
+            </div>
+
+            <div class="form-row" style="flex-direction: column; align-items: stretch;">
+                <label for="modal-query">Query:</label>
+                <input type="text" id="modal-query" style="width: 100%; font-family: monospace;" placeholder="domain:example.com title:meeting">
+            </div>
+
+            <div id="modal-preview-section" class="preview-section" style="margin: 1rem 0;">
+                <div class="preview-header">
+                    <span id="modal-preview-count">0 events match</span>
+                </div>
+                <div id="modal-preview-list" class="preview-list"></div>
             </div>
 
             <div class="form-actions">
@@ -502,123 +500,202 @@
         updateSectionCheckbox('hidden');
     }
 
-    // Rule creation from event
+    // Rule creation from event (v2 query-based)
     let currentEventId = null;
-    let propertyDefinitions = [];
-    let conditionTypes = [];
+    let selectedPatterns = new Set();
+    let availablePatterns = [];
+    let modalPreviewTimeout = null;
 
     /**
-     * Toggle project select visibility based on target type.
+     * Toggle project select visibility (not needed for v2, but keeping stub).
      */
-    function toggleModalProjectSelect() {
-        const targetType = document.getElementById('modal-target-type').value;
-        const projectRow = document.getElementById('modal-project-row');
-        if (targetType === 'did_not_attend') {
-            projectRow.classList.add('hidden');
-        } else {
-            projectRow.classList.remove('hidden');
-        }
-    }
+    function toggleModalProjectSelect() {}
 
     /**
      * Show the create rule modal for an event.
      */
     async function showCreateRuleModal(eventId) {
         currentEventId = eventId;
+        selectedPatterns = new Set();
         const modal = document.getElementById('rule-modal');
         const loading = document.getElementById('rule-modal-loading');
         const form = document.getElementById('rule-modal-form');
-
-        // Get the event card to check current project
-        const card = document.querySelector(`.event-card[data-event-id="${eventId}"]`);
-        const currentProjectId = card?.querySelector('.card-entry')?.dataset?.entryId
-            ? card.querySelector('.entry-project-select')?.value
-            : null;
 
         modal.classList.remove('hidden');
         loading.classList.remove('hidden');
         form.classList.add('hidden');
 
         try {
-            // Fetch property definitions, condition types, and event properties in parallel
-            const [propDefs, condTypes, eventProps] = await Promise.all([
-                api.get('/api/properties'),
-                api.get('/api/conditions'),
-                api.get(`/api/events/${eventId}/properties`)
-            ]);
+            // Fetch event properties
+            const eventProps = await api.get(`/api/events/${eventId}/properties`);
 
-            propertyDefinitions = propDefs;
-            conditionTypes = condTypes;
+            // Generate suggested patterns from event
+            availablePatterns = [];
 
-            // Pre-fill rule name with event title
-            const eventTitle = eventProps.title || 'Untitled';
-            document.getElementById('modal-rule-name').value = `${eventTitle} Rule`;
-
-            // Reset target type to project and show project row
-            document.getElementById('modal-target-type').value = 'project';
-            toggleModalProjectSelect();
-
-            // Pre-select the event's current project if classified
-            if (currentProjectId) {
-                document.getElementById('modal-rule-project').value = currentProjectId;
+            // Extract domains from attendees
+            if (eventProps.attendees && eventProps.attendees.length > 0) {
+                const domains = new Set();
+                for (const attendee of eventProps.attendees) {
+                    const match = attendee.match(/@([^@]+)$/);
+                    if (match) domains.add(match[1].toLowerCase());
+                }
+                for (const domain of domains) {
+                    availablePatterns.push({
+                        type: 'domain',
+                        value: domain,
+                        query: `domain:${domain}`,
+                        display: `domain:${domain}`
+                    });
+                }
             }
 
-            // Build the properties list with checkboxes
-            const listContainer = document.getElementById('modal-properties-list');
-            listContainer.innerHTML = '';
-
-            for (const prop of propertyDefinitions) {
-                const currentValue = eventProps[prop.name];
-                // Skip properties with no value
-                if (currentValue === null || currentValue === undefined || currentValue === '' ||
-                    (Array.isArray(currentValue) && currentValue.length === 0)) {
-                    continue;
-                }
-
-                const row = document.createElement('div');
-                row.className = 'property-row';
-
-                // Get applicable condition types for this property
-                const applicableConditions = conditionTypes.filter(c =>
-                    c.applies_to.includes(prop.value_type)
-                );
-
-                // Format the current value for display
-                let displayValue = currentValue;
-                if (Array.isArray(currentValue)) {
-                    displayValue = currentValue.join(', ');
-                }
-
-                row.innerHTML = `
-                    <label class="property-checkbox">
-                        <input type="checkbox" class="prop-check" data-property="${prop.name}" data-type="${prop.value_type}">
-                        <span class="prop-name">${prop.display_name}</span>
-                    </label>
-                    <select class="prop-condition" disabled>
-                        ${applicableConditions.map(c => `<option value="${c.type}">${c.display}</option>`).join('')}
-                    </select>
-                    <input type="text" class="prop-value" value="${escapeHtml(String(displayValue))}" disabled>
-                `;
-
-                // Enable/disable condition and value when checkbox is toggled
-                const checkbox = row.querySelector('.prop-check');
-                const condSelect = row.querySelector('.prop-condition');
-                const valueInput = row.querySelector('.prop-value');
-
-                checkbox.addEventListener('change', () => {
-                    condSelect.disabled = !checkbox.checked;
-                    valueInput.disabled = !checkbox.checked;
+            // Add title pattern if meaningful
+            if (eventProps.title && eventProps.title.length > 3) {
+                const title = eventProps.title.trim();
+                // Add exact title match
+                availablePatterns.push({
+                    type: 'title',
+                    value: title,
+                    query: title.includes(' ') ? `title:"${title}"` : `title:${title}`,
+                    display: `title:"${title.substring(0, 30)}${title.length > 30 ? '...' : ''}"`
                 });
 
-                listContainer.appendChild(row);
+                // Add first word if multi-word title
+                const words = title.split(/\s+/);
+                if (words.length > 1 && words[0].length >= 3) {
+                    availablePatterns.push({
+                        type: 'title',
+                        value: words[0],
+                        query: `title:${words[0].toLowerCase()}`,
+                        display: `title:${words[0].toLowerCase()}`
+                    });
+                }
             }
+
+            // Add response status if not accepted
+            if (eventProps.my_response_status && eventProps.my_response_status !== 'accepted') {
+                availablePatterns.push({
+                    type: 'response',
+                    value: eventProps.my_response_status,
+                    query: `response:${eventProps.my_response_status}`,
+                    display: `response:${eventProps.my_response_status}`
+                });
+            }
+
+            // Add recurring pattern
+            if (eventProps.is_recurring) {
+                availablePatterns.push({
+                    type: 'recurring',
+                    value: 'yes',
+                    query: 'recurring:yes',
+                    display: 'recurring:yes'
+                });
+            }
+
+            // Render pattern chips
+            renderPatternChips();
+
+            // Setup query input change handler
+            const queryInput = document.getElementById('modal-query');
+            queryInput.value = '';
+            queryInput.addEventListener('input', debounceModalPreview);
 
             loading.classList.add('hidden');
             form.classList.remove('hidden');
 
         } catch (error) {
-            alert('Error loading event properties: ' + error.message);
+            alert('Error loading event: ' + error.message);
             hideRuleModal();
+        }
+    }
+
+    /**
+     * Render clickable pattern chips.
+     */
+    function renderPatternChips() {
+        const container = document.getElementById('modal-patterns-list');
+        container.innerHTML = '';
+
+        for (const pattern of availablePatterns) {
+            const chip = document.createElement('span');
+            chip.className = 'tag pattern-chip';
+            if (selectedPatterns.has(pattern.query)) {
+                chip.classList.add('selected');
+            }
+            chip.textContent = pattern.display;
+            chip.dataset.query = pattern.query;
+            chip.onclick = () => togglePattern(pattern.query);
+            container.appendChild(chip);
+        }
+    }
+
+    /**
+     * Toggle a pattern selection.
+     */
+    function togglePattern(query) {
+        if (selectedPatterns.has(query)) {
+            selectedPatterns.delete(query);
+        } else {
+            selectedPatterns.add(query);
+        }
+        renderPatternChips();
+        updateQueryFromPatterns();
+        doModalPreview();
+    }
+
+    /**
+     * Update the query input from selected patterns.
+     */
+    function updateQueryFromPatterns() {
+        const patterns = Array.from(selectedPatterns);
+        let query = '';
+        if (patterns.length === 1) {
+            query = patterns[0];
+        } else if (patterns.length > 1) {
+            query = '(' + patterns.join(' OR ') + ')';
+        }
+        document.getElementById('modal-query').value = query;
+    }
+
+    /**
+     * Debounce modal preview.
+     */
+    function debounceModalPreview() {
+        clearTimeout(modalPreviewTimeout);
+        modalPreviewTimeout = setTimeout(doModalPreview, 300);
+    }
+
+    /**
+     * Fetch and display preview results.
+     */
+    async function doModalPreview() {
+        const query = document.getElementById('modal-query').value.trim();
+        const previewCount = document.getElementById('modal-preview-count');
+        const previewList = document.getElementById('modal-preview-list');
+
+        if (!query) {
+            previewCount.textContent = '0 events match';
+            previewList.innerHTML = '<p class="no-matches">Enter a query to see matching events</p>';
+            return;
+        }
+
+        try {
+            const result = await api.post('/api/rules/preview', { query, limit: 10 });
+            previewCount.textContent = `${result.total} event(s) match`;
+
+            if (result.events.length === 0) {
+                previewList.innerHTML = '<p class="no-matches">No matching events</p>';
+            } else {
+                previewList.innerHTML = result.events.map(e => `
+                    <div class="preview-item">
+                        <span class="preview-date">${e.start_time ? e.start_time.slice(0, 10) : ''}</span>
+                        <span class="preview-title">${escapeHtml(e.title || 'Untitled')}</span>
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+            previewCount.textContent = 'Error';
+            previewList.innerHTML = `<p class="error-message">${escapeHtml(error.message)}</p>`;
         }
     }
 
@@ -628,70 +705,34 @@
     function hideRuleModal() {
         document.getElementById('rule-modal').classList.add('hidden');
         currentEventId = null;
+        selectedPatterns = new Set();
     }
 
     /**
      * Save the rule from the modal form.
      */
     async function saveRuleFromModal() {
-        const name = document.getElementById('modal-rule-name').value.trim();
-        const targetType = document.getElementById('modal-target-type').value;
-        const projectId = parseInt(document.getElementById('modal-rule-project').value);
-        const priority = parseInt(document.getElementById('modal-rule-priority').value);
+        const query = document.getElementById('modal-query').value.trim();
+        const targetValue = document.getElementById('modal-target-type').value;
 
-        if (!name) {
-            alert('Rule name is required');
+        if (!query) {
+            showToast('Query is required', 'error');
             return;
         }
 
-        // Gather selected conditions
-        const conditions = [];
-        const rows = document.querySelectorAll('.property-row');
-        for (const row of rows) {
-            const checkbox = row.querySelector('.prop-check');
-            if (!checkbox.checked) continue;
+        const ruleData = { query };
 
-            const propertyName = checkbox.dataset.property;
-            const conditionType = row.querySelector('.prop-condition').value;
-            let conditionValue = row.querySelector('.prop-value').value;
-
-            // Convert comma-separated values to array for list types
-            const propType = checkbox.dataset.type;
-            if (propType === 'list' || conditionType === 'in_list') {
-                conditionValue = conditionValue.split(',').map(v => v.trim()).filter(v => v);
-            }
-
-            conditions.push({
-                property_name: propertyName,
-                condition_type: conditionType,
-                condition_value: conditionValue
-            });
-        }
-
-        if (conditions.length === 0) {
-            alert('At least one condition is required. Please select a property.');
-            return;
+        if (targetValue === 'dna') {
+            ruleData.target_type = 'did_not_attend';
+        } else if (targetValue.startsWith('project:')) {
+            ruleData.target_type = 'project';
+            ruleData.project_id = parseInt(targetValue.split(':')[1]);
         }
 
         try {
-            const ruleData = {
-                name,
-                target_type: targetType,
-                priority,
-                is_enabled: true,
-                conditions
-            };
-
-            // Only include project_id for project rules
-            if (targetType === 'project') {
-                ruleData.project_id = projectId;
-            }
-
             await api.post('/api/rules', ruleData);
-
-            showToast('Rule created successfully!', 'success');
+            showToast('Rule created!', 'success');
             hideRuleModal();
-
         } catch (error) {
             showToast('Error creating rule: ' + error.message, 'error');
         }
