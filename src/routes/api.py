@@ -1103,52 +1103,42 @@ async def list_rules(enabled_only: bool = False, user_id: int = Depends(get_user
 
 @router.get("/rules/{rule_id}")
 async def get_rule(rule_id: int, user_id: int = Depends(get_user_id)):
-    """Get a single rule with conditions."""
+    """Get a single rule with query and conditions."""
     db = get_db()
-    rules = load_rules_with_conditions(db, user_id, enabled_only=False)
-    for rule in rules:
-        if rule.id == rule_id:
-            return rule.to_dict()
-    raise HTTPException(status_code=404, detail="Rule not found")
+
+    # Get rule directly from database
+    row = db.execute_one(
+        "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
+        (rule_id, user_id)
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+
+    return dict(row)
 
 
 @router.post("/rules")
 async def create_classification_rule(request: dict, user_id: int = Depends(get_user_id)):
     """Create a new classification rule.
 
-    Request body for project rule:
+    New query-based format (v2):
     {
-        "name": "Rule name",
-        "target_type": "project",  // optional, defaults to "project"
-        "project_id": 1,
-        "priority": 100,
-        "is_enabled": true,
-        "stop_processing": true,
-        "conditions": [
-            {"property_name": "title", "condition_type": "contains", "condition_value": "standup"},
-            {"property_name": "weekday", "condition_type": "in_list", "condition_value": ["monday", "friday"]}
-        ]
+        "query": "domain:example.com title:standup",
+        "target_type": "project",  // or "did_not_attend"
+        "project_id": 1,  // required for project rules
     }
 
-    Request body for did_not_attend rule:
+    Legacy conditions-based format (still supported):
     {
         "name": "Rule name",
-        "target_type": "did_not_attend",
-        "priority": 100,
-        "is_enabled": true,
-        "stop_processing": true,
-        "conditions": [
-            {"property_name": "my_response_status", "condition_type": "equals", "condition_value": "needsAction"}
-        ]
+        "target_type": "project",
+        "project_id": 1,
+        "conditions": [...]
     }
     """
-    db = get_db()
+    from services.query_parser import parse_query, ParseError
 
-    # Validate required fields
-    if "name" not in request:
-        raise HTTPException(status_code=400, detail="Rule name is required")
-    if "conditions" not in request or not request["conditions"]:
-        raise HTTPException(status_code=400, detail="At least one condition is required")
+    db = get_db()
 
     target_type = request.get("target_type", "project")
 
@@ -1162,7 +1152,6 @@ async def create_classification_rule(request: dict, user_id: int = Depends(get_u
         if "project_id" not in request:
             raise HTTPException(status_code=400, detail="Project ID is required for project rules")
         project_id = request["project_id"]
-        # Check project exists and belongs to user
         project = db.execute_one(
             "SELECT * FROM projects WHERE id = %s AND user_id = %s",
             (project_id, user_id)
@@ -1170,25 +1159,73 @@ async def create_classification_rule(request: dict, user_id: int = Depends(get_u
         if project is None:
             raise HTTPException(status_code=404, detail="Project not found")
 
-    rule_id = create_rule(
-        db=db,
-        user_id=user_id,
-        name=request["name"],
-        project_id=project_id,
-        conditions=request["conditions"],
-        priority=request.get("priority", 0),
-        is_enabled=request.get("is_enabled", True),
-        stop_processing=request.get("stop_processing", True),
-        target_type=target_type,
-    )
+    # Check if this is a query-based rule (v2) or conditions-based (legacy)
+    if "query" in request:
+        # V2 query-based rule
+        query = request["query"].strip()
+        if not query:
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    # Return the created rule
-    rules = load_rules_with_conditions(db, user_id, enabled_only=False)
-    for rule in rules:
-        if rule.id == rule_id:
-            return rule.to_dict()
+        # Validate query syntax
+        try:
+            parse_query(query)
+        except ParseError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid query: {str(e)}")
 
-    return {"id": rule_id}
+        # Generate a name from the query if not provided
+        name = request.get("name", query[:50])
+
+        # Insert directly with query string
+        rule_id = db.execute_insert(
+            """
+            INSERT INTO classification_rules (
+                user_id, name, project_id, target_type, query,
+                priority, is_enabled, stop_processing, is_generated
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
+            """,
+            (
+                user_id, name, project_id, target_type, query,
+                request.get("priority", 0),
+                request.get("is_enabled", True),
+                request.get("stop_processing", True),
+                request.get("is_generated", False),
+            )
+        )
+
+        # Return the created rule
+        row = db.execute_one(
+            "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
+            (rule_id, user_id)
+        )
+        return dict(row)
+
+    else:
+        # Legacy conditions-based rule
+        if "name" not in request:
+            raise HTTPException(status_code=400, detail="Rule name is required")
+        if "conditions" not in request or not request["conditions"]:
+            raise HTTPException(status_code=400, detail="At least one condition is required")
+
+        rule_id = create_rule(
+            db=db,
+            user_id=user_id,
+            name=request["name"],
+            project_id=project_id,
+            conditions=request["conditions"],
+            priority=request.get("priority", 0),
+            is_enabled=request.get("is_enabled", True),
+            stop_processing=request.get("stop_processing", True),
+            target_type=target_type,
+        )
+
+        # Return the created rule
+        rules = load_rules_with_conditions(db, user_id, enabled_only=False)
+        for rule in rules:
+            if rule.id == rule_id:
+                return rule.to_dict()
+
+        return {"id": rule_id}
 
 
 @router.put("/rules/{rule_id}")
@@ -1199,7 +1236,13 @@ async def update_classification_rule(
 ):
     """Update a classification rule.
 
-    Request body (all fields optional):
+    V2 query-based update:
+    {
+        "query": "domain:example.com",
+        "is_enabled": true,
+    }
+
+    Legacy conditions-based update (all fields optional):
     {
         "name": "New name",
         "target_type": "project",  // or "did_not_attend"
@@ -1210,6 +1253,8 @@ async def update_classification_rule(
         "conditions": [...]  // If provided, replaces all conditions
     }
     """
+    from services.query_parser import parse_query, ParseError
+
     db = get_db()
 
     # Check rule exists and belongs to user
@@ -1220,6 +1265,43 @@ async def update_classification_rule(
     if existing is None:
         raise HTTPException(status_code=404, detail="Rule not found")
 
+    # Check if updating query (v2)
+    if "query" in request:
+        query = request["query"].strip()
+        if not query:
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
+
+        # Validate query syntax
+        try:
+            parse_query(query)
+        except ParseError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid query: {str(e)}")
+
+        updates = ["query = %s"]
+        params = [query]
+
+        if "is_enabled" in request:
+            updates.append("is_enabled = %s")
+            params.append(request["is_enabled"])
+
+        if "name" in request:
+            updates.append("name = %s")
+            params.append(request["name"])
+
+        params.extend([rule_id, user_id])
+        db.execute(
+            f"UPDATE classification_rules SET {', '.join(updates)} WHERE id = %s AND user_id = %s",
+            tuple(params)
+        )
+
+        # Return updated rule
+        row = db.execute_one(
+            "SELECT * FROM classification_rules WHERE id = %s AND user_id = %s",
+            (rule_id, user_id)
+        )
+        return dict(row)
+
+    # Legacy conditions-based update
     target_type = request.get("target_type")
 
     # Validate target_type if provided
@@ -1419,6 +1501,8 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
     - Project rules: Create time entries for unclassified events
     - Did-not-attend rules: Set did_not_attend flag on matching events
 
+    Supports both query-based (v2) and conditions-based (legacy) rules.
+
     Request body (optional):
     {
         "start_date": "2025-01-01",  // Optional: filter by date range
@@ -1426,7 +1510,9 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
         "dry_run": false  // If true, only return what would be affected
     }
     """
-    from services.classifier import RuleMatcher, EventProperties
+    from services.query_parser import parse_query, ParseError
+    from services.query_evaluator import QueryEvaluator
+    from services.classifier import RuleMatcher
     import json
 
     db = get_db()
@@ -1435,8 +1521,7 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
     # Build query for events that need processing:
     # - No time entry (for project rules), OR
     # - did_not_attend is FALSE (for did_not_attend rules)
-    # We get all such events and let the matcher decide what to do
-    query = """
+    events_query = """
         SELECT e.* FROM events e
         LEFT JOIN time_entries te ON e.id = te.event_id
         WHERE e.user_id = %s
@@ -1445,19 +1530,44 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
     params = [user_id]
 
     if request.get("start_date"):
-        query += " AND DATE(e.start_time) >= %s"
+        events_query += " AND DATE(e.start_time) >= %s"
         params.append(request["start_date"])
     if request.get("end_date"):
-        query += " AND DATE(e.start_time) <= %s"
+        events_query += " AND DATE(e.start_time) <= %s"
         params.append(request["end_date"])
 
-    query += " ORDER BY e.start_time"
+    events_query += " ORDER BY e.start_time"
 
-    events = db.execute(query, tuple(params))
+    events = db.execute(events_query, tuple(params))
 
-    # Load rules for this user only
-    rules = load_rules_with_conditions(db, user_id, enabled_only=True)
-    matcher = RuleMatcher(rules)
+    # Load all enabled rules
+    rules_rows = db.execute(
+        """
+        SELECT cr.*, p.name as project_name
+        FROM classification_rules cr
+        LEFT JOIN projects p ON cr.project_id = p.id
+        WHERE cr.user_id = %s AND cr.is_enabled = TRUE
+        ORDER BY cr.priority DESC, cr.display_order
+        """,
+        (user_id,)
+    )
+    rules = [dict(r) for r in rules_rows]
+
+    # Prepare parsed queries for v2 rules
+    parsed_rules = []
+    for rule in rules:
+        if rule.get("query"):
+            try:
+                rule["_parsed_query"] = parse_query(rule["query"])
+            except ParseError:
+                rule["_parsed_query"] = None
+        else:
+            rule["_parsed_query"] = None
+        parsed_rules.append(rule)
+
+    # Also load legacy condition-based rules for backward compatibility
+    legacy_rules = load_rules_with_conditions(db, user_id, enabled_only=True)
+    legacy_matcher = RuleMatcher(legacy_rules)
 
     dry_run = request.get("dry_run", False)
     classified = []
@@ -1466,23 +1576,44 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
 
     for event in events:
         event_dict = dict(event)
-        matching_rule = matcher.match(event_dict)
+        matching_rule = None
+
+        # First try query-based rules (v2)
+        for rule in parsed_rules:
+            if rule.get("_parsed_query") and rule["_parsed_query"].items:
+                evaluator = QueryEvaluator(event_dict)
+                if evaluator.evaluate(rule["_parsed_query"]):
+                    matching_rule = rule
+                    break
+
+        # Fall back to legacy condition-based rules
+        if not matching_rule:
+            legacy_match = legacy_matcher.match(event_dict)
+            if legacy_match:
+                matching_rule = {
+                    "id": legacy_match.id,
+                    "name": legacy_match.name,
+                    "target_type": legacy_match.target_type,
+                    "project_id": legacy_match.project_id,
+                    "project_name": legacy_match.project_name,
+                }
 
         if matching_rule:
             match_info = {
                 "event_id": event["id"],
                 "event_title": event["title"],
-                "rule_id": matching_rule.id,
-                "rule_name": matching_rule.name,
-                "target_type": matching_rule.target_type,
-                "project_id": matching_rule.project_id,
-                "project_name": matching_rule.project_name,
+                "rule_id": matching_rule.get("id"),
+                "rule_name": matching_rule.get("name") or matching_rule.get("query", "")[:50],
+                "target_type": matching_rule.get("target_type", "project"),
+                "project_id": matching_rule.get("project_id"),
+                "project_name": matching_rule.get("project_name"),
             }
 
             if dry_run:
                 matched.append(match_info)
             else:
-                if matching_rule.is_did_not_attend_rule:
+                target_type = matching_rule.get("target_type", "project")
+                if target_type == "did_not_attend":
                     # Set did_not_attend flag on event
                     if not event.get("did_not_attend"):  # Only update if not already set
                         db.execute(
@@ -1490,9 +1621,10 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
                             (event["id"], user_id)
                         )
                         attendance_updated.append(match_info)
-                elif matching_rule.is_project_rule:
-                    # Skip project rules without a valid project_id (data integrity issue)
-                    if matching_rule.project_id is None:
+                elif target_type == "project":
+                    project_id = matching_rule.get("project_id")
+                    # Skip project rules without a valid project_id
+                    if project_id is None:
                         continue
                     # Only classify if event doesn't have a time entry yet
                     has_entry = db.execute_one(
@@ -1516,11 +1648,11 @@ async def apply_rules_to_events(request: dict = None, user_id: int = Depends(get
                             (
                                 user_id,
                                 event["id"],
-                                matching_rule.project_id,
+                                project_id,
                                 hours,
                                 event["title"],
                                 "rule",
-                                matching_rule.id,
+                                matching_rule.get("id"),
                             ),
                         )
                         classified.append(match_info)

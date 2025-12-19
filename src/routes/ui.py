@@ -293,36 +293,71 @@ async def project_detail_page(request: Request, project_id: int):
 
 @router.get("/rules", response_class=HTMLResponse)
 async def rules_page(request: Request):
-    """Rule management page."""
-    # Authentication is enforced by middleware, no need to check here
+    """Rule management page with query-based rules grouped by target."""
     user_id = get_user_id(request)
 
     db = get_db()
 
-    # Get projects for the dropdown
+    # Get non-archived projects for the dropdown
     projects = db.execute(
-        "SELECT * FROM projects WHERE user_id = %s ORDER BY name",
+        "SELECT * FROM projects WHERE user_id = %s AND is_archived = FALSE ORDER BY name",
         (user_id,)
     )
     projects = [dict(row) for row in projects]
 
-    # Get rules with their conditions and project info
-    from services.classifier import load_rules_with_conditions
-    rules = load_rules_with_conditions(db, user_id, enabled_only=False)
+    # Get all rules
+    rules = db.execute(
+        """
+        SELECT cr.*, p.name as project_name, p.color as project_color
+        FROM classification_rules cr
+        LEFT JOIN projects p ON cr.project_id = p.id
+        WHERE cr.user_id = %s
+        ORDER BY cr.project_id, cr.display_order, cr.priority DESC
+        """,
+        (user_id,)
+    )
+    rules = [dict(r) for r in rules]
 
-    # Add project color to rules
-    project_colors = {p["id"]: p["color"] for p in projects}
-    rules_data = []
+    # Group rules by target (project or DNA)
+    project_groups = {}  # project_id -> group
+    dna_rules = []
+
     for rule in rules:
-        rule_dict = rule.to_dict()
-        rule_dict["project_color"] = project_colors.get(rule.project_id, "#00aa44")
-        rules_data.append(rule_dict)
+        if rule.get("target_type") == "did_not_attend":
+            dna_rules.append(rule)
+        elif rule.get("project_id"):
+            pid = rule["project_id"]
+            if pid not in project_groups:
+                project_groups[pid] = {
+                    "id": pid,
+                    "type": "project",
+                    "name": rule.get("project_name") or "Unknown Project",
+                    "color": rule.get("project_color") or "#00aa44",
+                    "rules": [],
+                }
+            project_groups[pid]["rules"].append(rule)
+
+    # Build rule_groups list: projects first, then DNA
+    rule_groups = list(project_groups.values())
+
+    # Sort project groups by name
+    rule_groups.sort(key=lambda g: g["name"].lower())
+
+    # Add DNA group if there are DNA rules
+    if dna_rules:
+        rule_groups.append({
+            "id": "dna",
+            "type": "dna",
+            "name": "Did Not Attend",
+            "color": None,
+            "rules": dna_rules,
+        })
 
     return templates.TemplateResponse(
         "rules.html",
         {
             "request": request,
-            "rules": rules_data,
+            "rule_groups": rule_groups,
             "projects": projects,
         },
     )

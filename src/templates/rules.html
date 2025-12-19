@@ -3,297 +3,296 @@
 {% block title %}Rules - Timesheet{% endblock %}
 
 {% block content %}
-<div class="rules-header">
-    <h1>Classification Rules</h1>
-    <div class="rules-actions">
-        <button class="btn btn-secondary" onclick="applyRules()">Apply Rules</button>
-        <button class="btn btn-primary" onclick="showAddRule()">Add Rule</button>
-    </div>
-</div>
-
-<!-- Add/Edit Rule Form -->
-<div id="rule-form" class="rule-form hidden">
-    <h2 id="rule-form-title">Add Rule</h2>
-    <input type="hidden" id="rule-id">
-
-    <div class="form-row">
-        <label for="rule-name">Name:</label>
-        <input type="text" id="rule-name" placeholder="e.g., Client Acme Meetings">
+<div class="rules-page">
+    <div class="rules-header">
+        <h1>Classification Rules</h1>
+        <div class="rules-actions">
+            <button class="btn btn-secondary" onclick="applyAllRules()">Apply Rules</button>
+        </div>
     </div>
 
-    <div class="form-row">
-        <label for="rule-target-type">Action:</label>
-        <select id="rule-target-type" onchange="toggleProjectSelect()">
-            <option value="project">Classify to Project</option>
-            <option value="did_not_attend">Mark as Did Not Attend</option>
-        </select>
+    <!-- Rule Creator with Live Preview -->
+    <div class="rule-creator">
+        <div class="rule-input-section">
+            <input type="text" id="rule-query-input" placeholder='Enter query: domain:example.com title:"meeting" (domain:a.com OR domain:b.com)' oninput="debouncePreview()">
+            <div class="rule-input-actions">
+                <select id="rule-target-select">
+                    <option value="">Assign to...</option>
+                    <optgroup label="Projects">
+                        {% for project in projects %}
+                        <option value="project:{{ project.id }}" data-color="{{ project.color or '#00aa44' }}">{{ project.name }}</option>
+                        {% endfor %}
+                    </optgroup>
+                    <optgroup label="Special">
+                        <option value="dna">Did Not Attend</option>
+                    </optgroup>
+                </select>
+                <button class="btn btn-primary" onclick="saveNewRule()" id="save-rule-btn" disabled>Save Rule</button>
+            </div>
+        </div>
+
+        <div id="preview-section" class="preview-section hidden">
+            <div class="preview-header">
+                <span id="preview-count">0 events match</span>
+                <span id="preview-query" class="preview-query"></span>
+            </div>
+            <div id="preview-list" class="preview-list"></div>
+        </div>
+
+        <div class="query-help">
+            <details>
+                <summary>Query syntax help</summary>
+                <div class="help-content">
+                    <p><strong>Properties:</strong></p>
+                    <ul>
+                        <li><code>title:standup</code> - Title contains "standup"</li>
+                        <li><code>domain:example.com</code> - Attendee from domain</li>
+                        <li><code>email:bob@example.com</code> - Specific attendee email</li>
+                        <li><code>response:declined</code> - Your response status</li>
+                        <li><code>recurring:yes</code> - Recurring events</li>
+                        <li><code>day-of-week:mon</code> - Day of week</li>
+                        <li><code>time-of-day:>17:00</code> - After 5pm</li>
+                        <li><code>transparency:free</code> - Free/busy status</li>
+                    </ul>
+                    <p><strong>Operators:</strong></p>
+                    <ul>
+                        <li><code>title:"weekly meeting"</code> - Quote strings with spaces</li>
+                        <li><code>(a OR b)</code> - Match either condition</li>
+                        <li>Multiple terms = AND (all must match)</li>
+                    </ul>
+                </div>
+            </details>
+        </div>
     </div>
 
-    <div class="form-row" id="project-row">
-        <label for="rule-project">Project:</label>
-        <select id="rule-project">
-            {% for project in projects %}
-            <option value="{{ project.id }}">{{ project.name }}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <div class="form-row">
-        <label for="rule-priority">Priority:</label>
-        <input type="number" id="rule-priority" value="50" min="0" max="100">
-        <span class="form-hint">Higher = evaluated first (0-100)</span>
-    </div>
-
-    <div class="form-row">
-        <label>
-            <input type="checkbox" id="rule-enabled" checked>
-            Enabled
-        </label>
-    </div>
-
-    <div class="conditions-section">
-        <h3>Conditions <span class="form-hint">(all must match)</span></h3>
-        <div id="conditions-list"></div>
-        <button type="button" class="btn btn-secondary btn-small" onclick="addCondition()">+ Add Condition</button>
-    </div>
-
-    <div class="form-actions">
-        <button class="btn btn-primary" onclick="saveRule()">Save</button>
-        <button class="btn btn-secondary" onclick="hideRuleForm()">Cancel</button>
-    </div>
-</div>
-
-<!-- Rules List -->
-<div class="rules-list">
-    {% for rule in rules %}
-    <div class="rule-card" data-rule-id="{{ rule.id }}" data-target-type="{{ rule.target_type or 'project' }}">
-        <div class="rule-header">
-            <div class="rule-info">
-                <span class="rule-name">{{ rule.name }}</span>
-                {% if rule.target_type == 'did_not_attend' %}
-                <span class="rule-target did-not-attend">Did Not Attend</span>
+    <!-- Rules List Grouped by Project -->
+    <div class="rules-groups">
+        {% for group in rule_groups %}
+        <div class="rules-group" data-group-id="{{ group.id }}" data-group-type="{{ group.type }}">
+            <div class="group-header">
+                {% if group.type == 'dna' %}
+                <span class="group-name">Did Not Attend</span>
                 {% else %}
-                <span class="rule-project" style="background-color: {{ rule.project_color or '#00aa44' }}">{{ rule.project_name }}</span>
+                <span class="group-color" style="background-color: {{ group.color or '#00aa44' }}"></span>
+                <a href="/projects/{{ group.id }}" class="group-name">{{ group.name }}</a>
                 {% endif %}
-                <span class="rule-priority">Priority: {{ rule.priority }}</span>
-                {% if not rule.is_enabled %}
-                <span class="rule-disabled">Disabled</span>
-                {% endif %}
+                <span class="group-count">{{ group.rules | length }} rule(s)</span>
             </div>
-            <div class="rule-actions">
-                <button class="btn-small" onclick="editRule({{ rule.id }})">Edit</button>
-                <button class="btn-small" onclick="toggleRule({{ rule.id }}, {{ 'false' if rule.is_enabled else 'true' }})">
-                    {{ 'Disable' if rule.is_enabled else 'Enable' }}
-                </button>
-                <button class="btn-small btn-danger" onclick="deleteRule({{ rule.id }})">Delete</button>
+            <div class="group-rules" data-group-id="{{ group.id }}">
+                {% for rule in group.rules %}
+                <div class="rule-item {% if rule.is_generated %}generated{% endif %}" data-rule-id="{{ rule.id }}">
+                    <span class="drag-handle" title="Drag to reorder">≡</span>
+                    <code class="rule-query">{{ rule.query or '(legacy rule)' }}</code>
+                    {% if rule.is_generated %}
+                    <span class="rule-badge generated">Generated</span>
+                    {% endif %}
+                    {% if not rule.is_enabled %}
+                    <span class="rule-badge disabled">Disabled</span>
+                    {% endif %}
+                    <div class="rule-actions">
+                        {% if not rule.is_generated %}
+                        <button class="btn-small" onclick="editRule({{ rule.id }})">Edit</button>
+                        <button class="btn-small btn-danger" onclick="deleteRule({{ rule.id }})">Delete</button>
+                        {% endif %}
+                    </div>
+                </div>
+                {% else %}
+                <p class="no-rules-message">No rules defined</p>
+                {% endfor %}
             </div>
         </div>
-        <div class="rule-conditions">
-            {% for condition in rule.conditions %}
-            <span class="condition-chip">
-                <strong>{{ condition.property_name }}</strong>
-                {{ condition.condition_type }}
-                "{{ condition.condition_value }}"
-            </span>
-            {% else %}
-            <span class="no-conditions">No conditions defined</span>
-            {% endfor %}
+        {% else %}
+        <div class="no-rules-message">
+            <p>No rules yet. Create one using the query box above, or add matching patterns on a <a href="/projects">project page</a>.</p>
         </div>
+        {% endfor %}
     </div>
-    {% else %}
-    <div class="no-rules">
-        <p>No classification rules yet.</p>
-        <p>Rules automatically classify events based on their properties like title, attendees, or day of week.</p>
-    </div>
-    {% endfor %}
 </div>
 
-<!-- Apply Rules Result -->
-<div id="apply-result" class="apply-result hidden"></div>
+<!-- Edit Rule Modal -->
+<div id="edit-rule-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h2>Edit Rule</h2>
+        <input type="hidden" id="edit-rule-id">
+        <div class="form-row">
+            <label for="edit-rule-query">Query:</label>
+            <input type="text" id="edit-rule-query" style="width: 100%;">
+        </div>
+        <div id="edit-preview-section" class="preview-section">
+            <div class="preview-header">
+                <span id="edit-preview-count">0 events match</span>
+            </div>
+            <div id="edit-preview-list" class="preview-list"></div>
+        </div>
+        <div class="form-row">
+            <label>
+                <input type="checkbox" id="edit-rule-enabled">
+                Enabled
+            </label>
+        </div>
+        <div class="form-actions">
+            <button class="btn btn-primary" onclick="updateRule()">Save</button>
+            <button class="btn btn-secondary" onclick="hideEditModal()">Cancel</button>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Available properties and conditions from the API
-let properties = [];
-let conditionTypes = [];
-let allRules = [];
+let previewTimeout = null;
+const DEBOUNCE_MS = 300;
 
-// Load metadata on page load
-document.addEventListener('DOMContentLoaded', async function() {
-    // Apply appropriate text colors to rule project badges
-    document.querySelectorAll('.rule-project').forEach(badge => {
-        const bgColor = badge.style.backgroundColor;
-        if (bgColor) {
-            let hexColor = bgColor;
-            if (bgColor.startsWith('rgb')) {
-                const rgb = bgColor.match(/\d+/g);
-                if (rgb && rgb.length >= 3) {
-                    hexColor = '#' + rgb.slice(0, 3).map(x => parseInt(x).toString(16).padStart(2, '0')).join('');
-                }
-            }
-            applyTextColorClass(badge, hexColor);
-        }
-    });
-
-    const [propsResponse, condsResponse] = await Promise.all([
-        api.get('/api/properties'),
-        api.get('/api/conditions')
-    ]);
-    properties = propsResponse;
-    conditionTypes = condsResponse;
-});
-
-function showAddRule() {
-    document.getElementById('rule-form').classList.remove('hidden');
-    document.getElementById('rule-form-title').textContent = 'Add Rule';
-    document.getElementById('rule-id').value = '';
-    document.getElementById('rule-name').value = '';
-    document.getElementById('rule-target-type').value = 'project';
-    document.getElementById('rule-priority').value = '50';
-    document.getElementById('rule-enabled').checked = true;
-    document.getElementById('conditions-list').innerHTML = '';
-    toggleProjectSelect();
-    addCondition(); // Start with one empty condition
+function debouncePreview() {
+    clearTimeout(previewTimeout);
+    previewTimeout = setTimeout(doPreview, DEBOUNCE_MS);
 }
 
-function toggleProjectSelect() {
-    const targetType = document.getElementById('rule-target-type').value;
-    const projectRow = document.getElementById('project-row');
-    if (targetType === 'did_not_attend') {
-        projectRow.classList.add('hidden');
-    } else {
-        projectRow.classList.remove('hidden');
-    }
-}
+async function doPreview() {
+    const query = document.getElementById('rule-query-input').value.trim();
+    const previewSection = document.getElementById('preview-section');
+    const previewCount = document.getElementById('preview-count');
+    const previewQuery = document.getElementById('preview-query');
+    const previewList = document.getElementById('preview-list');
+    const saveBtn = document.getElementById('save-rule-btn');
 
-function hideRuleForm() {
-    document.getElementById('rule-form').classList.add('hidden');
-}
-
-async function editRule(ruleId) {
-    const rule = await api.get(`/api/rules/${ruleId}`);
-
-    document.getElementById('rule-form').classList.remove('hidden');
-    document.getElementById('rule-form-title').textContent = 'Edit Rule';
-    document.getElementById('rule-id').value = rule.id;
-    document.getElementById('rule-name').value = rule.name;
-    document.getElementById('rule-target-type').value = rule.target_type || 'project';
-    toggleProjectSelect();
-    if (rule.project_id) {
-        document.getElementById('rule-project').value = rule.project_id;
-    }
-    document.getElementById('rule-priority').value = rule.priority;
-    document.getElementById('rule-enabled').checked = rule.is_enabled;
-
-    // Populate conditions
-    document.getElementById('conditions-list').innerHTML = '';
-    for (const cond of rule.conditions) {
-        addCondition(cond.property_name, cond.condition_type, cond.condition_value);
-    }
-    if (rule.conditions.length === 0) {
-        addCondition();
-    }
-}
-
-function addCondition(propName = '', condType = '', condValue = '') {
-    const container = document.getElementById('conditions-list');
-    const index = container.children.length;
-
-    const row = document.createElement('div');
-    row.className = 'condition-row';
-    row.innerHTML = `
-        <select class="cond-property" onchange="updateConditionTypes(this)">
-            <option value="">Select property...</option>
-            ${properties.map(p => `<option value="${p.name}" data-type="${p.value_type}" ${p.name === propName ? 'selected' : ''}>${p.display_name}</option>`).join('')}
-        </select>
-        <select class="cond-type">
-            <option value="">Select condition...</option>
-            ${conditionTypes.map(c => `<option value="${c.type}" ${c.type === condType ? 'selected' : ''}>${c.display}</option>`).join('')}
-        </select>
-        <input type="text" class="cond-value" placeholder="Value" value="${escapeHtml(String(condValue || ''))}">
-        <button type="button" class="btn-small btn-danger" onclick="this.parentElement.remove()">x</button>
-    `;
-    container.appendChild(row);
-
-    // Update condition types based on property selection
-    if (propName) {
-        updateConditionTypes(row.querySelector('.cond-property'));
-    }
-}
-
-function updateConditionTypes(select) {
-    const propType = select.options[select.selectedIndex]?.dataset?.type;
-    const condSelect = select.parentElement.querySelector('.cond-type');
-
-    if (!propType) return;
-
-    // Filter condition types based on property type
-    const validTypes = conditionTypes.filter(c => c.applies_to.includes(propType));
-    const currentValue = condSelect.value;
-
-    condSelect.innerHTML = '<option value="">Select condition...</option>' +
-        validTypes.map(c => `<option value="${c.type}" ${c.type === currentValue ? 'selected' : ''}>${c.display}</option>`).join('');
-}
-
-async function saveRule() {
-    const ruleId = document.getElementById('rule-id').value;
-    const name = document.getElementById('rule-name').value.trim();
-    const targetType = document.getElementById('rule-target-type').value;
-    const projectId = parseInt(document.getElementById('rule-project').value);
-    const priority = parseInt(document.getElementById('rule-priority').value);
-    const isEnabled = document.getElementById('rule-enabled').checked;
-
-    if (!name) {
-        alert('Rule name is required');
+    if (!query) {
+        previewSection.classList.add('hidden');
+        saveBtn.disabled = true;
         return;
-    }
-
-    // Gather conditions
-    const conditions = [];
-    const rows = document.querySelectorAll('.condition-row');
-    for (const row of rows) {
-        const prop = row.querySelector('.cond-property').value;
-        const type = row.querySelector('.cond-type').value;
-        const value = row.querySelector('.cond-value').value;
-
-        if (prop && type && value) {
-            conditions.push({
-                property_name: prop,
-                condition_type: type,
-                condition_value: value
-            });
-        }
-    }
-
-    if (conditions.length === 0) {
-        alert('At least one condition is required');
-        return;
-    }
-
-    const data = {
-        name,
-        target_type: targetType,
-        priority,
-        is_enabled: isEnabled,
-        conditions
-    };
-
-    // Only include project_id for project rules
-    if (targetType === 'project') {
-        data.project_id = projectId;
     }
 
     try {
-        if (ruleId) {
-            await api.put(`/api/rules/${ruleId}`, data);
+        const result = await api.post('/api/rules/preview', { query, limit: 20 });
+
+        previewSection.classList.remove('hidden');
+        previewCount.textContent = `${result.total} event(s) match`;
+        previewQuery.textContent = result.query_parsed || query;
+
+        if (result.events.length === 0) {
+            previewList.innerHTML = '<p class="no-matches">No matching events found</p>';
         } else {
-            await api.post('/api/rules', data);
+            previewList.innerHTML = result.events.map(e => `
+                <div class="preview-item">
+                    <span class="preview-date">${e.start_time ? e.start_time.slice(0, 10) : ''}</span>
+                    <span class="preview-title">${escapeHtml(e.title || 'Untitled')}</span>
+                </div>
+            `).join('');
         }
+
+        // Enable save button if we have matches and a target
+        updateSaveButton();
+
+    } catch (error) {
+        previewSection.classList.remove('hidden');
+        previewCount.textContent = 'Error';
+        previewList.innerHTML = `<p class="error-message">${escapeHtml(error.message)}</p>`;
+        saveBtn.disabled = true;
+    }
+}
+
+function updateSaveButton() {
+    const query = document.getElementById('rule-query-input').value.trim();
+    const target = document.getElementById('rule-target-select').value;
+    const saveBtn = document.getElementById('save-rule-btn');
+    saveBtn.disabled = !query || !target;
+}
+
+document.getElementById('rule-target-select').addEventListener('change', updateSaveButton);
+
+async function saveNewRule() {
+    const query = document.getElementById('rule-query-input').value.trim();
+    const targetValue = document.getElementById('rule-target-select').value;
+
+    if (!query || !targetValue) return;
+
+    const data = { query };
+
+    if (targetValue === 'dna') {
+        data.target_type = 'did_not_attend';
+    } else if (targetValue.startsWith('project:')) {
+        data.target_type = 'project';
+        data.project_id = parseInt(targetValue.split(':')[1]);
+    }
+
+    try {
+        await api.post('/api/rules', data);
+        showToast('Rule created', 'success');
         location.reload();
     } catch (error) {
-        alert('Error saving rule: ' + error.message);
+        showToast('Failed to create rule: ' + error.message, 'error');
     }
+}
+
+async function editRule(ruleId) {
+    try {
+        const rule = await api.get(`/api/rules/${ruleId}`);
+
+        document.getElementById('edit-rule-id').value = rule.id;
+        document.getElementById('edit-rule-query').value = rule.query || '';
+        document.getElementById('edit-rule-enabled').checked = rule.is_enabled;
+
+        document.getElementById('edit-rule-modal').classList.remove('hidden');
+
+        // Preview for edit
+        doEditPreview();
+    } catch (error) {
+        showToast('Failed to load rule: ' + error.message, 'error');
+    }
+}
+
+async function doEditPreview() {
+    const query = document.getElementById('edit-rule-query').value.trim();
+    const previewCount = document.getElementById('edit-preview-count');
+    const previewList = document.getElementById('edit-preview-list');
+
+    if (!query) {
+        previewCount.textContent = '0 events match';
+        previewList.innerHTML = '';
+        return;
+    }
+
+    try {
+        const result = await api.post('/api/rules/preview', { query, limit: 10 });
+        previewCount.textContent = `${result.total} event(s) match`;
+        previewList.innerHTML = result.events.map(e => `
+            <div class="preview-item">
+                <span class="preview-date">${e.start_time ? e.start_time.slice(0, 10) : ''}</span>
+                <span class="preview-title">${escapeHtml(e.title || 'Untitled')}</span>
+            </div>
+        `).join('');
+    } catch (error) {
+        previewCount.textContent = 'Error';
+        previewList.innerHTML = `<p class="error-message">${escapeHtml(error.message)}</p>`;
+    }
+}
+
+document.getElementById('edit-rule-query').addEventListener('input', function() {
+    clearTimeout(previewTimeout);
+    previewTimeout = setTimeout(doEditPreview, DEBOUNCE_MS);
+});
+
+async function updateRule() {
+    const ruleId = document.getElementById('edit-rule-id').value;
+    const query = document.getElementById('edit-rule-query').value.trim();
+    const isEnabled = document.getElementById('edit-rule-enabled').checked;
+
+    if (!query) {
+        showToast('Query is required', 'error');
+        return;
+    }
+
+    try {
+        await api.put(`/api/rules/${ruleId}`, { query, is_enabled: isEnabled });
+        showToast('Rule updated', 'success');
+        location.reload();
+    } catch (error) {
+        showToast('Failed to update rule: ' + error.message, 'error');
+    }
+}
+
+function hideEditModal() {
+    document.getElementById('edit-rule-modal').classList.add('hidden');
 }
 
 async function deleteRule(ruleId) {
@@ -301,42 +300,27 @@ async function deleteRule(ruleId) {
 
     try {
         await api.delete(`/api/rules/${ruleId}`);
+        showToast('Rule deleted', 'success');
         location.reload();
     } catch (error) {
-        alert('Error deleting rule: ' + error.message);
+        showToast('Failed to delete rule: ' + error.message, 'error');
     }
 }
 
-async function toggleRule(ruleId, enable) {
-    try {
-        await api.put(`/api/rules/${ruleId}`, { is_enabled: enable });
-        location.reload();
-    } catch (error) {
-        alert('Error updating rule: ' + error.message);
-    }
-}
-
-async function applyRules() {
-    const resultDiv = document.getElementById('apply-result');
-    resultDiv.classList.remove('hidden');
-    resultDiv.innerHTML = 'Applying rules...';
-
+async function applyAllRules() {
     try {
         const result = await api.post('/api/rules/apply', {});
         const parts = [];
-        if (result.classified > 0) {
-            parts.push(`Classified ${result.classified} event(s)`);
-        }
-        if (result.attendance_updated > 0) {
-            parts.push(`Marked ${result.attendance_updated} as did not attend`);
-        }
+        if (result.classified > 0) parts.push(`Classified ${result.classified} event(s)`);
+        if (result.attendance_updated > 0) parts.push(`Marked ${result.attendance_updated} as did not attend`);
+
         if (parts.length === 0) {
-            resultDiv.innerHTML = 'No events matched any rules.';
+            showToast('No events matched any rules', 'info');
         } else {
-            resultDiv.innerHTML = `${parts.join('. ')}. <a href="/">View calendar</a>`;
+            showToast(parts.join('. '), 'success');
         }
     } catch (error) {
-        resultDiv.innerHTML = 'Error applying rules: ' + error.message;
+        showToast('Failed to apply rules: ' + error.message, 'error');
     }
 }
 
@@ -345,5 +329,10 @@ function escapeHtml(text) {
     div.textContent = text;
     return div.innerHTML;
 }
+
+// Close modal on backdrop click
+document.getElementById('edit-rule-modal').addEventListener('click', function(e) {
+    if (e.target === this) hideEditModal();
+});
 </script>
 {% endblock %}
