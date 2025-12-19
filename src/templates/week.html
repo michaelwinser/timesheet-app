@@ -200,16 +200,9 @@
                     <label class="summary-toggle" title="Temporarily hide events for this project">
                         <input type="checkbox" checked
                                onchange="toggleProjectVisibility({{ proj.id }}, this.checked)">
-                        <span class="summary-color" style="background-color: {{ proj.color }}"></span>
-                        <span class="summary-name">{{ proj.name }}{% if proj.does_not_accumulate_hours %} <span class="badge-tiny">no hrs</span>{% endif %}</span>
+                        <span class="project-chip" style="background-color: {{ proj.color }}">{{ proj.short_code or proj.name }}</span>
                     </label>
-                    <a href="/projects#{{ proj.name | urlencode }}" class="summary-link" title="Go to project settings">
-                        <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                            <polyline points="15 3 21 3 21 9"></polyline>
-                            <line x1="10" y1="14" x2="21" y2="3"></line>
-                        </svg>
-                    </a>
+                    {% if proj.does_not_accumulate_hours %}<span class="badge-tiny">no hrs</span>{% endif %}
                     <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
                 </div>
                 {% if total_hours > 0 and not proj.does_not_accumulate_hours %}
@@ -249,16 +242,8 @@
                     <label class="summary-toggle" title="Temporarily hide events for this project">
                         <input type="checkbox"
                                onchange="toggleProjectVisibility({{ proj.id }}, this.checked); updateSectionCheckbox('archived')">
-                        <span class="summary-color" style="background-color: {{ proj.color }}"></span>
-                        <span class="summary-name">{{ proj.name }}</span>
+                        <span class="project-chip" style="background-color: {{ proj.color }}">{{ proj.short_code or proj.name }}</span>
                     </label>
-                    <a href="/projects#{{ proj.name | urlencode }}" class="summary-link" title="Go to project settings">
-                        <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                            <polyline points="15 3 21 3 21 9"></polyline>
-                            <line x1="10" y1="14" x2="21" y2="3"></line>
-                        </svg>
-                    </a>
                     <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
                 </div>
             </div>
@@ -287,16 +272,9 @@
                     <label class="summary-toggle" title="Temporarily hide events for this project">
                         <input type="checkbox"
                                onchange="toggleProjectVisibility({{ proj.id }}, this.checked); updateSectionCheckbox('hidden')">
-                        <span class="summary-color" style="background-color: {{ proj.color }}"></span>
-                        <span class="summary-name">{{ proj.name }}{% if proj.does_not_accumulate_hours %} <span class="badge-tiny">no hrs</span>{% endif %}</span>
+                        <span class="project-chip" style="background-color: {{ proj.color }}">{{ proj.short_code or proj.name }}</span>
                     </label>
-                    <a href="/projects#{{ proj.name | urlencode }}" class="summary-link" title="Go to project settings">
-                        <svg class="link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                            <polyline points="15 3 21 3 21 9"></polyline>
-                            <line x1="10" y1="14" x2="21" y2="3"></line>
-                        </svg>
-                    </a>
+                    {% if proj.does_not_accumulate_hours %}<span class="badge-tiny">no hrs</span>{% endif %}
                     <span class="summary-hours">{{ "%.1f"|format(proj.hours) }}</span>
                 </div>
             </div>
@@ -449,6 +427,10 @@
                 }
                 applyTextColorClass(entry, hexColor);
             }
+        });
+        // Apply text colors to project chips in the sidebar
+        document.querySelectorAll('.project-chip').forEach(chip => {
+            applyTextColorClass(chip, chip.style.backgroundColor);
         });
     }
 

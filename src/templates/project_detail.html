@@ -154,6 +154,26 @@
         </div>
     </section>
 
+    <!-- Spreadsheet (Billable projects only) -->
+    {% if project.is_billable %}
+    <section class="project-section">
+        <h2>Invoice Spreadsheet</h2>
+        {% if project.sheets_spreadsheet_url %}
+        <div class="spreadsheet-actions">
+            <a href="{{ project.sheets_spreadsheet_url }}" target="_blank" class="btn btn-secondary sheets-link">
+                <img src="/static/img/icons/logo_sheets_2020q4_color_1x_web_32dp.png" alt="" class="sheets-icon">
+                Open Spreadsheet
+            </a>
+            <button class="btn btn-secondary" onclick="showArchiveModal()">Archive & Start New</button>
+        </div>
+        <p class="hint">Time entries exported to this spreadsheet for invoicing.</p>
+        {% else %}
+        <p>No spreadsheet linked yet. Create one to export time entries for invoicing.</p>
+        <button class="btn btn-primary" onclick="createSpreadsheet()">Create Spreadsheet</button>
+        {% endif %}
+    </section>
+    {% endif %}
+
     <!-- Danger Zone -->
     <section class="project-section danger-zone">
         <h2>Danger Zone</h2>
@@ -186,6 +206,23 @@
         <div id="preview-list" class="preview-list"></div>
         <div class="form-actions">
             <button class="btn btn-secondary" onclick="hidePreviewModal()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- Archive Spreadsheet Modal -->
+<div id="archive-modal" class="modal-overlay hidden">
+    <div class="modal-content">
+        <h2>Archive Spreadsheet</h2>
+        <p>This will rename the current spreadsheet and detach it from the project. A new spreadsheet will be created on the next invoice export.</p>
+        <div class="form-group">
+            <label for="archive-name">Archive name:</label>
+            <input type="text" id="archive-name" style="width: 100%;">
+        </div>
+        <p class="hint">The archived spreadsheet will remain in your Google Drive.</p>
+        <div class="form-actions">
+            <button class="btn btn-primary" onclick="doArchive()">Archive</button>
+            <button class="btn btn-secondary" onclick="hideArchiveModal()">Cancel</button>
         </div>
     </div>
 </div>
@@ -223,7 +260,7 @@ document.getElementById('project-settings-form').addEventListener('submit', asyn
 
     try {
         await api.put(`/api/projects/${projectId}`, data);
-        showToast('Settings saved', 'success');
+        window.location.href = '/projects';
     } catch (error) {
         showToast('Failed to save: ' + error.message, 'error');
     }
@@ -497,6 +534,52 @@ async function deleteProject() {
         window.location.href = '/projects';
     } catch (error) {
         showToast('Failed to delete: ' + error.message, 'error');
+    }
+}
+
+// Spreadsheet management
+async function createSpreadsheet() {
+    try {
+        const result = await api.post(`/api/projects/${projectId}/spreadsheet`, {});
+        showToast('Spreadsheet created', 'success');
+        window.open(result.spreadsheet_url, '_blank');
+        location.reload();
+    } catch (error) {
+        if (error.message && error.message.includes('Not authenticated')) {
+            showToast('Please re-login to grant Google Sheets access', 'error');
+        } else {
+            showToast('Failed to create spreadsheet: ' + error.message, 'error');
+        }
+    }
+}
+
+function showArchiveModal() {
+    const projectName = document.getElementById('project-name').value;
+    const currentYear = new Date().getFullYear();
+    document.getElementById('archive-name').value = `${projectName} - Invoices ${currentYear}`;
+    document.getElementById('archive-modal').classList.remove('hidden');
+}
+
+function hideArchiveModal() {
+    document.getElementById('archive-modal').classList.add('hidden');
+}
+
+async function doArchive() {
+    const archiveName = document.getElementById('archive-name').value.trim();
+    if (!archiveName) {
+        showToast('Archive name is required', 'error');
+        return;
+    }
+
+    try {
+        await api.post(`/api/projects/${projectId}/spreadsheet/archive`, {
+            archive_name: archiveName
+        });
+        showToast('Spreadsheet archived', 'success');
+        hideArchiveModal();
+        location.reload();
+    } catch (error) {
+        showToast('Failed to archive: ' + error.message, 'error');
     }
 }
 

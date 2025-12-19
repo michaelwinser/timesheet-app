@@ -160,6 +160,7 @@ async def week_view(request: Request, date: str):
         summary_item = {
             "id": p["id"],
             "name": p["name"],
+            "short_code": p.get("short_code"),
             "color": p["color"] or "#00aa44",
             "hours": hours,
             "is_hidden_by_default": p.get("is_hidden_by_default", False),
@@ -217,16 +218,30 @@ async def projects_page(request: Request):
 
     db = get_db()
     projects = db.execute(
-        "SELECT * FROM projects WHERE user_id = %s ORDER BY name",
+        """SELECT * FROM projects WHERE user_id = %s
+           ORDER BY CASE WHEN client IS NULL OR client = '' THEN 1 ELSE 0 END,
+                    client, name""",
         (user_id,)
     )
     projects = [dict(row) for row in projects]
+
+    # Group projects by client
+    from collections import OrderedDict
+    grouped = OrderedDict()
+    for project in projects:
+        client = project.get("client") or ""
+        if client not in grouped:
+            grouped[client] = []
+        grouped[client].append(project)
+
+    # Convert to list of tuples for template
+    project_groups = [(client or "No Client", projs) for client, projs in grouped.items()]
 
     return templates.TemplateResponse(
         "projects.html",
         {
             "request": request,
-            "projects": projects,
+            "project_groups": project_groups,
         },
     )
 

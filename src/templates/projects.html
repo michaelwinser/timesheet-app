@@ -46,111 +46,23 @@
     </div>
 </div>
 
-<table class="projects-table">
-    <thead>
-        <tr>
-            <th>Color</th>
-            <th>Name</th>
-            <th>Code</th>
-            <th>Client</th>
-            <th>Settings</th>
-            <th>Spreadsheet</th>
-            <th>Actions</th>
-        </tr>
-    </thead>
-    <tbody>
+{% if project_groups %}
+{% for client_name, projects in project_groups %}
+<div class="project-group" data-client="{{ client_name }}">
+    <div class="client-header">{{ client_name }}</div>
+    <div class="project-list">
         {% for project in projects %}
-        <tr id="{{ project.name }}"
-            data-project-id="{{ project.id }}"
-            data-name="{{ project.name }}"
-            data-short-code="{{ project.short_code or '' }}"
-            data-client="{{ project.client or '' }}"
-            data-color="{{ project.color or '#00aa44' }}"
-            data-no-hours="{{ 'true' if project.does_not_accumulate_hours else 'false' }}"
-            data-billable="{{ 'true' if project.is_billable else 'false' }}"
-            data-bill-rate="{{ project.bill_rate or '' }}"
-            data-hidden="{{ 'true' if project.is_hidden_by_default else 'false' }}"
-            data-archived="{{ 'true' if project.is_archived else 'false' }}"
-            data-spreadsheet-id="{{ project.sheets_spreadsheet_id or '' }}"
-            data-spreadsheet-url="{{ project.sheets_spreadsheet_url or '' }}"
-            class="{% if project.is_archived %}archived-row{% endif %}">
-            <td class="color-cell">
-                <input type="color"
-                       value="{{ project.color or '#00aa44' }}"
-                       onchange="updateProjectColor({{ project.id }}, this.value)"
-                       class="project-color-picker">
-            </td>
-            <td class="name-cell">
-                <span class="display-value"><a href="/projects/{{ project.id }}">{{ project.name }}</a></span>
-                <input type="text" class="edit-input hidden" value="{{ project.name }}">
-            </td>
-            <td class="short-code-cell">
-                <span class="display-value">{{ project.short_code or '-' }}</span>
-                <input type="text" class="edit-input hidden" value="{{ project.short_code or '' }}" placeholder="ABC" maxlength="10">
-            </td>
-            <td class="client-cell">
-                <span class="display-value">{{ project.client or '-' }}</span>
-                <input type="text" class="edit-input hidden" value="{{ project.client or '' }}" placeholder="(none)">
-            </td>
-            <td class="settings-cell">
-                <span class="display-value">
-                    {% if project.does_not_accumulate_hours %}<span class="badge badge-muted" title="Does not accumulate hours">No hrs</span>{% endif %}
-                    {% if project.is_billable %}<span class="badge badge-success" title="Billable{% if project.bill_rate %} @ ${{ project.bill_rate }}/hr{% endif %}">${% if project.bill_rate %}{{ project.bill_rate }}{% endif %}</span>{% endif %}
-                    {% if project.is_hidden_by_default %}<span class="badge badge-warning" title="Hidden by default">Hidden</span>{% endif %}
-                    {% if project.is_archived %}<span class="badge badge-danger" title="Archived">Archived</span>{% endif %}
-                    {% if not project.does_not_accumulate_hours and not project.is_billable and not project.is_hidden_by_default and not project.is_archived %}-{% endif %}
-                </span>
-                <div class="edit-settings hidden">
-                    <label class="checkbox-label">
-                        <input type="checkbox" class="no-hours-input" {% if project.does_not_accumulate_hours %}checked{% endif %}>
-                        No hours
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" class="billable-input" {% if project.is_billable %}checked{% endif %} onchange="toggleBillRateRow({{ project.id }})">
-                        Billable
-                    </label>
-                    <div class="bill-rate-inline {% if not project.is_billable %}hidden{% endif %}" id="bill-rate-{{ project.id }}">
-                        $<input type="number" class="bill-rate-input" step="0.01" min="0" value="{{ project.bill_rate or '' }}" placeholder="0.00">
-                    </div>
-                    <label class="checkbox-label">
-                        <input type="checkbox" class="hidden-input" {% if project.is_hidden_by_default %}checked{% endif %}>
-                        Hidden
-                    </label>
-                    <label class="checkbox-label">
-                        <input type="checkbox" class="archived-input" {% if project.is_archived %}checked{% endif %}>
-                        Archived
-                    </label>
-                </div>
-            </td>
-            <td class="spreadsheet-cell">
-                {% if project.is_billable %}
-                    {% if project.sheets_spreadsheet_url %}
-                    <a href="{{ project.sheets_spreadsheet_url }}" target="_blank" class="btn-small sheets-link">
-                        <img src="/static/img/icons/logo_sheets_2020q4_color_1x_web_32dp.png" alt="" class="sheets-icon">
-                        Open
-                    </a>
-                    <button class="btn-small" onclick="showArchiveModal({{ project.id }}, '{{ project.name }}')">Archive</button>
-                    {% else %}
-                    <button class="btn-small btn-primary" onclick="createSpreadsheet({{ project.id }})">Create</button>
-                    {% endif %}
-                {% else %}
-                <span class="muted">-</span>
-                {% endif %}
-            </td>
-            <td class="actions-cell">
-                <button class="btn-small edit-btn" onclick="editProject({{ project.id }})">Edit</button>
-                <button class="btn-small btn-primary save-btn hidden" onclick="saveProject({{ project.id }})">Save</button>
-                <button class="btn-small cancel-btn hidden" onclick="cancelEdit({{ project.id }})">Cancel</button>
-                <button class="btn-small btn-danger delete-btn" onclick="deleteProject({{ project.id }})">Delete</button>
-            </td>
-        </tr>
-        {% else %}
-        <tr>
-            <td colspan="7" class="no-projects">No projects yet. Add one to get started.</td>
-        </tr>
+        <div class="project-row{% if project.is_archived %} archived{% endif %}" data-project-id="{{ project.id }}">
+            <a href="/projects/{{ project.id }}" class="project-name">{{ project.name }}</a>
+            {% if project.short_code %}<span class="project-chip" style="background-color: {{ project.color or '#00aa44' }}">{{ project.short_code }}</span>{% endif %}
+        </div>
         {% endfor %}
-    </tbody>
-</table>
+    </div>
+</div>
+{% endfor %}
+{% else %}
+<p class="no-projects">No projects yet. Add one to get started.</p>
+{% endif %}
 
 <div class="import-export">
     <h2>Import / Export</h2>
@@ -183,26 +95,55 @@
     </div>
 </div>
 
-<!-- Archive Spreadsheet Modal -->
-<div id="archive-modal" class="modal-overlay hidden">
-    <div class="modal-content">
-        <h2>Archive Spreadsheet</h2>
-        <p>This will rename the current spreadsheet and detach it from the project. A new spreadsheet will be created on the next invoice export.</p>
-        <div class="form-group">
-            <label for="archive-name">Archive name:</label>
-            <input type="text" id="archive-name" style="width: 100%;">
-        </div>
-        <p class="hint">The archived spreadsheet will remain in your Google Drive.</p>
-        <div class="form-actions">
-            <button class="btn btn-primary" onclick="doArchive()">Archive</button>
-            <button class="btn btn-secondary" onclick="hideArchiveModal()">Cancel</button>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
+<style>
+.project-group {
+    margin-bottom: 1.5rem;
+}
+.client-header {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #888;
+    margin: 0 0 0.5rem 0;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid #333;
+}
+.project-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.project-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.4rem 0.75rem;
+}
+.project-row:hover {
+    background: rgba(255,255,255,0.05);
+    border-radius: 4px;
+}
+.project-row.archived {
+    opacity: 0.5;
+}
+.project-name {
+    color: #e0e0e0;
+    text-decoration: none;
+}
+.project-name:hover {
+    color: #fff;
+}
+</style>
 <script>
+// Apply text color to project chips based on background
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.project-chip').forEach(function(chip) {
+        applyTextColorClass(chip, chip.style.backgroundColor);
+    });
+});
+
 function showAddProject() {
     document.getElementById('add-project-form').classList.remove('hidden');
 }
@@ -224,17 +165,6 @@ function hideAddProject() {
 function toggleBillRate(prefix) {
     const checkbox = document.getElementById(`${prefix}-project-billable`);
     const group = document.getElementById(`${prefix}-bill-rate-group`);
-    if (checkbox.checked) {
-        group.classList.remove('hidden');
-    } else {
-        group.classList.add('hidden');
-    }
-}
-
-function toggleBillRateRow(projectId) {
-    const row = document.querySelector(`tr[data-project-id="${projectId}"]`);
-    const checkbox = row.querySelector('.billable-input');
-    const group = document.getElementById(`bill-rate-${projectId}`);
     if (checkbox.checked) {
         group.classList.remove('hidden');
     } else {
@@ -270,94 +200,6 @@ async function addProject() {
         is_archived: archived
     });
     location.reload();
-}
-
-async function updateProjectColor(projectId, color) {
-    await api.put(`/api/projects/${projectId}`, { color });
-}
-
-async function deleteProject(projectId) {
-    if (!confirm('Delete this project? Time entries will be orphaned.')) return;
-    await api.delete(`/api/projects/${projectId}`);
-    location.reload();
-}
-
-function editProject(projectId) {
-    const row = document.querySelector(`tr[data-project-id="${projectId}"]`);
-
-    // Show edit inputs, hide display values
-    row.querySelectorAll('.display-value').forEach(el => el.classList.add('hidden'));
-    row.querySelectorAll('.edit-input').forEach(el => el.classList.remove('hidden'));
-    row.querySelector('.edit-settings').classList.remove('hidden');
-
-    // Toggle buttons
-    row.querySelector('.edit-btn').classList.add('hidden');
-    row.querySelector('.delete-btn').classList.add('hidden');
-    row.querySelector('.save-btn').classList.remove('hidden');
-    row.querySelector('.cancel-btn').classList.remove('hidden');
-
-    // Focus the name input
-    row.querySelector('.name-cell .edit-input').focus();
-}
-
-function cancelEdit(projectId) {
-    const row = document.querySelector(`tr[data-project-id="${projectId}"]`);
-
-    // Restore original values
-    row.querySelector('.name-cell .edit-input').value = row.dataset.name;
-    row.querySelector('.short-code-cell .edit-input').value = row.dataset.shortCode;
-    row.querySelector('.client-cell .edit-input').value = row.dataset.client;
-    row.querySelector('.no-hours-input').checked = row.dataset.noHours === 'true';
-    row.querySelector('.billable-input').checked = row.dataset.billable === 'true';
-    row.querySelector('.bill-rate-input').value = row.dataset.billRate;
-    row.querySelector('.hidden-input').checked = row.dataset.hidden === 'true';
-    row.querySelector('.archived-input').checked = row.dataset.archived === 'true';
-
-    // Hide edit inputs, show display values
-    row.querySelectorAll('.display-value').forEach(el => el.classList.remove('hidden'));
-    row.querySelectorAll('.edit-input').forEach(el => el.classList.add('hidden'));
-    row.querySelector('.edit-settings').classList.add('hidden');
-
-    // Toggle buttons
-    row.querySelector('.edit-btn').classList.remove('hidden');
-    row.querySelector('.delete-btn').classList.remove('hidden');
-    row.querySelector('.save-btn').classList.add('hidden');
-    row.querySelector('.cancel-btn').classList.add('hidden');
-}
-
-async function saveProject(projectId) {
-    const row = document.querySelector(`tr[data-project-id="${projectId}"]`);
-    const name = row.querySelector('.name-cell .edit-input').value.trim();
-    const shortCode = row.querySelector('.short-code-cell .edit-input').value.trim();
-    const client = row.querySelector('.client-cell .edit-input').value.trim();
-    const noHours = row.querySelector('.no-hours-input').checked;
-    const billable = row.querySelector('.billable-input').checked;
-    const billRate = row.querySelector('.bill-rate-input').value;
-    const hidden = row.querySelector('.hidden-input').checked;
-    const archived = row.querySelector('.archived-input').checked;
-
-    if (!name) {
-        alert('Project name is required');
-        return;
-    }
-
-    try {
-        await api.put(`/api/projects/${projectId}`, {
-            name,
-            short_code: shortCode || null,
-            client: client || null,
-            does_not_accumulate_hours: noHours,
-            is_billable: billable,
-            bill_rate: billRate ? parseFloat(billRate) : null,
-            is_hidden_by_default: hidden,
-            is_archived: archived
-        });
-
-        // Reload to show updated badges
-        location.reload();
-    } catch (error) {
-        alert('Save failed: ' + error.message);
-    }
 }
 
 // --- Import / Export ---
@@ -484,63 +326,5 @@ document.getElementById('import-modal')?.addEventListener('click', function(e) {
         hideImportModal();
     }
 });
-
-document.getElementById('archive-modal')?.addEventListener('click', function(e) {
-    if (e.target === this) {
-        hideArchiveModal();
-    }
-});
-
-// --- Spreadsheet Management ---
-
-let archiveProjectId = null;
-
-async function createSpreadsheet(projectId) {
-    try {
-        const result = await api.post(`/api/projects/${projectId}/spreadsheet`, {});
-        showToast('Spreadsheet created', 'success');
-        window.open(result.spreadsheet_url, '_blank');
-        location.reload();
-    } catch (error) {
-        if (error.message && error.message.includes('Not authenticated')) {
-            showToast('Please re-login to grant Google Sheets access', 'error');
-        } else {
-            showToast('Failed to create spreadsheet: ' + error.message, 'error');
-        }
-    }
-}
-
-function showArchiveModal(projectId, projectName) {
-    archiveProjectId = projectId;
-    const currentYear = new Date().getFullYear();
-    document.getElementById('archive-name').value = `${projectName} - Invoices ${currentYear}`;
-    document.getElementById('archive-modal').classList.remove('hidden');
-}
-
-function hideArchiveModal() {
-    document.getElementById('archive-modal').classList.add('hidden');
-    archiveProjectId = null;
-}
-
-async function doArchive() {
-    if (!archiveProjectId) return;
-
-    const archiveName = document.getElementById('archive-name').value.trim();
-    if (!archiveName) {
-        showToast('Archive name is required', 'error');
-        return;
-    }
-
-    try {
-        const result = await api.post(`/api/projects/${archiveProjectId}/spreadsheet/archive`, {
-            archive_name: archiveName
-        });
-        showToast('Spreadsheet archived', 'success');
-        hideArchiveModal();
-        location.reload();
-    } catch (error) {
-        showToast('Failed to archive: ' + error.message, 'error');
-    }
-}
 </script>
 {% endblock %}
