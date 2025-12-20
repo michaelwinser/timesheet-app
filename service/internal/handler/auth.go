@@ -61,7 +61,7 @@ func (h *AuthHandler) Signup(ctx context.Context, req api.SignupRequestObject) (
 	}
 
 	// Create user
-	user, err := h.users.Create(email, req.Body.Name, req.Body.Password)
+	user, err := h.users.Create(ctx, email, req.Body.Name, req.Body.Password)
 	if err != nil {
 		if errors.Is(err, store.ErrEmailAlreadyTaken) {
 			return api.Signup409JSONResponse{
@@ -99,7 +99,7 @@ func (h *AuthHandler) Login(ctx context.Context, req api.LoginRequestObject) (ap
 	}
 
 	email := string(req.Body.Email)
-	user, err := h.users.Authenticate(email, req.Body.Password)
+	user, err := h.users.Authenticate(ctx, email, req.Body.Password)
 	if err != nil {
 		if errors.Is(err, store.ErrInvalidPassword) {
 			return api.Login401JSONResponse{
@@ -143,7 +143,7 @@ func (h *AuthHandler) GetCurrentUser(ctx context.Context, req api.GetCurrentUser
 		}, nil
 	}
 
-	user, err := h.users.GetByID(userID)
+	user, err := h.users.GetByID(ctx, userID)
 	if err != nil {
 		return api.GetCurrentUser401JSONResponse{
 			Code:    "unauthorized",
