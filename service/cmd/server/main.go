@@ -43,12 +43,14 @@ func main() {
 
 	// Initialize stores
 	userStore := store.NewUserStore(db.Pool)
+	projectStore := store.NewProjectStore(db.Pool)
+	timeEntryStore := store.NewTimeEntryStore(db.Pool)
 
 	// Initialize services
 	jwtService := handler.NewJWTService(jwtSecret, jwtExpiration)
 
 	// Initialize handlers
-	authHandler := handler.NewAuthHandler(userStore, jwtService)
+	serverHandler := handler.NewServer(userStore, projectStore, timeEntryStore, jwtService)
 
 	// Create router
 	r := chi.NewRouter()
@@ -85,7 +87,7 @@ func main() {
 	})
 
 	// Mount API routes
-	strictHandler := api.NewStrictHandler(authHandler, nil)
+	strictHandler := api.NewStrictHandler(serverHandler, nil)
 	api.HandlerFromMux(strictHandler, r)
 
 	// Start server

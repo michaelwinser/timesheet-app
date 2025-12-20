@@ -110,4 +110,47 @@ var migrations = []migration{
 			CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 		`,
 	},
+	{
+		version: 2,
+		sql: `
+			CREATE TABLE IF NOT EXISTS projects (
+				id UUID PRIMARY KEY,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				name TEXT NOT NULL,
+				short_code TEXT,
+				color TEXT NOT NULL DEFAULT '#6B7280',
+				is_billable BOOLEAN NOT NULL DEFAULT true,
+				is_archived BOOLEAN NOT NULL DEFAULT false,
+				is_hidden_by_default BOOLEAN NOT NULL DEFAULT false,
+				does_not_accumulate_hours BOOLEAN NOT NULL DEFAULT false,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
+		`,
+	},
+	{
+		version: 3,
+		sql: `
+			CREATE TABLE IF NOT EXISTS time_entries (
+				id UUID PRIMARY KEY,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+				date DATE NOT NULL,
+				hours DECIMAL(5,2) NOT NULL DEFAULT 0,
+				description TEXT,
+				source TEXT NOT NULL DEFAULT 'manual',
+				invoice_id UUID,
+				has_user_edits BOOLEAN NOT NULL DEFAULT false,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(user_id, project_id, date)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_time_entries_user_id ON time_entries(user_id);
+			CREATE INDEX IF NOT EXISTS idx_time_entries_project_id ON time_entries(project_id);
+			CREATE INDEX IF NOT EXISTS idx_time_entries_date ON time_entries(date);
+		`,
+	},
 }

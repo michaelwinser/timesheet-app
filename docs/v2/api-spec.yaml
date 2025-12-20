@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Timesheet API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     API for the Timesheet application v2.
 
@@ -17,16 +17,18 @@ servers:
 tags:
   - name: auth
     description: Authentication and session management
+  - name: projects
+    description: Project management
+  - name: time-entries
+    description: Time entry tracking
 
 paths:
+  # Auth endpoints
   /api/auth/signup:
     post:
       operationId: signup
       tags: [auth]
       summary: Create a new user account
-      description: |
-        Creates a new user account with email/password credentials.
-        Returns session token on success.
       requestBody:
         required: true
         content:
@@ -41,7 +43,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthResponse'
         '400':
-          description: Invalid request (missing fields, invalid email format)
+          description: Invalid request
           content:
             application/json:
               schema:
@@ -58,8 +60,6 @@ paths:
       operationId: login
       tags: [auth]
       summary: Authenticate with email and password
-      description: |
-        Authenticates a user and returns a session token.
       requestBody:
         required: true
         content:
@@ -91,8 +91,6 @@ paths:
       operationId: logout
       tags: [auth]
       summary: End the current session
-      description: |
-        Invalidates the current session token.
       security:
         - bearerAuth: []
       responses:
@@ -110,8 +108,6 @@ paths:
       operationId: getCurrentUser
       tags: [auth]
       summary: Get current authenticated user
-      description: |
-        Returns the user profile for the current session.
       security:
         - bearerAuth: []
       responses:
@@ -128,6 +124,388 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # Project endpoints
+  /api/projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List all projects
+      description: Returns all projects for the authenticated user
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: include_archived
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include archived projects
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a new project
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectCreate'
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/projects/{id}:
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get a project by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Project details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update a project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectUpdate'
+      responses:
+        '200':
+          description: Project updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: deleteProject
+      tags: [projects]
+      summary: Delete a project
+      description: Permanently deletes a project. Use archive for soft delete.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Project deleted
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cannot delete (has time entries or invoices)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # Time Entry endpoints
+  /api/time-entries:
+    get:
+      operationId: listTimeEntries
+      tags: [time-entries]
+      summary: List time entries
+      description: Returns time entries for the authenticated user, optionally filtered
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter entries on or after this date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter entries on or before this date
+        - name: project_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by project
+      responses:
+        '200':
+          description: List of time entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeEntry'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createTimeEntry
+      tags: [time-entries]
+      summary: Create a new time entry
+      description: Creates a manual time entry. If an entry exists for the same project/date, hours are added.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeEntryCreate'
+      responses:
+        '201':
+          description: Time entry created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/time-entries/{id}:
+    get:
+      operationId: getTimeEntry
+      tags: [time-entries]
+      summary: Get a time entry by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Time entry details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Time entry not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      operationId: updateTimeEntry
+      tags: [time-entries]
+      summary: Update a time entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TimeEntryUpdate'
+      responses:
+        '200':
+          description: Time entry updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Time entry not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cannot edit (entry is invoiced)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: deleteTimeEntry
+      tags: [time-entries]
+      summary: Delete a time entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Time entry deleted
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Time entry not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cannot delete (entry is invoiced)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -137,94 +515,229 @@ components:
       description: JWT token obtained from login or signup
 
   schemas:
+    # Auth schemas
     SignupRequest:
       type: object
-      required:
-        - email
-        - password
-        - name
+      required: [email, password, name]
       properties:
         email:
           type: string
           format: email
-          example: user@example.com
         password:
           type: string
           format: password
           minLength: 8
-          example: "securepassword123"
         name:
           type: string
           minLength: 1
-          example: "Jane Doe"
 
     LoginRequest:
       type: object
-      required:
-        - email
-        - password
+      required: [email, password]
       properties:
         email:
           type: string
           format: email
-          example: user@example.com
         password:
           type: string
           format: password
-          example: "securepassword123"
 
     AuthResponse:
       type: object
-      required:
-        - token
-        - user
+      required: [token, user]
       properties:
         token:
           type: string
-          description: JWT session token
-          example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
         user:
           $ref: '#/components/schemas/User'
 
     User:
       type: object
-      required:
-        - id
-        - email
-        - name
-        - created_at
+      required: [id, email, name, created_at]
       properties:
         id:
           type: string
           format: uuid
-          example: "550e8400-e29b-41d4-a716-446655440000"
         email:
           type: string
           format: email
-          example: user@example.com
         name:
           type: string
-          example: "Jane Doe"
         created_at:
           type: string
           format: date-time
-          example: "2024-01-15T10:30:00Z"
 
+    # Project schemas
+    Project:
+      type: object
+      required: [id, user_id, name, color, is_billable, is_archived, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Acme Corp Website"
+        short_code:
+          type: string
+          maxLength: 10
+          example: "ACM"
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          example: "#3B82F6"
+        is_billable:
+          type: boolean
+          default: true
+        is_archived:
+          type: boolean
+          default: false
+        is_hidden_by_default:
+          type: boolean
+          default: false
+        does_not_accumulate_hours:
+          type: boolean
+          default: false
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProjectCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        short_code:
+          type: string
+          maxLength: 10
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+          default: "#6B7280"
+        is_billable:
+          type: boolean
+          default: true
+        is_hidden_by_default:
+          type: boolean
+          default: false
+        does_not_accumulate_hours:
+          type: boolean
+          default: false
+
+    ProjectUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        short_code:
+          type: string
+          maxLength: 10
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        is_billable:
+          type: boolean
+        is_archived:
+          type: boolean
+        is_hidden_by_default:
+          type: boolean
+        does_not_accumulate_hours:
+          type: boolean
+
+    # Time Entry schemas
+    TimeEntry:
+      type: object
+      required: [id, user_id, project_id, date, hours, source, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        project:
+          $ref: '#/components/schemas/Project'
+          description: Included when fetching entries
+        date:
+          type: string
+          format: date
+          description: The calendar day for this entry
+        hours:
+          type: number
+          format: float
+          minimum: 0
+          example: 2.5
+        description:
+          type: string
+          example: "Worked on API design"
+        source:
+          type: string
+          enum: [manual, calendar, import]
+          description: How this entry was created
+        invoice_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: If invoiced, the invoice ID
+        has_user_edits:
+          type: boolean
+          default: false
+          description: Whether user has modified this entry
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TimeEntryCreate:
+      type: object
+      required: [project_id, date, hours]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+        hours:
+          type: number
+          format: float
+          minimum: 0
+        description:
+          type: string
+
+    TimeEntryUpdate:
+      type: object
+      properties:
+        hours:
+          type: number
+          format: float
+          minimum: 0
+        description:
+          type: string
+
+    # Common schemas
     Error:
       type: object
-      required:
-        - code
-        - message
+      required: [code, message]
       properties:
         code:
           type: string
-          description: Machine-readable error code
-          example: "invalid_credentials"
         message:
           type: string
-          description: Human-readable error message
-          example: "Email or password is incorrect"
         details:
           type: object
           additionalProperties: true
-          description: Additional error context

@@ -159,5 +159,3 @@ func (h *AuthHandler) GetCurrentUser(ctx context.Context, req api.GetCurrentUser
 	}, nil
 }
 
-// Ensure AuthHandler implements StrictServerInterface
-var _ api.StrictServerInterface = (*AuthHandler)(nil)
