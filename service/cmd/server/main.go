@@ -83,7 +83,7 @@ func main() {
 
 	// Initialize services
 	jwtService := handler.NewJWTService(jwtSecret, jwtExpiration)
-	classificationService := classification.NewService(db.Pool, classificationRuleStore, calendarEventStore)
+	classificationService := classification.NewService(db.Pool, classificationRuleStore, calendarEventStore, timeEntryStore)
 
 	// Initialize handlers
 	serverHandler := handler.NewServer(

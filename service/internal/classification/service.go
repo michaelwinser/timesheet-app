@@ -34,17 +34,19 @@ type ClassificationResult struct {
 // It handles I/O and database operations, delegating pure classification
 // logic to the Classify function.
 type Service struct {
-	pool       *pgxpool.Pool
-	ruleStore  *store.ClassificationRuleStore
-	eventStore *store.CalendarEventStore
+	pool           *pgxpool.Pool
+	ruleStore      *store.ClassificationRuleStore
+	eventStore     *store.CalendarEventStore
+	timeEntryStore *store.TimeEntryStore
 }
 
 // NewService creates a new classification service
-func NewService(pool *pgxpool.Pool, ruleStore *store.ClassificationRuleStore, eventStore *store.CalendarEventStore) *Service {
+func NewService(pool *pgxpool.Pool, ruleStore *store.ClassificationRuleStore, eventStore *store.CalendarEventStore, timeEntryStore *store.TimeEntryStore) *Service {
 	return &Service{
-		pool:       pool,
-		ruleStore:  ruleStore,
-		eventStore: eventStore,
+		pool:           pool,
+		ruleStore:      ruleStore,
+		eventStore:     eventStore,
+		timeEntryStore: timeEntryStore,
 	}
 }
 
@@ -287,6 +289,15 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Ta
 				WHERE id = $1 AND user_id = $2
 			`, event.ID, userID, libResult.Confidence, libResult.NeedsReview, source)
 			if err != nil {
+				continue
+			}
+
+			// Create time entry from classified event
+			duration := event.EndTime.Sub(event.StartTime).Hours()
+			eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
+			_, err = s.timeEntryStore.CreateFromCalendar(ctx, userID, targetID, eventDate, duration, &event.Title)
+			if err != nil {
+				// Log but don't fail - classification succeeded
 				continue
 			}
 		}
