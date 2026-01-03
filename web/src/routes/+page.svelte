@@ -155,10 +155,21 @@
 	// Pending events (for the count)
 	const pendingEvents = $derived(calendarEvents.filter(e => e.classification_status === 'pending'));
 
-	// Group events by date
+	// Filter calendar events by visible projects
+	// Show: pending events (need classification), skipped events, and events classified to visible projects
+	const filteredCalendarEvents = $derived(
+		calendarEvents.filter(e => {
+			if (e.classification_status === 'pending') return true;
+			if (e.classification_status === 'skipped') return true;
+			if (e.project_id && visibleProjectIds.has(e.project_id)) return true;
+			return false;
+		})
+	);
+
+	// Group events by date (filtered)
 	const eventsByDate = $derived.by(() => {
 		const byDate: Record<string, CalendarEvent[]> = {};
-		for (const event of calendarEvents) {
+		for (const event of filteredCalendarEvents) {
 			const dateStr = event.start_time.split('T')[0];
 			if (!byDate[dateStr]) {
 				byDate[dateStr] = [];
