@@ -143,6 +143,9 @@ type CalendarEvent struct {
 	// CalendarColor Color of the source calendar (hex code)
 	CalendarColor *string `json:"calendar_color"`
 
+	// CalendarId Google Calendar ID (typically the calendar email, e.g., "user@example.com" or "primary")
+	CalendarId *string `json:"calendar_id"`
+
 	// CalendarName Name of the source calendar
 	CalendarName *string `json:"calendar_name"`
 

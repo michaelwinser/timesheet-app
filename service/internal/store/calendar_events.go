@@ -53,9 +53,10 @@ type CalendarEvent struct {
 	CreatedAt                time.Time
 	UpdatedAt                time.Time
 	// Joined data
-	Project       *Project
-	CalendarName  *string
-	CalendarColor *string
+	Project            *Project
+	CalendarExternalID *string // Google Calendar ID (typically email)
+	CalendarName       *string
+	CalendarColor      *string
 }
 
 // CalendarEventStore provides PostgreSQL-backed event storage
@@ -196,7 +197,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		       ce.project_id, ce.created_at, ce.updated_at,
 		       p.id, p.user_id, p.name, p.short_code, p.color, p.is_billable, p.is_archived,
 		       p.is_hidden_by_default, p.does_not_accumulate_hours, p.created_at, p.updated_at,
-		       c.name, c.color
+		       c.external_id, c.name, c.color
 		FROM calendar_events ce
 		LEFT JOIN projects p ON ce.project_id = p.id
 		LEFT JOIN calendars c ON ce.calendar_id = c.id
@@ -253,7 +254,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 			&pID, &pUserID, &pName, &pShortCode, &pColor, &pIsBillable, &pIsArchived,
 			&pIsHidden, &pNoAccum, &pCreatedAt, &pUpdatedAt,
-			&e.CalendarName, &e.CalendarColor,
+			&e.CalendarExternalID, &e.CalendarName, &e.CalendarColor,
 		)
 		if err != nil {
 			return nil, err

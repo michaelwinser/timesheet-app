@@ -128,6 +128,7 @@ export interface CalendarEvent {
 	needs_review?: boolean;
 	project_id?: string | null;
 	project?: Project;
+	calendar_id?: string | null; // Google Calendar ID (typically the calendar email)
 	calendar_name?: string | null;
 	calendar_color?: string | null;
 	created_at: string;

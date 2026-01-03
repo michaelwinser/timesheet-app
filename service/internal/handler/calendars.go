@@ -719,6 +719,7 @@ func calendarEventToAPI(e *store.CalendarEvent) api.CalendarEvent {
 		ProjectId:            e.ProjectID,
 		CreatedAt:            e.CreatedAt,
 		UpdatedAt:            &e.UpdatedAt,
+		CalendarId:           e.CalendarExternalID,
 		CalendarName:         e.CalendarName,
 		CalendarColor:        e.CalendarColor,
 	}

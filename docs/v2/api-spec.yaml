@@ -1478,6 +1478,10 @@ components:
           nullable: true
         project:
           $ref: '#/components/schemas/Project'
+        calendar_id:
+          type: string
+          nullable: true
+          description: Google Calendar ID (typically the calendar email, e.g., "user@example.com" or "primary")
         calendar_name:
           type: string
           nullable: true
