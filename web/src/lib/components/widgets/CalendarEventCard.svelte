@@ -52,6 +52,7 @@
 	const duration = $derived(getDuration(event.start_time, event.end_time));
 	const dateStr = $derived(formatDate(event.start_time));
 	const isPending = $derived(event.classification_status === 'pending');
+	const needsReview = $derived(event.needs_review === true);
 	const calendarColor = $derived(event.calendar_color || '#9CA3AF');
 </script>
 
@@ -63,6 +64,12 @@
 		<div class="flex-1 min-w-0">
 			<div class="flex items-center gap-2 mb-1">
 				<h4 class="font-medium text-gray-900 truncate">{event.title}</h4>
+				{#if needsReview}
+					<span
+						class="w-2 h-2 bg-yellow-400 rounded-full shrink-0"
+						title="Needs review - auto-classified with medium confidence"
+					></span>
+				{/if}
 				{#if event.project}
 					<ProjectChip project={event.project} />
 				{/if}

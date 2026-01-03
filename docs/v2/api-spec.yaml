@@ -1387,6 +1387,16 @@ components:
           type: string
           enum: [rule, fingerprint, manual, llm]
           nullable: true
+        classification_confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          nullable: true
+          description: Confidence score from rule-based classification
+        needs_review:
+          type: boolean
+          description: True if event was auto-classified with medium confidence and should be reviewed
         project_id:
           type: string
           format: uuid

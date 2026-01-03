@@ -115,6 +115,8 @@ export interface CalendarEvent {
 	is_suppressed?: boolean;
 	classification_status: 'pending' | 'classified' | 'skipped';
 	classification_source?: 'rule' | 'fingerprint' | 'manual' | 'llm' | null;
+	classification_confidence?: number | null;
+	needs_review?: boolean;
 	project_id?: string | null;
 	project?: Project;
 	calendar_name?: string | null;

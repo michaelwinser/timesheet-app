@@ -120,26 +120,32 @@ type CalendarEvent struct {
 	CalendarColor *string `json:"calendar_color"`
 
 	// CalendarName Name of the source calendar
-	CalendarName         *string                            `json:"calendar_name"`
-	ClassificationSource *CalendarEventClassificationSource `json:"classification_source"`
-	ClassificationStatus CalendarEventClassificationStatus  `json:"classification_status"`
-	ConnectionId         openapi_types.UUID                 `json:"connection_id"`
-	CreatedAt            time.Time                          `json:"created_at"`
-	Description          *string                            `json:"description"`
-	EndTime              time.Time                          `json:"end_time"`
-	ExternalId           string                             `json:"external_id"`
-	Id                   openapi_types.UUID                 `json:"id"`
-	IsOrphaned           *bool                              `json:"is_orphaned,omitempty"`
-	IsRecurring          *bool                              `json:"is_recurring,omitempty"`
-	IsSuppressed         *bool                              `json:"is_suppressed,omitempty"`
-	Project              *Project                           `json:"project,omitempty"`
-	ProjectId            *openapi_types.UUID                `json:"project_id"`
-	ResponseStatus       *string                            `json:"response_status"`
-	StartTime            time.Time                          `json:"start_time"`
-	Title                string                             `json:"title"`
-	Transparency         *string                            `json:"transparency"`
-	UpdatedAt            *time.Time                         `json:"updated_at,omitempty"`
-	UserId               openapi_types.UUID                 `json:"user_id"`
+	CalendarName *string `json:"calendar_name"`
+
+	// ClassificationConfidence Confidence score from rule-based classification
+	ClassificationConfidence *float32                           `json:"classification_confidence"`
+	ClassificationSource     *CalendarEventClassificationSource `json:"classification_source"`
+	ClassificationStatus     CalendarEventClassificationStatus  `json:"classification_status"`
+	ConnectionId             openapi_types.UUID                 `json:"connection_id"`
+	CreatedAt                time.Time                          `json:"created_at"`
+	Description              *string                            `json:"description"`
+	EndTime                  time.Time                          `json:"end_time"`
+	ExternalId               string                             `json:"external_id"`
+	Id                       openapi_types.UUID                 `json:"id"`
+	IsOrphaned               *bool                              `json:"is_orphaned,omitempty"`
+	IsRecurring              *bool                              `json:"is_recurring,omitempty"`
+	IsSuppressed             *bool                              `json:"is_suppressed,omitempty"`
+
+	// NeedsReview True if event was auto-classified with medium confidence and should be reviewed
+	NeedsReview    *bool               `json:"needs_review,omitempty"`
+	Project        *Project            `json:"project,omitempty"`
+	ProjectId      *openapi_types.UUID `json:"project_id"`
+	ResponseStatus *string             `json:"response_status"`
+	StartTime      time.Time           `json:"start_time"`
+	Title          string              `json:"title"`
+	Transparency   *string             `json:"transparency"`
+	UpdatedAt      *time.Time          `json:"updated_at,omitempty"`
+	UserId         openapi_types.UUID  `json:"user_id"`
 }
 
 // CalendarEventClassificationSource defines model for CalendarEvent.ClassificationSource.

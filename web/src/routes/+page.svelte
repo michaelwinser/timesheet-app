@@ -155,6 +155,9 @@
 	// Pending events (for the count)
 	const pendingEvents = $derived(calendarEvents.filter(e => e.classification_status === 'pending'));
 
+	// Events that need review (auto-classified with medium confidence)
+	const reviewEvents = $derived(calendarEvents.filter(e => e.needs_review === true));
+
 	// Filter calendar events by visible projects
 	// Show: pending events (need classification), skipped events, and events classified to visible projects
 	const filteredCalendarEvents = $derived(
@@ -541,6 +544,11 @@
 					{#if pendingEvents.length > 0}
 						<span class="ml-2 px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full">
 							{pendingEvents.length} to classify
+						</span>
+					{/if}
+					{#if reviewEvents.length > 0}
+						<span class="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded-full">
+							{reviewEvents.length} to review
 						</span>
 					{/if}
 				</h2>

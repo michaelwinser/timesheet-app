@@ -153,6 +153,7 @@
 			{@const style = getEventStyle(event)}
 			{@const posStyle = getEventPositionStyle(column, totalColumns)}
 			{@const isPending = event.classification_status === 'pending'}
+			{@const needsReview = event.needs_review === true}
 			{@const calendarColor = event.calendar_color || '#9CA3AF'}
 
 			<div
@@ -166,7 +167,13 @@
 					border-left: 3px solid {calendarColor};
 				"
 			>
-				<div class="p-1.5 h-full flex flex-col">
+				<div class="p-1.5 h-full flex flex-col relative">
+					{#if needsReview}
+						<div
+							class="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full"
+							title="Needs review - auto-classified with medium confidence"
+						></div>
+					{/if}
 					<div class="font-medium text-gray-900 line-clamp-3">{event.title}</div>
 
 					{#if event.project}

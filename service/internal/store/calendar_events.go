@@ -30,26 +30,28 @@ const (
 
 // CalendarEvent represents a synced calendar event
 type CalendarEvent struct {
-	ID                   uuid.UUID
-	ConnectionID         uuid.UUID
-	CalendarID           *uuid.UUID // Reference to calendars table
-	UserID               uuid.UUID
-	ExternalID           string
-	Title                string
-	Description          *string
-	StartTime            time.Time
-	EndTime              time.Time
-	Attendees            []string
-	IsRecurring          bool
-	ResponseStatus       *string
-	Transparency         *string
-	IsOrphaned           bool
-	IsSuppressed         bool
-	ClassificationStatus ClassificationStatus
-	ClassificationSource *ClassificationSource
-	ProjectID            *uuid.UUID
-	CreatedAt            time.Time
-	UpdatedAt            time.Time
+	ID                       uuid.UUID
+	ConnectionID             uuid.UUID
+	CalendarID               *uuid.UUID // Reference to calendars table
+	UserID                   uuid.UUID
+	ExternalID               string
+	Title                    string
+	Description              *string
+	StartTime                time.Time
+	EndTime                  time.Time
+	Attendees                []string
+	IsRecurring              bool
+	ResponseStatus           *string
+	Transparency             *string
+	IsOrphaned               bool
+	IsSuppressed             bool
+	ClassificationStatus     ClassificationStatus
+	ClassificationSource     *ClassificationSource
+	ClassificationConfidence *float64
+	NeedsReview              bool
+	ProjectID                *uuid.UUID
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
 	// Joined data
 	Project       *Project
 	CalendarName  *string
@@ -190,7 +192,8 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		SELECT ce.id, ce.connection_id, ce.calendar_id, ce.user_id, ce.external_id, ce.title, ce.description,
 		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.response_status,
 		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.classification_status,
-		       ce.classification_source, ce.project_id, ce.created_at, ce.updated_at,
+		       ce.classification_source, ce.classification_confidence, ce.needs_review,
+		       ce.project_id, ce.created_at, ce.updated_at,
 		       p.id, p.user_id, p.name, p.short_code, p.color, p.is_billable, p.is_archived,
 		       p.is_hidden_by_default, p.does_not_accumulate_hours, p.created_at, p.updated_at,
 		       c.name, c.color
@@ -246,7 +249,8 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 			&e.ID, &e.ConnectionID, &e.CalendarID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
 			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
 			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.ClassificationStatus,
-			&e.ClassificationSource, &e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
+			&e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
+			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 			&pID, &pUserID, &pName, &pShortCode, &pColor, &pIsBillable, &pIsArchived,
 			&pIsHidden, &pNoAccum, &pCreatedAt, &pUpdatedAt,
 			&e.CalendarName, &e.CalendarColor,
@@ -320,14 +324,16 @@ func (s *CalendarEventStore) GetByID(ctx context.Context, userID, eventID uuid.U
 		SELECT id, connection_id, user_id, external_id, title, description,
 		       start_time, end_time, attendees, is_recurring, response_status,
 		       transparency, is_orphaned, is_suppressed, classification_status,
-		       classification_source, project_id, created_at, updated_at
+		       classification_source, classification_confidence, needs_review,
+		       project_id, created_at, updated_at
 		FROM calendar_events
 		WHERE id = $1 AND user_id = $2
 	`, eventID, userID).Scan(
 		&e.ID, &e.ConnectionID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
 		&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
 		&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.ClassificationStatus,
-		&e.ClassificationSource, &e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
+		&e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
+		&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 	)
 
 	if err != nil {
@@ -353,10 +359,13 @@ func (s *CalendarEventStore) Classify(ctx context.Context, userID, eventID uuid.
 		status = StatusClassified
 	}
 
+	// Manual classification clears needs_review and sets confidence to 1.0
 	result, err := s.pool.Exec(ctx, `
 		UPDATE calendar_events
 		SET classification_status = $3,
 		    classification_source = $4,
+		    classification_confidence = 1.0,
+		    needs_review = false,
 		    project_id = $5,
 		    updated_at = $6
 		WHERE id = $1 AND user_id = $2

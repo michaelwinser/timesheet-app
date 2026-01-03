@@ -627,6 +627,7 @@ func calendarEventToAPI(e *store.CalendarEvent) api.CalendarEvent {
 		IsOrphaned:           &e.IsOrphaned,
 		IsSuppressed:         &e.IsSuppressed,
 		ClassificationStatus: api.CalendarEventClassificationStatus(e.ClassificationStatus),
+		NeedsReview:          &e.NeedsReview,
 		ProjectId:            e.ProjectID,
 		CreatedAt:            e.CreatedAt,
 		UpdatedAt:            &e.UpdatedAt,
@@ -636,6 +637,10 @@ func calendarEventToAPI(e *store.CalendarEvent) api.CalendarEvent {
 	if e.ClassificationSource != nil {
 		src := api.CalendarEventClassificationSource(*e.ClassificationSource)
 		event.ClassificationSource = &src
+	}
+	if e.ClassificationConfidence != nil {
+		conf := float32(*e.ClassificationConfidence)
+		event.ClassificationConfidence = &conf
 	}
 	if e.Project != nil {
 		proj := projectToAPI(e.Project)
