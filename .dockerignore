@@ -3,7 +3,7 @@
 .gitignore
 .gitattributes
 
-# Python
+# Python (v1 legacy - can be removed once v1 files are deleted)
 __pycache__
 *.py[cod]
 *$py.class
@@ -17,12 +17,11 @@ build
 .mypy_cache
 .coverage
 htmlcov
-
-# Virtual environments
 venv
 env
 ENV
 .venv
+src/
 
 # IDE
 .vscode
@@ -32,18 +31,17 @@ ENV
 *~
 .DS_Store
 
-# Documentation
+# Documentation (except api-spec.yaml which we need)
 *.md
-docs/
-*.txt
-!requirements.txt
+docs/**/*.md
+docs/v1/
 
 # Environment files
 .env
 .env.*
 !.env.example
 
-# Database files (should be in volume, not in image)
+# Database files
 *.db
 *.db-journal
 *.db-wal
@@ -55,11 +53,17 @@ logs/
 timesheet-data/
 
 # Docker files (don't copy into image)
-Dockerfile*
 docker-compose*.yaml
 .dockerignore
-Makefile
 
-# Conversation and temp files
+# Temp files
 conversation.txt
 conversation2.txt
+*.txt
+!requirements.txt
+
+# Build artifacts
+service/bin/
+web/node_modules/
+web/build/
+web/.svelte-kit/

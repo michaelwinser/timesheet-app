@@ -1,88 +1,52 @@
-# Docker Compose configuration for local development
-# For TrueNAS deployment, see docker-compose.prod.yaml
-
-version: "3.8"
+# Docker Compose for Timesheet App v2
+#
+# Usage:
+#   make up        - Start all services
+#   make down      - Stop all services
+#   make logs      - Follow logs
+#
+# Access:
+#   http://localhost:8080  - Web UI + API
 
 services:
   postgres:
     image: postgres:16-alpine
     container_name: timesheet-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-timesheet}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeMe123!}
-      POSTGRES_DB: ${POSTGRES_DB:-timesheet}
+      POSTGRES_USER: timesheet
+      POSTGRES_PASSWORD: changeMe123!
+      POSTGRES_DB: timesheet_v2
     volumes:
       - postgres-data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timesheet}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U timesheet -d timesheet_v2"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
-  timesheet-app:
-    image: michaelwinser/timesheet-app:latest
-    build: .
-    container_name: timesheet-app
+  api:
+    build:
+      context: .
+      dockerfile: service/Dockerfile
+    container_name: timesheet-api
     depends_on:
       postgres:
         condition: service_healthy
     ports:
-      - "8000:8000"
-
+      - "8080:8080"
     environment:
-      # PostgreSQL connection
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-timesheet}:${POSTGRES_PASSWORD:-changeMe123!}@postgres:5432/${POSTGRES_DB:-timesheet}
-
-      # Google OAuth credentials (REQUIRED)
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-
-      # OAuth redirect URI (REQUIRED)
-      # For local dev: http://localhost:8000/auth/callback
-      # For production: https://timesheet.yourdomain.com/auth/callback
-      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI:-http://localhost:8000/auth/callback}
-
-      # Application secret key (REQUIRED)
-      - SECRET_KEY=${SECRET_KEY:-dev-secret-change-in-production}
-
-      # Anthropic API for LLM classification (OPTIONAL)
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-
-      # Application settings
-      - ENVIRONMENT=${ENVIRONMENT:-development}
-      - DEBUG=${DEBUG:-true}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-
-    volumes:
-      # Persistent data volume
-      - ./timesheet-data:/data
-
-      # Optional: Mount source code for hot reload during development
-      # Uncomment the lines below to enable live code reloading:
-      # - ./src:/app/src:ro
-
-    # Restart policy
+      PORT: "8080"
+      DATABASE_URL: postgresql://timesheet:changeMe123!@postgres:5432/timesheet_v2
+      JWT_SECRET: ${JWT_SECRET:-development-secret-change-in-production}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL:-http://localhost:8080/api/auth/google/callback}
     restart: unless-stopped
 
-    # Resource limits (adjust based on your needs)
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-        reservations:
-          cpus: '0.25'
-          memory: 128M
-
-    # Health check (uses built-in Docker HEALTHCHECK in Dockerfile)
-    # View status: docker inspect --format='{{.State.Health.Status}}' timesheet-app
-
-# Named volumes for data persistence
 volumes:
-  timesheet-data:
-    driver: local
   postgres-data:
     driver: local
