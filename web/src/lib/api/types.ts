@@ -242,3 +242,15 @@ export interface ClassifiedEvent {
 	confidence: number;
 	needs_review: boolean;
 }
+
+export interface BulkClassifyRequest {
+	query: string;
+	project_id?: string;
+	skip?: boolean;
+}
+
+export interface BulkClassifyResponse {
+	classified_count: number;
+	skipped_count: number;
+	time_entries_created?: number;
+}

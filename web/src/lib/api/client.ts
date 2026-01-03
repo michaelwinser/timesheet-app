@@ -22,7 +22,9 @@ import type {
 	RulePreviewRequest,
 	RulePreviewResponse,
 	ApplyRulesRequest,
-	ApplyRulesResponse
+	ApplyRulesResponse,
+	BulkClassifyRequest,
+	BulkClassifyResponse
 } from './types';
 
 const API_BASE = '/api';
@@ -209,6 +211,10 @@ class ApiClient {
 
 	async applyRules(data: ApplyRulesRequest = {}): Promise<ApplyRulesResponse> {
 		return this.request('POST', '/rules/apply', data);
+	}
+
+	async bulkClassifyEvents(data: BulkClassifyRequest): Promise<BulkClassifyResponse> {
+		return this.request('POST', '/calendar-events/bulk-classify', data);
 	}
 }
 

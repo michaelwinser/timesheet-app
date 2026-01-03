@@ -76,6 +76,30 @@ type AuthResponse struct {
 	User  User   `json:"user"`
 }
 
+// BulkClassifyRequest defines model for BulkClassifyRequest.
+type BulkClassifyRequest struct {
+	// ProjectId Project to assign matching events to. Omit to skip events.
+	ProjectId *openapi_types.UUID `json:"project_id,omitempty"`
+
+	// Query Gmail-style query to match events (e.g., "domain:acme.com title:sync")
+	Query string `json:"query"`
+
+	// Skip If true, mark matching events as skipped (did not attend)
+	Skip *bool `json:"skip,omitempty"`
+}
+
+// BulkClassifyResponse defines model for BulkClassifyResponse.
+type BulkClassifyResponse struct {
+	// ClassifiedCount Number of events classified to a project
+	ClassifiedCount int `json:"classified_count"`
+
+	// SkippedCount Number of events marked as skipped
+	SkippedCount int `json:"skipped_count"`
+
+	// TimeEntriesCreated Number of time entries created
+	TimeEntriesCreated *int `json:"time_entries_created,omitempty"`
+}
+
 // Calendar defines model for Calendar.
 type Calendar struct {
 	// Color Calendar color (hex code)
@@ -472,6 +496,9 @@ type LoginJSONRequestBody = LoginRequest
 // SignupJSONRequestBody defines body for Signup for application/json ContentType.
 type SignupJSONRequestBody = SignupRequest
 
+// BulkClassifyEventsJSONRequestBody defines body for BulkClassifyEvents for application/json ContentType.
+type BulkClassifyEventsJSONRequestBody = BulkClassifyRequest
+
 // ClassifyCalendarEventJSONRequestBody defines body for ClassifyCalendarEvent for application/json ContentType.
 type ClassifyCalendarEventJSONRequestBody = ClassifyEventRequest
 
@@ -525,6 +552,9 @@ type ServerInterface interface {
 	// List calendar events with filters
 	// (GET /api/calendar-events)
 	ListCalendarEvents(w http.ResponseWriter, r *http.Request, params ListCalendarEventsParams)
+	// Bulk classify events matching a query
+	// (POST /api/calendar-events/bulk-classify)
+	BulkClassifyEvents(w http.ResponseWriter, r *http.Request)
 	// Classify a calendar event (assign to project or skip)
 	// (PUT /api/calendar-events/{id}/classify)
 	ClassifyCalendarEvent(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
@@ -639,6 +669,12 @@ func (_ Unimplemented) Signup(w http.ResponseWriter, r *http.Request) {
 // List calendar events with filters
 // (GET /api/calendar-events)
 func (_ Unimplemented) ListCalendarEvents(w http.ResponseWriter, r *http.Request, params ListCalendarEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Bulk classify events matching a query
+// (POST /api/calendar-events/bulk-classify)
+func (_ Unimplemented) BulkClassifyEvents(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -980,6 +1016,26 @@ func (siw *ServerInterfaceWrapper) ListCalendarEvents(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListCalendarEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// BulkClassifyEvents operation middleware
+func (siw *ServerInterfaceWrapper) BulkClassifyEvents(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BulkClassifyEvents(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1793,6 +1849,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/calendar-events", wrapper.ListCalendarEvents)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/calendar-events/bulk-classify", wrapper.BulkClassifyEvents)
+	})
+	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/api/calendar-events/{id}/classify", wrapper.ClassifyCalendarEvent)
 	})
 	r.Group(func(r chi.Router) {
@@ -2064,6 +2123,41 @@ func (response ListCalendarEvents200JSONResponse) VisitListCalendarEventsRespons
 type ListCalendarEvents401JSONResponse Error
 
 func (response ListCalendarEvents401JSONResponse) VisitListCalendarEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type BulkClassifyEventsRequestObject struct {
+	Body *BulkClassifyEventsJSONRequestBody
+}
+
+type BulkClassifyEventsResponseObject interface {
+	VisitBulkClassifyEventsResponse(w http.ResponseWriter) error
+}
+
+type BulkClassifyEvents200JSONResponse BulkClassifyResponse
+
+func (response BulkClassifyEvents200JSONResponse) VisitBulkClassifyEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type BulkClassifyEvents400JSONResponse Error
+
+func (response BulkClassifyEvents400JSONResponse) VisitBulkClassifyEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type BulkClassifyEvents401JSONResponse Error
+
+func (response BulkClassifyEvents401JSONResponse) VisitBulkClassifyEventsResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
 
@@ -2925,6 +3019,9 @@ type StrictServerInterface interface {
 	// List calendar events with filters
 	// (GET /api/calendar-events)
 	ListCalendarEvents(ctx context.Context, request ListCalendarEventsRequestObject) (ListCalendarEventsResponseObject, error)
+	// Bulk classify events matching a query
+	// (POST /api/calendar-events/bulk-classify)
+	BulkClassifyEvents(ctx context.Context, request BulkClassifyEventsRequestObject) (BulkClassifyEventsResponseObject, error)
 	// Classify a calendar event (assign to project or skip)
 	// (PUT /api/calendar-events/{id}/classify)
 	ClassifyCalendarEvent(ctx context.Context, request ClassifyCalendarEventRequestObject) (ClassifyCalendarEventResponseObject, error)
@@ -3204,6 +3301,37 @@ func (sh *strictHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListCalendarEventsResponseObject); ok {
 		if err := validResponse.VisitListCalendarEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// BulkClassifyEvents operation middleware
+func (sh *strictHandler) BulkClassifyEvents(w http.ResponseWriter, r *http.Request) {
+	var request BulkClassifyEventsRequestObject
+
+	var body BulkClassifyEventsJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.BulkClassifyEvents(ctx, request.(BulkClassifyEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "BulkClassifyEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(BulkClassifyEventsResponseObject); ok {
+		if err := validResponse.VisitBulkClassifyEventsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

@@ -604,6 +604,84 @@ func (h *CalendarHandler) ClassifyCalendarEvent(ctx context.Context, req api.Cla
 	return response, nil
 }
 
+// BulkClassifyEvents classifies multiple events matching a query
+func (h *CalendarHandler) BulkClassifyEvents(ctx context.Context, req api.BulkClassifyEventsRequestObject) (api.BulkClassifyEventsResponseObject, error) {
+	userID, ok := UserIDFromContext(ctx)
+	if !ok {
+		return api.BulkClassifyEvents401JSONResponse{
+			Code:    "unauthorized",
+			Message: "Authentication required",
+		}, nil
+	}
+
+	// Validate request
+	if req.Body.Query == "" {
+		return api.BulkClassifyEvents400JSONResponse{
+			Code:    "invalid_request",
+			Message: "Query is required",
+		}, nil
+	}
+
+	isSkip := req.Body.Skip != nil && *req.Body.Skip
+	if !isSkip && req.Body.ProjectId == nil {
+		return api.BulkClassifyEvents400JSONResponse{
+			Code:    "invalid_request",
+			Message: "Must provide project_id or set skip to true",
+		}, nil
+	}
+
+	// Use classification service's preview to find matching events
+	preview, err := h.classificationSvc.PreviewRule(ctx, userID, req.Body.Query, req.Body.ProjectId, nil, nil)
+	if err != nil {
+		return api.BulkClassifyEvents400JSONResponse{
+			Code:    "invalid_query",
+			Message: err.Error(),
+		}, nil
+	}
+
+	var classifiedCount, skippedCount, timeEntriesCreated int
+
+	// Process each matching event
+	for _, match := range preview.Matches {
+		// Get the full event for duration calculation
+		event, err := h.events.GetByID(ctx, userID, match.EventID)
+		if err != nil {
+			continue // Skip events we can't fetch
+		}
+
+		// Skip manually classified events - we don't override those
+		if event.ClassificationSource != nil && *event.ClassificationSource == store.SourceManual {
+			continue
+		}
+
+		// Classify the event
+		_, err = h.events.Classify(ctx, userID, match.EventID, req.Body.ProjectId, isSkip)
+		if err != nil {
+			continue
+		}
+
+		if isSkip {
+			skippedCount++
+		} else {
+			classifiedCount++
+
+			// Create time entry
+			duration := event.EndTime.Sub(event.StartTime).Hours()
+			eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
+			_, err := h.entries.CreateFromCalendar(ctx, userID, *req.Body.ProjectId, eventDate, duration, &event.Title)
+			if err == nil {
+				timeEntriesCreated++
+			}
+		}
+	}
+
+	return api.BulkClassifyEvents200JSONResponse{
+		ClassifiedCount:    classifiedCount,
+		SkippedCount:       skippedCount,
+		TimeEntriesCreated: &timeEntriesCreated,
+	}, nil
+}
+
 // calendarConnectionToAPI converts store model to API model
 func calendarConnectionToAPI(c *store.CalendarConnection) api.CalendarConnection {
 	conn := api.CalendarConnection{

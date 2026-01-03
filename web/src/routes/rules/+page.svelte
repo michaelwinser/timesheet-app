@@ -17,6 +17,16 @@
 	let projects = $state<Project[]>([]);
 	let loading = $state(true);
 	let error = $state('');
+	let successMessage = $state('');
+
+	// Search state
+	let searchQuery = $state('');
+	let searchTimeout: ReturnType<typeof setTimeout>;
+	let searchLoading = $state(false);
+	let searchResults = $state<RulePreviewResponse | null>(null);
+	let searchError = $state('');
+	let selectedProjectId = $state<string | null>(null);
+	let bulkClassifying = $state(false);
 
 	// Editor modal state
 	let showEditor = $state(false);
@@ -42,7 +52,6 @@
 
 	// Apply rules state
 	let applying = $state(false);
-	let applyResult = $state<{ classified: number; skipped: number } | null>(null);
 
 	async function loadData() {
 		loading = true;
@@ -55,6 +64,100 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	// Search functionality
+	function handleSearchInput(e: Event) {
+		const value = (e.target as HTMLInputElement).value;
+		searchQuery = value;
+		searchError = '';
+
+		clearTimeout(searchTimeout);
+		if (value.trim()) {
+			searchLoading = true;
+			searchTimeout = setTimeout(() => executeSearch(value), 300);
+		} else {
+			searchResults = null;
+			searchLoading = false;
+		}
+	}
+
+	async function executeSearch(query: string) {
+		try {
+			searchResults = await api.previewRule({ query });
+			searchError = '';
+		} catch (e) {
+			console.error('Search failed:', e);
+			searchError = e instanceof Error ? e.message : 'Invalid query syntax';
+			searchResults = null;
+		} finally {
+			searchLoading = false;
+		}
+	}
+
+	function clearSearch() {
+		searchQuery = '';
+		searchResults = null;
+		searchError = '';
+		selectedProjectId = null;
+	}
+
+	async function handleBulkClassify() {
+		if (!searchQuery.trim() || !selectedProjectId) return;
+
+		bulkClassifying = true;
+		try {
+			const result = await api.bulkClassifyEvents({
+				query: searchQuery,
+				project_id: selectedProjectId
+			});
+			showSuccess(`Classified ${result.classified_count} events`);
+			// Refresh search results
+			await executeSearch(searchQuery);
+		} catch (e) {
+			console.error('Bulk classify failed:', e);
+			error = e instanceof Error ? e.message : 'Failed to classify events';
+		} finally {
+			bulkClassifying = false;
+		}
+	}
+
+	async function handleBulkSkip() {
+		if (!searchQuery.trim()) return;
+
+		bulkClassifying = true;
+		try {
+			const result = await api.bulkClassifyEvents({
+				query: searchQuery,
+				skip: true
+			});
+			showSuccess(`Skipped ${result.skipped_count} events`);
+			// Refresh search results
+			await executeSearch(searchQuery);
+		} catch (e) {
+			console.error('Bulk skip failed:', e);
+			error = e instanceof Error ? e.message : 'Failed to skip events';
+		} finally {
+			bulkClassifying = false;
+		}
+	}
+
+	function handleSaveAsRule() {
+		// Pre-populate the editor with the current search query
+		editingRule = null;
+		editorQuery = searchQuery;
+		editorProjectId = selectedProjectId;
+		editorIsAttendance = false;
+		editorIsPriority = false;
+		editorError = '';
+		showEditor = true;
+	}
+
+	function showSuccess(message: string) {
+		successMessage = message;
+		setTimeout(() => {
+			successMessage = '';
+		}, 5000);
 	}
 
 	function openNewRule() {
@@ -127,6 +230,7 @@
 
 			showEditor = false;
 			await loadData();
+			showSuccess(editingRule ? 'Rule updated' : 'Rule created');
 		} catch (e) {
 			console.error('Failed to save rule:', e);
 			editorError = e instanceof Error ? e.message : 'Failed to save rule';
@@ -228,18 +332,10 @@
 
 	async function handleApplyRules() {
 		applying = true;
-		applyResult = null;
 		error = '';
 		try {
 			const result = await api.applyRules({});
-			applyResult = {
-				classified: result.classified.length,
-				skipped: result.skipped
-			};
-			// Clear the result after 5 seconds
-			setTimeout(() => {
-				applyResult = null;
-			}, 5000);
+			showSuccess(`Applied rules: ${result.classified.length} classified, ${result.skipped} skipped`);
 		} catch (e) {
 			console.error('Failed to apply rules:', e);
 			error = e instanceof Error ? e.message : 'Failed to apply rules';
@@ -257,7 +353,15 @@
 	}
 
 	function formatTime(dateStr: string): string {
-		return new Date(dateStr).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+		const date = new Date(dateStr);
+		return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+	}
+
+	function formatDuration(startStr: string, endStr: string): string {
+		const start = new Date(startStr);
+		const end = new Date(endStr);
+		const hours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+		return `${hours.toFixed(1)}h`;
 	}
 
 	onMount(() => {
@@ -266,13 +370,13 @@
 </script>
 
 <svelte:head>
-	<title>Rules - Timesheet</title>
+	<title>Classification Hub - Timesheet</title>
 </svelte:head>
 
 <AppShell>
 	<div class="max-w-3xl mx-auto">
 		<div class="flex items-center justify-between mb-6">
-			<h1 class="text-2xl font-bold text-gray-900">Rules</h1>
+			<h1 class="text-2xl font-bold text-gray-900">Classification Hub</h1>
 			<div class="flex items-center gap-3">
 				{#if rules.length > 0}
 					<Button variant="secondary" loading={applying} onclick={handleApplyRules}>
@@ -283,9 +387,9 @@
 			</div>
 		</div>
 
-		{#if applyResult}
+		{#if successMessage}
 			<div class="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">
-				Applied rules: {applyResult.classified} events classified, {applyResult.skipped} skipped
+				{successMessage}
 			</div>
 		{/if}
 
@@ -295,11 +399,134 @@
 			</div>
 		{/if}
 
+		<!-- Search Section -->
+		<div class="bg-white border rounded-lg p-4 mb-6">
+			<div class="relative">
+				<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+					{#if searchLoading}
+						<div class="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+					{:else}
+						<svg class="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+						</svg>
+					{/if}
+				</div>
+				<input
+					type="text"
+					value={searchQuery}
+					oninput={handleSearchInput}
+					placeholder="Search events: domain:acme.com title:sync"
+					class="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
+				/>
+				{#if searchQuery}
+					<button
+						type="button"
+						onclick={clearSearch}
+						class="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+					>
+						<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+						</svg>
+					</button>
+				{/if}
+			</div>
+			<p class="mt-1 text-xs text-gray-500">
+				Examples: title:standup, domain:client.com, attendees:alice@, response:declined
+			</p>
+
+			{#if searchError}
+				<div class="mt-3 text-sm text-red-600">
+					{searchError}
+				</div>
+			{/if}
+
+			<!-- Search Results -->
+			{#if searchResults}
+				<div class="mt-4 border-t pt-4">
+					<div class="flex items-center justify-between mb-3">
+						<span class="text-sm font-medium text-gray-700">
+							{searchResults.stats.total_matches} events match
+						</span>
+						<button
+							type="button"
+							onclick={handleSaveAsRule}
+							class="text-sm text-primary-600 hover:text-primary-700 font-medium"
+						>
+							Save as Rule
+						</button>
+					</div>
+
+					{#if searchResults.matches.length > 0}
+						<!-- Event list -->
+						<div class="max-h-64 overflow-y-auto space-y-1 mb-4">
+							{#each searchResults.matches.slice(0, 10) as match}
+								<div class="text-sm py-2 px-3 bg-gray-50 rounded flex items-center justify-between">
+									<span class="truncate flex-1">{match.title}</span>
+									<span class="text-gray-500 text-xs flex-shrink-0 ml-2">
+										{formatDate(match.start_time)}
+									</span>
+								</div>
+							{/each}
+							{#if searchResults.matches.length > 10}
+								<div class="text-sm text-gray-500 text-center py-2">
+									+{searchResults.matches.length - 10} more events
+								</div>
+							{/if}
+						</div>
+
+						<!-- Bulk actions -->
+						<div class="flex items-center gap-3 pt-3 border-t">
+							<span class="text-sm text-gray-600">Classify all as:</span>
+							<select
+								bind:value={selectedProjectId}
+								class="flex-1 px-3 py-1.5 border rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+							>
+								<option value={null}>Select project...</option>
+								{#each projects.filter((p) => !p.is_archived) as project}
+									<option value={project.id}>
+										{project.name}
+									</option>
+								{/each}
+							</select>
+							<Button
+								variant="primary"
+								size="sm"
+								loading={bulkClassifying}
+								disabled={!selectedProjectId}
+								onclick={handleBulkClassify}
+							>
+								Classify {searchResults.stats.total_matches}
+							</Button>
+							<Button
+								variant="secondary"
+								size="sm"
+								loading={bulkClassifying}
+								onclick={handleBulkSkip}
+							>
+								Skip All
+							</Button>
+						</div>
+
+						{#if searchResults.stats.manual_conflicts > 0}
+							<div class="mt-3 text-xs text-yellow-700 bg-yellow-50 rounded px-3 py-2">
+								{searchResults.stats.manual_conflicts} events have manual classifications and will not be changed.
+							</div>
+						{/if}
+					{:else}
+						<div class="text-sm text-gray-500 text-center py-4">
+							No events match this query
+						</div>
+					{/if}
+				</div>
+			{/if}
+		</div>
+
+		<!-- Existing Rules Section -->
 		{#if loading}
 			<div class="flex items-center justify-center py-12">
 				<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
 			</div>
-		{:else if rules.length === 0}
+		{:else if rules.length === 0 && !searchQuery}
 			<!-- Empty state -->
 			<div class="bg-white border rounded-lg p-8 text-center">
 				<div class="text-gray-400 mb-4">
@@ -314,12 +541,14 @@
 				</div>
 				<h3 class="text-lg font-medium text-gray-900 mb-2">No classification rules yet</h3>
 				<p class="text-gray-500 mb-6">
-					Rules automatically classify events based on patterns like attendee domains, meeting
-					titles, or time of day.
+					Use the search bar above to find events and classify them, or create rules to automatically classify future events.
 				</p>
 				<Button variant="primary" onclick={openNewRule}>Create Your First Rule</Button>
 			</div>
-		{:else}
+		{:else if rules.length > 0}
+			<div class="mb-3 flex items-center justify-between">
+				<h2 class="text-lg font-medium text-gray-900">Saved Rules</h2>
+			</div>
 			<!-- Rules list -->
 			<div class="space-y-3">
 				{#each rules as rule (rule.id)}

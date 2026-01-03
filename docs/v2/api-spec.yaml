@@ -828,6 +828,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/calendar-events/bulk-classify:
+    post:
+      operationId: bulkClassifyEvents
+      tags: [calendars]
+      summary: Bulk classify events matching a query
+      description: |
+        Classifies all events matching the given query to the specified project,
+        or marks them as skipped. Creates time entries for classified events.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkClassifyRequest'
+      responses:
+        '200':
+          description: Bulk classification completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkClassifyResponse'
+        '400':
+          description: Invalid query syntax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   # Classification Rules endpoints
   /api/rules:
     get:
@@ -1488,6 +1524,36 @@ components:
         time_entry:
           $ref: '#/components/schemas/TimeEntry'
           description: The created or updated time entry (only when classifying to a project)
+
+    BulkClassifyRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          description: Gmail-style query to match events (e.g., "domain:acme.com title:sync")
+        project_id:
+          type: string
+          format: uuid
+          description: Project to assign matching events to. Omit to skip events.
+        skip:
+          type: boolean
+          default: false
+          description: If true, mark matching events as skipped (did not attend)
+
+    BulkClassifyResponse:
+      type: object
+      required: [classified_count, skipped_count]
+      properties:
+        classified_count:
+          type: integer
+          description: Number of events classified to a project
+        skipped_count:
+          type: integer
+          description: Number of events marked as skipped
+        time_entries_created:
+          type: integer
+          description: Number of time entries created
 
     Calendar:
       type: object
