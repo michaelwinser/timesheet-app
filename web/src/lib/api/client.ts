@@ -15,7 +15,14 @@ import type {
 	ClassifyEventRequest,
 	ClassifyEventResponse,
 	UpdateCalendarSourcesRequest,
-	ApiError
+	ApiError,
+	ClassificationRule,
+	RuleCreate,
+	RuleUpdate,
+	RulePreviewRequest,
+	RulePreviewResponse,
+	ApplyRulesRequest,
+	ApplyRulesResponse
 } from './types';
 
 const API_BASE = '/api';
@@ -172,6 +179,36 @@ class ApiClient {
 
 	async classifyCalendarEvent(id: string, data: ClassifyEventRequest): Promise<ClassifyEventResponse> {
 		return this.request('PUT', `/calendar-events/${id}/classify`, data);
+	}
+
+	// Classification Rules
+	async listRules(includeDisabled = false): Promise<ClassificationRule[]> {
+		const query = includeDisabled ? '?include_disabled=true' : '';
+		return this.request('GET', `/rules${query}`);
+	}
+
+	async getRule(id: string): Promise<ClassificationRule> {
+		return this.request('GET', `/rules/${id}`);
+	}
+
+	async createRule(data: RuleCreate): Promise<ClassificationRule> {
+		return this.request('POST', '/rules', data);
+	}
+
+	async updateRule(id: string, data: RuleUpdate): Promise<ClassificationRule> {
+		return this.request('PUT', `/rules/${id}`, data);
+	}
+
+	async deleteRule(id: string): Promise<void> {
+		return this.request('DELETE', `/rules/${id}`);
+	}
+
+	async previewRule(data: RulePreviewRequest): Promise<RulePreviewResponse> {
+		return this.request('POST', '/rules/preview', data);
+	}
+
+	async applyRules(data: ApplyRulesRequest = {}): Promise<ApplyRulesResponse> {
+		return this.request('POST', '/rules/apply', data);
 	}
 }
 

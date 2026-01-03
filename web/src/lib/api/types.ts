@@ -149,3 +149,85 @@ export interface ApiError {
 	message: string;
 	details?: Record<string, unknown>;
 }
+
+// Classification Rules
+export interface ClassificationRule {
+	id: string;
+	user_id: string;
+	query: string;
+	project_id?: string | null;
+	project_name?: string | null;
+	project_color?: string | null;
+	attended?: boolean | null;
+	weight: number;
+	is_enabled: boolean;
+	created_at: string;
+	updated_at?: string;
+}
+
+export interface RuleCreate {
+	query: string;
+	project_id?: string;
+	attended?: boolean;
+	weight?: number;
+	is_enabled?: boolean;
+}
+
+export interface RuleUpdate {
+	query?: string;
+	project_id?: string | null;
+	attended?: boolean | null;
+	weight?: number;
+	is_enabled?: boolean;
+}
+
+export interface RulePreviewRequest {
+	query: string;
+	project_id?: string;
+	start_date?: string;
+	end_date?: string;
+}
+
+export interface RulePreviewResponse {
+	matches: MatchedEvent[];
+	conflicts: RuleConflict[];
+	stats: PreviewStats;
+}
+
+export interface MatchedEvent {
+	event_id: string;
+	title: string;
+	start_time: string;
+}
+
+export interface RuleConflict {
+	event_id: string;
+	current_project_id?: string | null;
+	current_source?: string;
+	proposed_project_id?: string | null;
+}
+
+export interface PreviewStats {
+	total_matches: number;
+	already_correct: number;
+	would_change: number;
+	manual_conflicts: number;
+}
+
+export interface ApplyRulesRequest {
+	start_date?: string;
+	end_date?: string;
+	dry_run?: boolean;
+}
+
+export interface ApplyRulesResponse {
+	classified: ClassifiedEvent[];
+	skipped: number;
+}
+
+export interface ClassifiedEvent {
+	event_id: string;
+	project_id: string;
+	confidence: number;
+	needs_review: boolean;
+}
