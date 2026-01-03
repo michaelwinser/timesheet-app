@@ -208,14 +208,20 @@
 		})
 	);
 
-	// Group filtered events by hour for list view
-	const eventsByHour = $derived.by(() => {
-		// First sort by start time
-		const sorted = [...filteredCalendarEvents].sort(
+	// Helper to format hour label
+	function formatHourLabel(hour: number): string {
+		return hour === 0 ? '12 AM' :
+			hour === 12 ? '12 PM' :
+			hour > 12 ? `${hour - 12} PM` :
+			`${hour} AM`;
+	}
+
+	// Group events by hour for a specific day
+	function getEventsByHourForDay(dayEvents: CalendarEvent[]): { hour: number; label: string; events: CalendarEvent[] }[] {
+		const sorted = [...dayEvents].sort(
 			(a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
 		);
 
-		// Group by hour
 		const groups: { hour: number; label: string; events: CalendarEvent[] }[] = [];
 		let currentHour = -1;
 
@@ -223,17 +229,13 @@
 			const startHour = new Date(event.start_time).getHours();
 			if (startHour !== currentHour) {
 				currentHour = startHour;
-				const label = startHour === 0 ? '12 AM' :
-					startHour === 12 ? '12 PM' :
-					startHour > 12 ? `${startHour - 12} PM` :
-					`${startHour} AM`;
-				groups.push({ hour: startHour, label, events: [] });
+				groups.push({ hour: startHour, label: formatHourLabel(startHour), events: [] });
 			}
 			groups[groups.length - 1].events.push(event);
 		}
 
 		return groups;
-	});
+	}
 
 	// Group events by date (filtered)
 	const eventsByDate = $derived.by(() => {
@@ -404,15 +406,29 @@
 				hoveredElement = element;
 			}, 150);
 		} else {
-			// Hide popup after short delay (allows moving to popup)
+			// Hide popup after longer delay (allows moving to popup)
 			hoverHideTimeout = setTimeout(() => {
 				hoveredEvent = null;
 				hoveredElement = null;
-			}, 100);
+			}, 300);
 		}
 	}
 
+	function handlePopupMouseEnter() {
+		// Cancel any pending hide when entering popup
+		clearTimeout(hoverHideTimeout);
+	}
+
+	function handlePopupMouseLeave() {
+		// Hide after delay when leaving popup
+		hoverHideTimeout = setTimeout(() => {
+			hoveredEvent = null;
+			hoveredElement = null;
+		}, 100);
+	}
+
 	function handlePopupClose() {
+		clearTimeout(hoverHideTimeout);
 		hoveredEvent = null;
 		hoveredElement = null;
 	}
@@ -778,9 +794,20 @@
 						/>
 					</div>
 				{:else}
-					<!-- Week view - 7 columns -->
-					<div class="overflow-x-auto">
-						<div class="grid grid-cols-7 gap-2">
+					<!-- Week view - shared time legend + day columns -->
+					<div class="flex gap-2">
+						<!-- Shared time legend -->
+						<div class="w-12 flex-shrink-0 text-right pr-2 pt-8">
+							<div class="overflow-y-auto" style="height: 600px;">
+								{#each Array.from({ length: 24 }, (_, i) => i) as hour}
+									<div class="text-xs text-gray-400" style="height: 60px">
+										{hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
+									</div>
+								{/each}
+							</div>
+						</div>
+						<!-- Day columns - dynamic width -->
+						<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
 							{#each visibleDays as day}
 								{@const dateStr = formatDate(day)}
 								{@const dayEvents = eventsByDate[dateStr] || []}
@@ -797,6 +824,7 @@
 										onclassify={(eventId, projectId) => handleClassify(eventId, projectId)}
 										onskip={(eventId) => handleSkip(eventId)}
 										onhover={handleEventHover}
+										showTimeLegend={false}
 									/>
 								</div>
 							{/each}
@@ -804,35 +832,96 @@
 					</div>
 				{/if}
 			{:else}
-				<!-- List View with hour groups -->
-				{#if eventsByHour.length > 0}
-					<div class="space-y-4 max-h-[32rem] overflow-y-auto">
-						{#each eventsByHour as group}
-							<div>
-								<!-- Hour header -->
-								<div class="flex items-center gap-2 mb-2">
-									<span class="text-xs font-medium text-gray-500 uppercase tracking-wide">{group.label}</span>
-									<div class="flex-1 border-t border-gray-200"></div>
-									<span class="text-xs text-gray-400">{group.events.length} event{group.events.length !== 1 ? 's' : ''}</span>
-								</div>
-								<!-- Events in this hour -->
-								<div class="space-y-2 pl-2">
-									{#each group.events as event (event.id)}
-										<div class={classifyingId === event.id ? 'opacity-50 pointer-events-none' : ''}>
-											<CalendarEventCard
-												{event}
-												{projects}
-												onclassify={(projectId) => handleClassify(event.id, projectId)}
-												onskip={() => handleSkip(event.id)}
-											/>
+				<!-- List View with day columns -->
+				{#if scopeMode === 'day'}
+					<!-- Single day list -->
+					{@const dateStr = formatDate(currentDate)}
+					{@const dayEvents = eventsByDate[dateStr] || []}
+					{@const hourGroups = getEventsByHourForDay(dayEvents)}
+					<div class="bg-gray-50 rounded-lg p-4 max-h-[32rem] overflow-y-auto">
+						{#if hourGroups.length > 0}
+							<div class="space-y-3">
+								{#each hourGroups as group}
+									<div>
+										<div class="text-xs font-medium text-gray-500 mb-1">{group.label}</div>
+										<div class="space-y-2">
+											{#each group.events as event (event.id)}
+												<div class={classifyingId === event.id ? 'opacity-50 pointer-events-none' : ''}>
+													<CalendarEventCard
+														{event}
+														{projects}
+														onclassify={(projectId) => handleClassify(event.id, projectId)}
+														onskip={() => handleSkip(event.id)}
+													/>
+												</div>
+											{/each}
 										</div>
-									{/each}
-								</div>
+									</div>
+								{/each}
 							</div>
-						{/each}
+						{:else}
+							<p class="text-sm text-gray-400 py-8 text-center">No calendar events for this day</p>
+						{/if}
 					</div>
 				{:else}
-					<p class="text-sm text-gray-400 py-8 text-center">No calendar events for this {scopeMode === 'day' ? 'day' : 'week'}</p>
+					<!-- Week/Full week - day columns -->
+					<div class="overflow-x-auto">
+						<div class="grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
+							{#each visibleDays as day}
+								{@const dateStr = formatDate(day)}
+								{@const dayEvents = eventsByDate[dateStr] || []}
+								{@const hourGroups = getEventsByHourForDay(dayEvents)}
+								{@const isToday = formatDate(new Date()) === dateStr}
+
+								<div class="bg-gray-50 rounded-lg p-2 max-h-[32rem] overflow-y-auto {isToday ? 'ring-2 ring-primary-500' : ''}">
+									<h3 class="font-medium text-sm text-center mb-2 pb-1 border-b {isToday ? 'text-primary-600' : 'text-gray-700'}">
+										{formatShortDay(day)}
+									</h3>
+									{#if hourGroups.length > 0}
+										<div class="space-y-2">
+											{#each hourGroups as group}
+												<div>
+													<div class="text-xs font-medium text-gray-400 mb-1">{group.label}</div>
+													<div class="space-y-1">
+														{#each group.events as event (event.id)}
+															<!-- Compact event card for list columns -->
+															{@const calendarColor = event.calendar_color || '#9CA3AF'}
+															<!-- svelte-ignore a11y_no_static_element_interactions -->
+															<div
+																class="text-xs p-1.5 rounded border cursor-pointer hover:shadow-sm transition-shadow {event.classification_status === 'classified' ? 'bg-green-50' : event.classification_status === 'skipped' ? 'bg-gray-100' : 'bg-white'}"
+																style="border-left: 3px solid {calendarColor};"
+																onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
+																onmouseleave={() => handleEventHover(null, null)}
+															>
+																<div class="flex items-start justify-between gap-1">
+																	<span class="font-medium text-gray-900 truncate">{event.title}</span>
+																	{#if event.classification_status === 'classified' && event.project}
+																		<span
+																			class="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5"
+																			style="background-color: {event.project.color}"
+																		></span>
+																	{:else if event.classification_status === 'skipped'}
+																		<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5 border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
+																	{:else}
+																		<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5 bg-amber-200 border border-amber-300"></span>
+																	{/if}
+																</div>
+																<div class="text-gray-500 mt-0.5">
+																	{new Date(event.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+																</div>
+															</div>
+														{/each}
+													</div>
+												</div>
+											{/each}
+										</div>
+									{:else}
+										<p class="text-xs text-gray-400 py-4 text-center">No events</p>
+									{/if}
+								</div>
+							{/each}
+						</div>
+					</div>
 				{/if}
 			{/if}
 		{/if}
@@ -1019,7 +1108,8 @@
 			anchorElement={hoveredElement}
 			onclassify={handlePopupClassify}
 			onskip={handlePopupSkip}
-			onclose={handlePopupClose}
+			onmouseenter={handlePopupMouseEnter}
+			onmouseleave={handlePopupMouseLeave}
 		/>
 	{/if}
 

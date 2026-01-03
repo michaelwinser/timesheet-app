@@ -8,12 +8,36 @@
 		anchorElement: HTMLElement | null;
 		onclassify?: (projectId: string) => void;
 		onskip?: () => void;
-		onclose?: () => void;
+		onmouseenter?: () => void;
+		onmouseleave?: () => void;
 	}
 
-	let { event, projects, anchorElement, onclassify, onskip, onclose }: Props = $props();
+	let { event, projects, anchorElement, onclassify, onskip, onmouseenter, onmouseleave }: Props = $props();
 
 	const activeProjects = $derived(projects.filter(p => !p.is_archived));
+
+	// Sanitize HTML - strip dangerous tags, keep basic formatting
+	function sanitizeHtml(html: string): string {
+		// Create a temporary element to parse HTML
+		const temp = document.createElement('div');
+		temp.innerHTML = html;
+
+		// Remove script, style, and other dangerous elements
+		const dangerous = temp.querySelectorAll('script, style, iframe, object, embed, form, input, button');
+		dangerous.forEach(el => el.remove());
+
+		// Remove event handlers from all elements
+		temp.querySelectorAll('*').forEach(el => {
+			Array.from(el.attributes).forEach(attr => {
+				if (attr.name.startsWith('on')) {
+					el.removeAttribute(attr.name);
+				}
+			});
+		});
+
+		// Return sanitized HTML
+		return temp.innerHTML;
+	}
 
 	// Format time range
 	function formatTimeRange(start: string, end: string): string {
@@ -80,32 +104,20 @@
 		return { top, left, placement };
 	});
 
-	// Handle mouse leave with delay
-	let leaveTimeout: ReturnType<typeof setTimeout>;
-
-	function handleMouseEnter() {
-		clearTimeout(leaveTimeout);
-	}
-
-	function handleMouseLeave() {
-		leaveTimeout = setTimeout(() => {
-			onclose?.();
-		}, 100);
-	}
 </script>
 
 {#if anchorElement}
 	<!-- Popup container -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 w-80 max-h-[280px] overflow-hidden"
+		class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 w-80 max-h-[320px] overflow-hidden"
 		style="top: {popupPosition.top}px; left: {popupPosition.left}px;"
-		onmouseenter={handleMouseEnter}
-		onmouseleave={handleMouseLeave}
+		onmouseenter={onmouseenter}
+		onmouseleave={onmouseleave}
 	>
 		<!-- Header with calendar color -->
 		<div
-			class="px-4 py-3 border-b"
+			class="px-4 py-3"
 			style="border-left: 4px solid {event.calendar_color || '#9CA3AF'};"
 		>
 			<h3 class="font-semibold text-gray-900 line-clamp-2">{event.title}</h3>
@@ -118,56 +130,8 @@
 			</div>
 		</div>
 
-		<!-- Content -->
-		<div class="px-4 py-3 space-y-3 max-h-[180px] overflow-y-auto">
-			<!-- Current classification -->
-			{#if event.classification_status === 'classified' && event.project}
-				<div class="flex items-center gap-2">
-					<span class="text-xs text-gray-500 uppercase tracking-wide">Classified as</span>
-					<ProjectChip project={event.project} size="sm" />
-				</div>
-			{:else if event.classification_status === 'skipped'}
-				<div class="flex items-center gap-2">
-					<span class="text-xs text-gray-500 uppercase tracking-wide">Status</span>
-					<span class="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">Skipped</span>
-				</div>
-			{/if}
-
-			<!-- Description -->
-			{#if event.description}
-				<div>
-					<span class="text-xs text-gray-500 uppercase tracking-wide block mb-1">Description</span>
-					<p class="text-sm text-gray-700 line-clamp-3">{event.description}</p>
-				</div>
-			{/if}
-
-			<!-- Attendees -->
-			{#if event.attendees && event.attendees.length > 0}
-				<div>
-					<span class="text-xs text-gray-500 uppercase tracking-wide block mb-1">
-						Attendees ({event.attendees.length})
-					</span>
-					<p class="text-sm text-gray-700 line-clamp-2">
-						{event.attendees.slice(0, 5).join(', ')}{event.attendees.length > 5 ? `, +${event.attendees.length - 5} more` : ''}
-					</p>
-				</div>
-			{/if}
-
-			<!-- Calendar source -->
-			{#if event.calendar_name}
-				<div class="flex items-center gap-2 text-xs text-gray-500">
-					<span
-						class="w-2 h-2 rounded-full"
-						style="background-color: {event.calendar_color || '#9CA3AF'}"
-					></span>
-					{event.calendar_name}
-				</div>
-			{/if}
-		</div>
-
-		<!-- Classification actions -->
-		<div class="px-4 py-3 border-t bg-gray-50">
-			<span class="text-xs text-gray-500 uppercase tracking-wide block mb-2">Classify as</span>
+		<!-- Classification actions (second row) -->
+		<div class="px-4 py-2 border-t border-b bg-gray-50">
 			<div class="flex flex-wrap gap-2 items-center">
 				{#each activeProjects as project}
 					<button
@@ -189,6 +153,52 @@
 				>
 					✕
 				</button>
+			</div>
+		</div>
+
+		<!-- Content -->
+		<div class="px-4 py-3 space-y-3 max-h-[160px] overflow-y-auto">
+			<!-- Description -->
+			{#if event.description}
+				<div>
+					<span class="text-xs text-gray-500 uppercase tracking-wide block mb-1">Description</span>
+					<div class="text-sm text-gray-700 line-clamp-3 prose prose-sm max-w-none">
+						{@html sanitizeHtml(event.description)}
+					</div>
+				</div>
+			{/if}
+
+			<!-- Attendees -->
+			{#if event.attendees && event.attendees.length > 0}
+				<div>
+					<span class="text-xs text-gray-500 uppercase tracking-wide block mb-1">
+						Attendees ({event.attendees.length})
+					</span>
+					<p class="text-sm text-gray-700 line-clamp-2">
+						{event.attendees.slice(0, 5).join(', ')}{event.attendees.length > 5 ? `, +${event.attendees.length - 5} more` : ''}
+					</p>
+				</div>
+			{/if}
+
+			<!-- Calendar source and Google Calendar link -->
+			<div class="flex items-center justify-between text-xs text-gray-500">
+				{#if event.calendar_name}
+					<div class="flex items-center gap-2">
+						<span
+							class="w-2 h-2 rounded-full"
+							style="background-color: {event.calendar_color || '#9CA3AF'}"
+						></span>
+						{event.calendar_name}
+					</div>
+				{/if}
+				<a
+					href="https://calendar.google.com/calendar/event?eid={btoa(event.external_id)}"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="text-blue-600 hover:text-blue-800 hover:underline"
+				>
+					Open in Google Calendar
+				</a>
 			</div>
 		</div>
 	</div>

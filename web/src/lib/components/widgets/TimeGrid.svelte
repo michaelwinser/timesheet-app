@@ -9,9 +9,10 @@
 		onclassify?: (eventId: string, projectId: string) => void;
 		onskip?: (eventId: string) => void;
 		onhover?: (event: CalendarEvent | null, element: HTMLElement | null) => void;
+		showTimeLegend?: boolean;
 	}
 
-	let { events, projects, date, onclassify, onskip, onhover }: Props = $props();
+	let { events, projects, date, onclassify, onskip, onhover, showTimeLegend = true }: Props = $props();
 
 	const activeProjects = $derived(projects.filter(p => !p.is_archived));
 
@@ -216,17 +217,19 @@
 	bind:this={scrollContainer}
 >
 	<div class="flex">
-		<!-- Time labels column -->
-		<div class="w-12 flex-shrink-0 text-right pr-2">
-			{#each hours as hour}
-				<div class="text-xs text-gray-400" style="height: {hourHeight}px">
-					{hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
-				</div>
-			{/each}
-		</div>
+		<!-- Time labels column (optional) -->
+		{#if showTimeLegend}
+			<div class="w-12 flex-shrink-0 text-right pr-2">
+				{#each hours as hour}
+					<div class="text-xs text-gray-400" style="height: {hourHeight}px">
+						{hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
+					</div>
+				{/each}
+			</div>
+		{/if}
 
 		<!-- Events grid -->
-		<div class="flex-1 relative border-l border-gray-200" style="height: {gridHeight}px">
+		<div class="flex-1 relative {showTimeLegend ? 'border-l border-gray-200' : ''}" style="height: {gridHeight}px">
 			<!-- Hour lines -->
 			{#each hours as hour, i}
 				<div
