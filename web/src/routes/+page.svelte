@@ -25,6 +25,10 @@
 	let classifyingId = $state<string | null>(null);
 	let syncing = $state(false);
 
+	// Project visibility filtering
+	let visibleProjectIds = $state<Set<string>>(new Set());
+	let showHiddenSection = $state(false);
+
 	// Get date from URL or default to today
 	function getDateFromUrl(): Date {
 		if (typeof window !== 'undefined') {
@@ -136,10 +140,10 @@
 		}
 	});
 
-	// Group entries by date
+	// Group entries by date (filtered by visible projects)
 	const entriesByDate = $derived.by(() => {
 		const byDate: Record<string, TimeEntry[]> = {};
-		for (const entry of entries) {
+		for (const entry of filteredEntries) {
 			if (!byDate[entry.date]) {
 				byDate[entry.date] = [];
 			}
@@ -168,10 +172,43 @@
 		return byDate;
 	});
 
-	// Calculate project totals
+	// Project categories for sidebar
+	const activeProjects = $derived(
+		projects.filter((p) => !p.is_archived && !p.is_hidden_by_default)
+	);
+	const hiddenProjects = $derived(
+		projects.filter((p) => !p.is_archived && p.is_hidden_by_default)
+	);
+	const archivedProjects = $derived(projects.filter((p) => p.is_archived));
+
+	// Filter entries by visible projects
+	const filteredEntries = $derived(
+		entries.filter((e) => visibleProjectIds.has(e.project_id))
+	);
+
+	// Entries from archived projects (for warning)
+	const archivedEntries = $derived(
+		entries.filter((e) => e.project?.is_archived)
+	);
+
+	// Calculate project totals (from filtered entries only)
 	const projectTotals = $derived.by(() => {
 		const totals: Record<string, { project: Project; hours: number }> = {};
-		for (const entry of entries) {
+		for (const entry of filteredEntries) {
+			if (entry.project && !entry.project.does_not_accumulate_hours) {
+				if (!totals[entry.project_id]) {
+					totals[entry.project_id] = { project: entry.project, hours: 0 };
+				}
+				totals[entry.project_id].hours += entry.hours;
+			}
+		}
+		return Object.values(totals).sort((a, b) => b.hours - a.hours);
+	});
+
+	// Totals for archived entries (shown in warning)
+	const archivedTotals = $derived.by(() => {
+		const totals: Record<string, { project: Project; hours: number }> = {};
+		for (const entry of archivedEntries) {
 			if (entry.project && !entry.project.does_not_accumulate_hours) {
 				if (!totals[entry.project_id]) {
 					totals[entry.project_id] = { project: entry.project, hours: 0 };
@@ -183,7 +220,7 @@
 	});
 
 	const totalHours = $derived(
-		entries
+		filteredEntries
 			.filter((e) => !e.project?.does_not_accumulate_hours)
 			.reduce((sum, e) => sum + e.hours, 0)
 	);
@@ -205,11 +242,30 @@
 			projects = projectsData;
 			entries = entriesData;
 			calendarEvents = eventsData;
+
+			// Initialize visible projects: non-hidden, non-archived are visible by default
+			const initialVisible = new Set<string>();
+			for (const p of projectsData) {
+				if (!p.is_archived && !p.is_hidden_by_default) {
+					initialVisible.add(p.id);
+				}
+			}
+			visibleProjectIds = initialVisible;
 		} catch (e) {
 			console.error('Failed to load data:', e);
 		} finally {
 			loading = false;
 		}
+	}
+
+	function toggleProjectVisibility(projectId: string) {
+		const newSet = new Set(visibleProjectIds);
+		if (newSet.has(projectId)) {
+			newSet.delete(projectId);
+		} else {
+			newSet.add(projectId);
+		}
+		visibleProjectIds = newSet;
 	}
 
 	async function handleClassify(eventId: string, projectId: string) {
@@ -632,16 +688,109 @@
 					<div class="text-sm text-gray-500">Total hours</div>
 				</div>
 
-				{#if projectTotals.length > 0}
-					<div class="space-y-3">
-						{#each projectTotals as { project, hours }}
-							<div class="flex items-center justify-between">
-								<ProjectChip {project} />
-								<span class="text-sm font-medium text-gray-700">{hours}h</span>
-							</div>
-						{/each}
+				<!-- Active Projects -->
+				{#if activeProjects.length > 0}
+					<div class="mb-4">
+						<h3 class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Projects</h3>
+						<div class="space-y-2">
+							{#each activeProjects as project}
+								{@const hours = projectTotals.find(t => t.project.id === project.id)?.hours ?? 0}
+								<label class="flex items-center justify-between cursor-pointer group">
+									<div class="flex items-center gap-2">
+										<input
+											type="checkbox"
+											checked={visibleProjectIds.has(project.id)}
+											onchange={() => toggleProjectVisibility(project.id)}
+											class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+										/>
+										<span
+											class="w-3 h-3 rounded-full flex-shrink-0"
+											style="background-color: {project.color}"
+										></span>
+										<span class="text-sm text-gray-700 group-hover:text-gray-900">{project.name}</span>
+									</div>
+									{#if hours > 0}
+										<span class="text-sm font-medium text-gray-500">{hours}h</span>
+									{/if}
+								</label>
+							{/each}
+						</div>
 					</div>
-				{:else}
+				{/if}
+
+				<!-- Hidden Projects (collapsed by default) -->
+				{#if hiddenProjects.length > 0}
+					<div class="mb-4 border-t pt-4">
+						<button
+							type="button"
+							class="flex items-center gap-1 text-xs font-medium text-gray-500 uppercase tracking-wide mb-2 hover:text-gray-700"
+							onclick={() => showHiddenSection = !showHiddenSection}
+						>
+							<svg
+								class="w-3 h-3 transition-transform {showHiddenSection ? 'rotate-90' : ''}"
+								fill="none"
+								stroke="currentColor"
+								viewBox="0 0 24 24"
+							>
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+							</svg>
+							Hidden ({hiddenProjects.length})
+						</button>
+						{#if showHiddenSection}
+							<div class="space-y-2">
+								{#each hiddenProjects as project}
+									{@const hours = entries.filter(e => e.project_id === project.id && !e.project?.does_not_accumulate_hours).reduce((sum, e) => sum + e.hours, 0)}
+									<label class="flex items-center justify-between cursor-pointer group">
+										<div class="flex items-center gap-2">
+											<input
+												type="checkbox"
+												checked={visibleProjectIds.has(project.id)}
+												onchange={() => toggleProjectVisibility(project.id)}
+												class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+											/>
+											<span
+												class="w-3 h-3 rounded-full flex-shrink-0"
+												style="background-color: {project.color}"
+											></span>
+											<span class="text-sm text-gray-500 group-hover:text-gray-700">{project.name}</span>
+										</div>
+										{#if hours > 0}
+											<span class="text-sm font-medium text-gray-400">{hours}h</span>
+										{/if}
+									</label>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Archived Projects (warning if entries exist) -->
+				{#if archivedTotals.length > 0}
+					<div class="border-t pt-4">
+						<div class="flex items-center gap-1 text-xs font-medium text-amber-600 uppercase tracking-wide mb-2">
+							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+							</svg>
+							Archived
+						</div>
+						<div class="space-y-2">
+							{#each archivedTotals as { project, hours }}
+								<div class="flex items-center justify-between">
+									<div class="flex items-center gap-2">
+										<span
+											class="w-3 h-3 rounded-full flex-shrink-0 opacity-50"
+											style="background-color: {project.color}"
+										></span>
+										<span class="text-sm text-gray-500">{project.name}</span>
+									</div>
+									<span class="text-sm font-medium text-amber-600">{hours}h</span>
+								</div>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
+				{#if activeProjects.length === 0 && hiddenProjects.length === 0 && archivedTotals.length === 0}
 					<p class="text-sm text-gray-400">No entries {viewMode === 'day' ? 'today' : 'this week'}</p>
 				{/if}
 			</div>
