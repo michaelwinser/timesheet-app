@@ -254,6 +254,111 @@
 		return byDate;
 	});
 
+	// Time grid configuration for unified week view
+	const gridStartHour = 0;
+	const gridEndHour = 24;
+	const hourHeight = 60;
+	const viewportHours = 10;
+	const gridHeight = (gridEndHour - gridStartHour) * hourHeight;
+	const hours = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i);
+
+	// Scroll container reference for unified week grid
+	let weekScrollContainer: HTMLDivElement;
+
+	// Calculate first event hour across all visible days for auto-scroll
+	const firstEventHourAllDays = $derived.by(() => {
+		let minHour = 8; // Default
+		for (const day of visibleDays) {
+			const dateStr = formatDate(day);
+			const dayEvents = eventsByDate[dateStr] || [];
+			for (const event of dayEvents) {
+				if (!isAllDayEvent(event)) {
+					const hour = new Date(event.start_time).getHours();
+					if (hour < minHour) minHour = hour;
+				}
+			}
+		}
+		return Math.max(0, minHour - 1);
+	});
+
+	// Auto-scroll week view to first event
+	$effect(() => {
+		if (weekScrollContainer && scopeMode !== 'day') {
+			const scrollTop = firstEventHourAllDays * hourHeight;
+			weekScrollContainer.scrollTop = scrollTop;
+		}
+	});
+
+	// Detect all-day events
+	function isAllDayEvent(event: CalendarEvent): boolean {
+		const start = new Date(event.start_time);
+		const end = new Date(event.end_time);
+		const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+		if (durationHours >= 23) return true;
+		if (start.getHours() === 0 && start.getMinutes() === 0) {
+			if ((end.getHours() === 0 && end.getMinutes() === 0) ||
+				(end.getHours() === 23 && end.getMinutes() >= 59)) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// Calculate position and height for an event
+	function getEventStyle(event: CalendarEvent): { top: number; height: number } {
+		const start = new Date(event.start_time);
+		const end = new Date(event.end_time);
+		const startMinutes = start.getHours() * 60 + start.getMinutes();
+		const endMinutes = end.getHours() * 60 + end.getMinutes();
+		const top = (startMinutes / 60) * hourHeight;
+		const height = Math.max(((endMinutes - startMinutes) / 60) * hourHeight, 20);
+		return { top, height };
+	}
+
+	// Calculate overlapping events and assign columns
+	function getEventsWithColumns(events: CalendarEvent[]): Array<{ event: CalendarEvent; column: number; totalColumns: number }> {
+		if (events.length === 0) return [];
+		const sorted = [...events].sort((a, b) =>
+			new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+		);
+		const result: Array<{ event: CalendarEvent; column: number; totalColumns: number; endTime: number }> = [];
+		const columns: number[] = [];
+		for (const event of sorted) {
+			const startTime = new Date(event.start_time).getTime();
+			const endTime = new Date(event.end_time).getTime();
+			let column = 0;
+			while (column < columns.length && columns[column] > startTime) {
+				column++;
+			}
+			columns[column] = endTime;
+			result.push({ event, column, totalColumns: 1, endTime });
+		}
+		for (let i = 0; i < result.length; i++) {
+			const current = result[i];
+			const currentStart = new Date(current.event.start_time).getTime();
+			const currentEnd = current.endTime;
+			let maxColumn = current.column;
+			for (let j = 0; j < result.length; j++) {
+				const other = result[j];
+				const otherStart = new Date(other.event.start_time).getTime();
+				const otherEnd = other.endTime;
+				if (currentStart < otherEnd && currentEnd > otherStart) {
+					maxColumn = Math.max(maxColumn, other.column);
+				}
+			}
+			current.totalColumns = maxColumn + 1;
+		}
+		return result;
+	}
+
+	function getStatusBackground(status: string): string {
+		switch (status) {
+			case 'classified': return 'bg-green-50';
+			case 'skipped': return 'bg-gray-100';
+			default: return 'bg-white';
+		}
+	}
+
 	// Project categories for sidebar
 	const activeProjects = $derived(
 		projects.filter((p) => !p.is_archived && !p.is_hidden_by_default)
@@ -794,40 +899,136 @@
 						/>
 					</div>
 				{:else}
-					<!-- Week view - shared time legend + day columns -->
-					<div class="flex gap-2">
-						<!-- Shared time legend -->
-						<div class="w-12 flex-shrink-0 text-right pr-2 pt-8">
-							<div class="overflow-y-auto" style="height: 600px;">
-								{#each Array.from({ length: 24 }, (_, i) => i) as hour}
-									<div class="text-xs text-gray-400" style="height: 60px">
-										{hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
+					<!-- Week view - unified single scroller -->
+					{@const allDayEventsForWeek = visibleDays.flatMap(day => {
+						const dateStr = formatDate(day);
+						return (eventsByDate[dateStr] || []).filter(e => isAllDayEvent(e)).map(e => ({ ...e, dayDate: day }));
+					})}
+
+					<!-- All-day events row -->
+					{#if allDayEventsForWeek.length > 0}
+						<div class="mb-2 border-b border-gray-200 pb-2 flex">
+							<div class="w-12 flex-shrink-0 text-xs text-gray-400 text-right pr-2 pt-0.5">All day</div>
+							<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
+								{#each visibleDays as day}
+									{@const dateStr = formatDate(day)}
+									{@const dayAllDayEvents = (eventsByDate[dateStr] || []).filter(e => isAllDayEvent(e))}
+									<div class="flex flex-wrap gap-1">
+										{#each dayAllDayEvents as event (event.id)}
+											{@const calendarColor = event.calendar_color || '#9CA3AF'}
+											<!-- svelte-ignore a11y_no_static_element_interactions -->
+											<div
+												class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status)}"
+												style="border-left: 3px solid {calendarColor};"
+												onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
+												onmouseleave={() => handleEventHover(null, null)}
+											>
+												<span class="truncate max-w-[80px]" title={event.title}>{event.title}</span>
+												{#if event.classification_status === 'classified' && event.project}
+													<span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: {event.project.color}"></span>
+												{:else if event.classification_status === 'skipped'}
+													<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
+												{:else}
+													<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-amber-200 border border-amber-300"></span>
+												{/if}
+											</div>
+										{/each}
 									</div>
 								{/each}
 							</div>
 						</div>
-						<!-- Day columns - dynamic width -->
+					{/if}
+
+					<!-- Day headers (outside scroll) -->
+					<div class="flex mb-1">
+						<div class="w-12 flex-shrink-0"></div>
 						<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
 							{#each visibleDays as day}
 								{@const dateStr = formatDate(day)}
-								{@const dayEvents = eventsByDate[dateStr] || []}
 								{@const isToday = formatDate(new Date()) === dateStr}
-
-								<div class="bg-gray-50 rounded-lg p-2 {isToday ? 'ring-2 ring-primary-500' : ''}">
-									<h3 class="font-medium text-sm text-center mb-2 pb-1 border-b {isToday ? 'text-primary-600' : 'text-gray-700'}">
+								<div class="text-center">
+									<h3 class="font-medium text-sm py-1 {isToday ? 'text-primary-600' : 'text-gray-700'}">
 										{formatShortDay(day)}
 									</h3>
-									<TimeGrid
-										events={dayEvents}
-										{projects}
-										date={day}
-										onclassify={(eventId, projectId) => handleClassify(eventId, projectId)}
-										onskip={(eventId) => handleSkip(eventId)}
-										onhover={handleEventHover}
-										showTimeLegend={false}
-									/>
 								</div>
 							{/each}
+						</div>
+					</div>
+
+					<!-- Unified scroll container -->
+					<div
+						class="overflow-y-auto overflow-x-hidden bg-gray-50 rounded-lg"
+						style="height: {viewportHours * hourHeight}px"
+						bind:this={weekScrollContainer}
+					>
+						<div class="flex" style="height: {gridHeight}px">
+							<!-- Time legend -->
+							<div class="w-12 flex-shrink-0 text-right pr-2 relative">
+								{#each hours as hour, i}
+									<div class="absolute text-xs text-gray-400" style="top: {i * hourHeight}px">
+										{hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
+									</div>
+								{/each}
+							</div>
+
+							<!-- Day columns grid -->
+							<div class="flex-1 grid gap-2 relative" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
+								<!-- Hour lines (spanning all columns) -->
+								{#each hours as hour, i}
+									<div
+										class="absolute w-full border-t border-gray-200 pointer-events-none"
+										style="top: {i * hourHeight}px; left: 0; right: 0;"
+									></div>
+								{/each}
+
+								<!-- Day columns with events -->
+								{#each visibleDays as day}
+									{@const dateStr = formatDate(day)}
+									{@const dayEvents = (eventsByDate[dateStr] || []).filter(e => !isAllDayEvent(e))}
+									{@const isToday = formatDate(new Date()) === dateStr}
+									{@const eventsWithCols = getEventsWithColumns(dayEvents)}
+
+									<div class="relative border-l border-gray-200 {isToday ? 'bg-primary-50/30' : ''}">
+										{#each eventsWithCols as { event, column, totalColumns } (event.id)}
+											{@const style = getEventStyle(event)}
+											{@const width = 100 / totalColumns}
+											{@const left = column * width}
+											{@const calendarColor = event.calendar_color || '#9CA3AF'}
+											{@const needsReview = event.needs_review === true}
+
+											<!-- svelte-ignore a11y_no_static_element_interactions -->
+											<div
+												class="absolute rounded-md border overflow-hidden text-xs {getStatusBackground(event.classification_status)} hover:shadow-md transition-shadow cursor-pointer"
+												style="
+													top: {style.top}px;
+													height: {style.height}px;
+													left: calc({left}% + 2px);
+													width: calc({width}% - 4px);
+													border-left: 3px solid {calendarColor};
+												"
+												onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
+												onmouseleave={() => handleEventHover(null, null)}
+											>
+												<div class="p-1 h-full flex flex-col relative">
+													{#if needsReview}
+														<div class="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full" title="Needs review"></div>
+													{/if}
+													<div class="flex items-start justify-between gap-1 min-w-0">
+														<span class="font-medium text-gray-900 truncate flex-1">{event.title}</span>
+														{#if event.classification_status === 'classified' && event.project}
+															<span class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5" style="background-color: {event.project.color}" title={event.project.name}></span>
+														{:else if event.classification_status === 'skipped'}
+															<span class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-[6px]" title="Skipped">✕</span>
+														{:else}
+															<span class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 bg-amber-200 border border-amber-300" title="Pending"></span>
+														{/if}
+													</div>
+												</div>
+											</div>
+										{/each}
+									</div>
+								{/each}
+							</div>
 						</div>
 					</div>
 				{/if}
