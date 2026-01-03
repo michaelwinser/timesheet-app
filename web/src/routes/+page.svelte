@@ -250,11 +250,7 @@
 					end_date: formatDate(endDate)
 				})
 			]);
-			projects = projectsData;
-			entries = entriesData;
-			calendarEvents = eventsData;
-
-			// Initialize visible projects: non-hidden, non-archived are visible by default
+			// Initialize visible projects BEFORE setting events to ensure correct filtering
 			const initialVisible = new Set<string>();
 			for (const p of projectsData) {
 				if (!p.is_archived && !p.is_hidden_by_default) {
@@ -262,6 +258,11 @@
 				}
 			}
 			visibleProjectIds = initialVisible;
+
+			// Now set the data - filtering will use the correct visibility
+			projects = projectsData;
+			entries = entriesData;
+			calendarEvents = eventsData;
 		} catch (e) {
 			console.error('Failed to load data:', e);
 		} finally {
@@ -615,9 +616,9 @@
 				{/if}
 			{:else}
 				<!-- List View -->
-				{#if calendarEvents.length > 0}
+				{#if filteredCalendarEvents.length > 0}
 					<div class="space-y-2 max-h-[32rem] overflow-y-auto">
-						{#each calendarEvents as event (event.id)}
+						{#each filteredCalendarEvents as event (event.id)}
 							<div class={classifyingId === event.id ? 'opacity-50 pointer-events-none' : ''}>
 								<CalendarEventCard
 									{event}

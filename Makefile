@@ -76,9 +76,13 @@ db-reset:
 	@echo "WARNING: This will delete all database data!"
 	@echo "Press Ctrl+C to cancel, or wait 3 seconds..."
 	@sleep 3
+	@echo "Stopping API to release database connections..."
+	-docker compose stop api
 	docker compose exec postgres psql -U timesheet -c "DROP DATABASE IF EXISTS timesheet_v2;"
 	docker compose exec postgres psql -U timesheet -c "CREATE DATABASE timesheet_v2;"
-	@echo "Database reset. Restart the API to run migrations."
+	@echo "Database reset. Starting API to run migrations..."
+	docker compose start api
+	@echo "Done! Database has been reset."
 
 psql:
 	docker compose exec postgres psql -U timesheet -d timesheet_v2
