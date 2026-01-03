@@ -180,16 +180,28 @@
 				</div>
 			{/if}
 
-			<!-- Calendar source -->
-			{#if event.calendar_name}
-				<div class="flex items-center gap-2 text-xs text-gray-500">
-					<span
-						class="w-2 h-2 rounded-full"
-						style="background-color: {event.calendar_color || '#9CA3AF'}"
-					></span>
-					{event.calendar_name}
-				</div>
-			{/if}
+			<!-- Calendar source and Google Calendar link -->
+			<div class="flex items-center justify-between text-xs text-gray-500">
+				{#if event.calendar_name}
+					<div class="flex items-center gap-2">
+						<span
+							class="w-2 h-2 rounded-full"
+							style="background-color: {event.calendar_color || '#9CA3AF'}"
+						></span>
+						{event.calendar_name}
+					</div>
+				{/if}
+				{#if event.calendar_id}
+					<a
+						href="https://calendar.google.com/calendar/event?eid={btoa(event.external_id + ' ' + event.calendar_id)}"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="text-blue-600 hover:text-blue-800 hover:underline"
+					>
+						Open in Google Calendar
+					</a>
+				{/if}
+			</div>
 		</div>
 	</div>
 {/if}
