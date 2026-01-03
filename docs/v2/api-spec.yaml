@@ -21,6 +21,8 @@ tags:
     description: Project management
   - name: time-entries
     description: Time entry tracking
+  - name: calendars
+    description: Calendar integration and event management
 
 paths:
   # Auth endpoints
@@ -506,6 +508,324 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # Calendar endpoints
+  /api/auth/google/authorize:
+    get:
+      operationId: googleAuthorize
+      tags: [calendars]
+      summary: Get Google OAuth authorization URL
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OAuth URL to redirect user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthAuthorizeResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/auth/google/callback:
+    get:
+      operationId: googleCallback
+      tags: [calendars]
+      summary: Handle Google OAuth callback
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Authorization code from Google
+        - name: state
+          in: query
+          required: true
+          schema:
+            type: string
+          description: State parameter for CSRF protection
+      responses:
+        '201':
+          description: Calendar connected
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CalendarConnection'
+        '400':
+          description: Invalid request (missing code/state)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/calendars:
+    get:
+      operationId: listCalendarConnections
+      tags: [calendars]
+      summary: List user's calendar connections
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of calendar connections
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CalendarConnection'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/calendars/{id}:
+    delete:
+      operationId: deleteCalendarConnection
+      tags: [calendars]
+      summary: Disconnect a calendar
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Calendar disconnected
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Connection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/calendars/{id}/sync:
+    post:
+      operationId: syncCalendar
+      tags: [calendars]
+      summary: Trigger sync for a calendar connection
+      description: Syncs events from all selected calendars within this connection
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Sync completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncResult'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Connection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/calendars/{id}/sources:
+    get:
+      operationId: listCalendarSources
+      tags: [calendars]
+      summary: List available calendars for a connection
+      description: Returns all calendars the user has access to in this connected account
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of available calendars
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Calendar'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Connection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      operationId: updateCalendarSources
+      tags: [calendars]
+      summary: Update which calendars are selected for sync
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCalendarSourcesRequest'
+      responses:
+        '200':
+          description: Calendar selection updated
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Calendar'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Connection not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/calendar-events:
+    get:
+      operationId: listCalendarEvents
+      tags: [calendars]
+      summary: List calendar events with filters
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: classification_status
+          in: query
+          schema:
+            type: string
+            enum: [pending, classified, skipped]
+        - name: connection_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of calendar events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CalendarEvent'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/calendar-events/{id}/classify:
+    put:
+      operationId: classifyCalendarEvent
+      tags: [calendars]
+      summary: Classify a calendar event (assign to project or skip)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClassifyEventRequest'
+      responses:
+        '200':
+          description: Event classified successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassifyEventResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -741,3 +1061,189 @@ components:
         details:
           type: object
           additionalProperties: true
+
+    # Calendar schemas
+    OAuthAuthorizeResponse:
+      type: object
+      required: [url, state]
+      properties:
+        url:
+          type: string
+          format: uri
+          description: URL to redirect user for OAuth consent
+        state:
+          type: string
+          description: State token for CSRF protection
+
+    CalendarConnection:
+      type: object
+      required: [id, user_id, provider, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          enum: [google]
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CalendarEvent:
+      type: object
+      required: [id, connection_id, user_id, external_id, title, start_time, end_time, classification_status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        connection_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        attendees:
+          type: array
+          items:
+            type: string
+        is_recurring:
+          type: boolean
+        response_status:
+          type: string
+          nullable: true
+        transparency:
+          type: string
+          nullable: true
+        is_orphaned:
+          type: boolean
+        is_suppressed:
+          type: boolean
+        classification_status:
+          type: string
+          enum: [pending, classified, skipped]
+        classification_source:
+          type: string
+          enum: [rule, fingerprint, manual, llm]
+          nullable: true
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        project:
+          $ref: '#/components/schemas/Project'
+        calendar_name:
+          type: string
+          nullable: true
+          description: Name of the source calendar
+        calendar_color:
+          type: string
+          nullable: true
+          description: Color of the source calendar (hex code)
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    SyncResult:
+      type: object
+      required: [events_created, events_updated, events_orphaned]
+      properties:
+        events_created:
+          type: integer
+        events_updated:
+          type: integer
+        events_orphaned:
+          type: integer
+
+    ClassifyEventRequest:
+      type: object
+      properties:
+        project_id:
+          type: string
+          format: uuid
+          description: Project to assign this event to. Omit or null to skip the event.
+        skip:
+          type: boolean
+          description: Set to true to mark as "did not attend" (skipped)
+
+    ClassifyEventResponse:
+      type: object
+      required: [event]
+      properties:
+        event:
+          $ref: '#/components/schemas/CalendarEvent'
+        time_entry:
+          $ref: '#/components/schemas/TimeEntry'
+          description: The created or updated time entry (only when classifying to a project)
+
+    Calendar:
+      type: object
+      required: [id, connection_id, external_id, name, is_primary, is_selected, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        connection_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+          description: Google Calendar ID (e.g., "primary", "user@example.com")
+        name:
+          type: string
+          description: Display name of the calendar
+        color:
+          type: string
+          description: Calendar color (hex code)
+        is_primary:
+          type: boolean
+          description: Whether this is the user's primary calendar
+        is_selected:
+          type: boolean
+          description: Whether this calendar is selected for syncing
+        last_synced_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateCalendarSourcesRequest:
+      type: object
+      required: [calendar_ids]
+      properties:
+        calendar_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: IDs of calendars to enable for syncing

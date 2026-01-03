@@ -20,17 +20,131 @@ const (
 	BearerAuthScopes = "bearerAuth.Scopes"
 )
 
+// Defines values for CalendarConnectionProvider.
+const (
+	Google CalendarConnectionProvider = "google"
+)
+
+// Defines values for CalendarEventClassificationSource.
+const (
+	CalendarEventClassificationSourceFingerprint CalendarEventClassificationSource = "fingerprint"
+	CalendarEventClassificationSourceLlm         CalendarEventClassificationSource = "llm"
+	CalendarEventClassificationSourceManual      CalendarEventClassificationSource = "manual"
+	CalendarEventClassificationSourceRule        CalendarEventClassificationSource = "rule"
+)
+
+// Defines values for CalendarEventClassificationStatus.
+const (
+	CalendarEventClassificationStatusClassified CalendarEventClassificationStatus = "classified"
+	CalendarEventClassificationStatusPending    CalendarEventClassificationStatus = "pending"
+	CalendarEventClassificationStatusSkipped    CalendarEventClassificationStatus = "skipped"
+)
+
 // Defines values for TimeEntrySource.
 const (
-	Calendar TimeEntrySource = "calendar"
-	Import   TimeEntrySource = "import"
-	Manual   TimeEntrySource = "manual"
+	TimeEntrySourceCalendar TimeEntrySource = "calendar"
+	TimeEntrySourceImport   TimeEntrySource = "import"
+	TimeEntrySourceManual   TimeEntrySource = "manual"
+)
+
+// Defines values for ListCalendarEventsParamsClassificationStatus.
+const (
+	ListCalendarEventsParamsClassificationStatusClassified ListCalendarEventsParamsClassificationStatus = "classified"
+	ListCalendarEventsParamsClassificationStatusPending    ListCalendarEventsParamsClassificationStatus = "pending"
+	ListCalendarEventsParamsClassificationStatusSkipped    ListCalendarEventsParamsClassificationStatus = "skipped"
 )
 
 // AuthResponse defines model for AuthResponse.
 type AuthResponse struct {
 	Token string `json:"token"`
 	User  User   `json:"user"`
+}
+
+// Calendar defines model for Calendar.
+type Calendar struct {
+	// Color Calendar color (hex code)
+	Color        *string            `json:"color,omitempty"`
+	ConnectionId openapi_types.UUID `json:"connection_id"`
+	CreatedAt    time.Time          `json:"created_at"`
+
+	// ExternalId Google Calendar ID (e.g., "primary", "user@example.com")
+	ExternalId string             `json:"external_id"`
+	Id         openapi_types.UUID `json:"id"`
+
+	// IsPrimary Whether this is the user's primary calendar
+	IsPrimary bool `json:"is_primary"`
+
+	// IsSelected Whether this calendar is selected for syncing
+	IsSelected   bool       `json:"is_selected"`
+	LastSyncedAt *time.Time `json:"last_synced_at"`
+
+	// Name Display name of the calendar
+	Name      string     `json:"name"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// CalendarConnection defines model for CalendarConnection.
+type CalendarConnection struct {
+	CreatedAt    time.Time                  `json:"created_at"`
+	Id           openapi_types.UUID         `json:"id"`
+	LastSyncedAt *time.Time                 `json:"last_synced_at"`
+	Provider     CalendarConnectionProvider `json:"provider"`
+	UpdatedAt    *time.Time                 `json:"updated_at,omitempty"`
+	UserId       openapi_types.UUID         `json:"user_id"`
+}
+
+// CalendarConnectionProvider defines model for CalendarConnection.Provider.
+type CalendarConnectionProvider string
+
+// CalendarEvent defines model for CalendarEvent.
+type CalendarEvent struct {
+	Attendees *[]string `json:"attendees,omitempty"`
+
+	// CalendarColor Color of the source calendar (hex code)
+	CalendarColor *string `json:"calendar_color"`
+
+	// CalendarName Name of the source calendar
+	CalendarName         *string                            `json:"calendar_name"`
+	ClassificationSource *CalendarEventClassificationSource `json:"classification_source"`
+	ClassificationStatus CalendarEventClassificationStatus  `json:"classification_status"`
+	ConnectionId         openapi_types.UUID                 `json:"connection_id"`
+	CreatedAt            time.Time                          `json:"created_at"`
+	Description          *string                            `json:"description"`
+	EndTime              time.Time                          `json:"end_time"`
+	ExternalId           string                             `json:"external_id"`
+	Id                   openapi_types.UUID                 `json:"id"`
+	IsOrphaned           *bool                              `json:"is_orphaned,omitempty"`
+	IsRecurring          *bool                              `json:"is_recurring,omitempty"`
+	IsSuppressed         *bool                              `json:"is_suppressed,omitempty"`
+	Project              *Project                           `json:"project,omitempty"`
+	ProjectId            *openapi_types.UUID                `json:"project_id"`
+	ResponseStatus       *string                            `json:"response_status"`
+	StartTime            time.Time                          `json:"start_time"`
+	Title                string                             `json:"title"`
+	Transparency         *string                            `json:"transparency"`
+	UpdatedAt            *time.Time                         `json:"updated_at,omitempty"`
+	UserId               openapi_types.UUID                 `json:"user_id"`
+}
+
+// CalendarEventClassificationSource defines model for CalendarEvent.ClassificationSource.
+type CalendarEventClassificationSource string
+
+// CalendarEventClassificationStatus defines model for CalendarEvent.ClassificationStatus.
+type CalendarEventClassificationStatus string
+
+// ClassifyEventRequest defines model for ClassifyEventRequest.
+type ClassifyEventRequest struct {
+	// ProjectId Project to assign this event to. Omit or null to skip the event.
+	ProjectId *openapi_types.UUID `json:"project_id,omitempty"`
+
+	// Skip Set to true to mark as "did not attend" (skipped)
+	Skip *bool `json:"skip,omitempty"`
+}
+
+// ClassifyEventResponse defines model for ClassifyEventResponse.
+type ClassifyEventResponse struct {
+	Event     CalendarEvent `json:"event"`
+	TimeEntry *TimeEntry    `json:"time_entry,omitempty"`
 }
 
 // Error defines model for Error.
@@ -44,6 +158,15 @@ type Error struct {
 type LoginRequest struct {
 	Email    openapi_types.Email `json:"email"`
 	Password string              `json:"password"`
+}
+
+// OAuthAuthorizeResponse defines model for OAuthAuthorizeResponse.
+type OAuthAuthorizeResponse struct {
+	// State State token for CSRF protection
+	State string `json:"state"`
+
+	// Url URL to redirect user for OAuth consent
+	Url string `json:"url"`
 }
 
 // Project defines model for Project.
@@ -89,6 +212,13 @@ type SignupRequest struct {
 	Password string              `json:"password"`
 }
 
+// SyncResult defines model for SyncResult.
+type SyncResult struct {
+	EventsCreated  int `json:"events_created"`
+	EventsOrphaned int `json:"events_orphaned"`
+	EventsUpdated  int `json:"events_updated"`
+}
+
 // TimeEntry defines model for TimeEntry.
 type TimeEntry struct {
 	CreatedAt time.Time `json:"created_at"`
@@ -130,6 +260,12 @@ type TimeEntryUpdate struct {
 	Hours       *float32 `json:"hours,omitempty"`
 }
 
+// UpdateCalendarSourcesRequest defines model for UpdateCalendarSourcesRequest.
+type UpdateCalendarSourcesRequest struct {
+	// CalendarIds IDs of calendars to enable for syncing
+	CalendarIds []openapi_types.UUID `json:"calendar_ids"`
+}
+
 // User defines model for User.
 type User struct {
 	CreatedAt time.Time           `json:"created_at"`
@@ -137,6 +273,26 @@ type User struct {
 	Id        openapi_types.UUID  `json:"id"`
 	Name      string              `json:"name"`
 }
+
+// GoogleCallbackParams defines parameters for GoogleCallback.
+type GoogleCallbackParams struct {
+	// Code Authorization code from Google
+	Code string `form:"code" json:"code"`
+
+	// State State parameter for CSRF protection
+	State string `form:"state" json:"state"`
+}
+
+// ListCalendarEventsParams defines parameters for ListCalendarEvents.
+type ListCalendarEventsParams struct {
+	StartDate            *openapi_types.Date                           `form:"start_date,omitempty" json:"start_date,omitempty"`
+	EndDate              *openapi_types.Date                           `form:"end_date,omitempty" json:"end_date,omitempty"`
+	ClassificationStatus *ListCalendarEventsParamsClassificationStatus `form:"classification_status,omitempty" json:"classification_status,omitempty"`
+	ConnectionId         *openapi_types.UUID                           `form:"connection_id,omitempty" json:"connection_id,omitempty"`
+}
+
+// ListCalendarEventsParamsClassificationStatus defines parameters for ListCalendarEvents.
+type ListCalendarEventsParamsClassificationStatus string
 
 // ListProjectsParams defines parameters for ListProjects.
 type ListProjectsParams struct {
@@ -162,6 +318,12 @@ type LoginJSONRequestBody = LoginRequest
 // SignupJSONRequestBody defines body for Signup for application/json ContentType.
 type SignupJSONRequestBody = SignupRequest
 
+// ClassifyCalendarEventJSONRequestBody defines body for ClassifyCalendarEvent for application/json ContentType.
+type ClassifyCalendarEventJSONRequestBody = ClassifyEventRequest
+
+// UpdateCalendarSourcesJSONRequestBody defines body for UpdateCalendarSources for application/json ContentType.
+type UpdateCalendarSourcesJSONRequestBody = UpdateCalendarSourcesRequest
+
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = ProjectCreate
 
@@ -176,6 +338,12 @@ type UpdateTimeEntryJSONRequestBody = TimeEntryUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Get Google OAuth authorization URL
+	// (GET /api/auth/google/authorize)
+	GoogleAuthorize(w http.ResponseWriter, r *http.Request)
+	// Handle Google OAuth callback
+	// (GET /api/auth/google/callback)
+	GoogleCallback(w http.ResponseWriter, r *http.Request, params GoogleCallbackParams)
 	// Authenticate with email and password
 	// (POST /api/auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -188,6 +356,27 @@ type ServerInterface interface {
 	// Create a new user account
 	// (POST /api/auth/signup)
 	Signup(w http.ResponseWriter, r *http.Request)
+	// List calendar events with filters
+	// (GET /api/calendar-events)
+	ListCalendarEvents(w http.ResponseWriter, r *http.Request, params ListCalendarEventsParams)
+	// Classify a calendar event (assign to project or skip)
+	// (PUT /api/calendar-events/{id}/classify)
+	ClassifyCalendarEvent(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// List user's calendar connections
+	// (GET /api/calendars)
+	ListCalendarConnections(w http.ResponseWriter, r *http.Request)
+	// Disconnect a calendar
+	// (DELETE /api/calendars/{id})
+	DeleteCalendarConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// List available calendars for a connection
+	// (GET /api/calendars/{id}/sources)
+	ListCalendarSources(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Update which calendars are selected for sync
+	// (PUT /api/calendars/{id}/sources)
+	UpdateCalendarSources(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Trigger sync for a calendar connection
+	// (POST /api/calendars/{id}/sync)
+	SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List all projects
 	// (GET /api/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, params ListProjectsParams)
@@ -224,6 +413,18 @@ type ServerInterface interface {
 
 type Unimplemented struct{}
 
+// Get Google OAuth authorization URL
+// (GET /api/auth/google/authorize)
+func (_ Unimplemented) GoogleAuthorize(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Handle Google OAuth callback
+// (GET /api/auth/google/callback)
+func (_ Unimplemented) GoogleCallback(w http.ResponseWriter, r *http.Request, params GoogleCallbackParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // Authenticate with email and password
 // (POST /api/auth/login)
 func (_ Unimplemented) Login(w http.ResponseWriter, r *http.Request) {
@@ -245,6 +446,48 @@ func (_ Unimplemented) GetCurrentUser(w http.ResponseWriter, r *http.Request) {
 // Create a new user account
 // (POST /api/auth/signup)
 func (_ Unimplemented) Signup(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List calendar events with filters
+// (GET /api/calendar-events)
+func (_ Unimplemented) ListCalendarEvents(w http.ResponseWriter, r *http.Request, params ListCalendarEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Classify a calendar event (assign to project or skip)
+// (PUT /api/calendar-events/{id}/classify)
+func (_ Unimplemented) ClassifyCalendarEvent(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List user's calendar connections
+// (GET /api/calendars)
+func (_ Unimplemented) ListCalendarConnections(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Disconnect a calendar
+// (DELETE /api/calendars/{id})
+func (_ Unimplemented) DeleteCalendarConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List available calendars for a connection
+// (GET /api/calendars/{id}/sources)
+func (_ Unimplemented) ListCalendarSources(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update which calendars are selected for sync
+// (PUT /api/calendars/{id}/sources)
+func (_ Unimplemented) UpdateCalendarSources(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Trigger sync for a calendar connection
+// (POST /api/calendars/{id}/sync)
+func (_ Unimplemented) SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -317,6 +560,81 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// GoogleAuthorize operation middleware
+func (siw *ServerInterfaceWrapper) GoogleAuthorize(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GoogleAuthorize(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GoogleCallback operation middleware
+func (siw *ServerInterfaceWrapper) GoogleCallback(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GoogleCallbackParams
+
+	// ------------- Required query parameter "code" -------------
+
+	if paramValue := r.URL.Query().Get("code"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "code"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "code", r.URL.Query(), &params.Code)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "code", Err: err})
+		return
+	}
+
+	// ------------- Required query parameter "state" -------------
+
+	if paramValue := r.URL.Query().Get("state"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "state"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "state", r.URL.Query(), &params.State)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "state", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GoogleCallback(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // Login operation middleware
 func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
 
@@ -376,6 +694,238 @@ func (siw *ServerInterfaceWrapper) Signup(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Signup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCalendarEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListCalendarEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCalendarEventsParams
+
+	// ------------- Optional query parameter "start_date" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "start_date", r.URL.Query(), &params.StartDate)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start_date", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "end_date" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "end_date", r.URL.Query(), &params.EndDate)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "end_date", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "classification_status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "classification_status", r.URL.Query(), &params.ClassificationStatus)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "classification_status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "connection_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "connection_id", r.URL.Query(), &params.ConnectionId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connection_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCalendarEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ClassifyCalendarEvent operation middleware
+func (siw *ServerInterfaceWrapper) ClassifyCalendarEvent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ClassifyCalendarEvent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCalendarConnections operation middleware
+func (siw *ServerInterfaceWrapper) ListCalendarConnections(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCalendarConnections(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteCalendarConnection operation middleware
+func (siw *ServerInterfaceWrapper) DeleteCalendarConnection(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteCalendarConnection(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCalendarSources operation middleware
+func (siw *ServerInterfaceWrapper) ListCalendarSources(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCalendarSources(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateCalendarSources operation middleware
+func (siw *ServerInterfaceWrapper) UpdateCalendarSources(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateCalendarSources(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SyncCalendar operation middleware
+func (siw *ServerInterfaceWrapper) SyncCalendar(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SyncCalendar(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -807,6 +1357,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/auth/google/authorize", wrapper.GoogleAuthorize)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/auth/google/callback", wrapper.GoogleCallback)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/auth/login", wrapper.Login)
 	})
 	r.Group(func(r chi.Router) {
@@ -817,6 +1373,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/auth/signup", wrapper.Signup)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/calendar-events", wrapper.ListCalendarEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/calendar-events/{id}/classify", wrapper.ClassifyCalendarEvent)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/calendars", wrapper.ListCalendarConnections)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/calendars/{id}", wrapper.DeleteCalendarConnection)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/calendars/{id}/sources", wrapper.ListCalendarSources)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/calendars/{id}/sources", wrapper.UpdateCalendarSources)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/calendars/{id}/sync", wrapper.SyncCalendar)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/projects", wrapper.ListProjects)
@@ -850,6 +1427,66 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 
 	return r
+}
+
+type GoogleAuthorizeRequestObject struct {
+}
+
+type GoogleAuthorizeResponseObject interface {
+	VisitGoogleAuthorizeResponse(w http.ResponseWriter) error
+}
+
+type GoogleAuthorize200JSONResponse OAuthAuthorizeResponse
+
+func (response GoogleAuthorize200JSONResponse) VisitGoogleAuthorizeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GoogleAuthorize401JSONResponse Error
+
+func (response GoogleAuthorize401JSONResponse) VisitGoogleAuthorizeResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GoogleCallbackRequestObject struct {
+	Params GoogleCallbackParams
+}
+
+type GoogleCallbackResponseObject interface {
+	VisitGoogleCallbackResponse(w http.ResponseWriter) error
+}
+
+type GoogleCallback201JSONResponse CalendarConnection
+
+func (response GoogleCallback201JSONResponse) VisitGoogleCallbackResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GoogleCallback400JSONResponse Error
+
+func (response GoogleCallback400JSONResponse) VisitGoogleCallbackResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GoogleCallback401JSONResponse Error
+
+func (response GoogleCallback401JSONResponse) VisitGoogleCallbackResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type LoginRequestObject struct {
@@ -967,6 +1604,242 @@ type Signup409JSONResponse Error
 func (response Signup409JSONResponse) VisitSignupResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCalendarEventsRequestObject struct {
+	Params ListCalendarEventsParams
+}
+
+type ListCalendarEventsResponseObject interface {
+	VisitListCalendarEventsResponse(w http.ResponseWriter) error
+}
+
+type ListCalendarEvents200JSONResponse []CalendarEvent
+
+func (response ListCalendarEvents200JSONResponse) VisitListCalendarEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCalendarEvents401JSONResponse Error
+
+func (response ListCalendarEvents401JSONResponse) VisitListCalendarEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ClassifyCalendarEventRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *ClassifyCalendarEventJSONRequestBody
+}
+
+type ClassifyCalendarEventResponseObject interface {
+	VisitClassifyCalendarEventResponse(w http.ResponseWriter) error
+}
+
+type ClassifyCalendarEvent200JSONResponse ClassifyEventResponse
+
+func (response ClassifyCalendarEvent200JSONResponse) VisitClassifyCalendarEventResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ClassifyCalendarEvent400JSONResponse Error
+
+func (response ClassifyCalendarEvent400JSONResponse) VisitClassifyCalendarEventResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ClassifyCalendarEvent401JSONResponse Error
+
+func (response ClassifyCalendarEvent401JSONResponse) VisitClassifyCalendarEventResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ClassifyCalendarEvent404JSONResponse Error
+
+func (response ClassifyCalendarEvent404JSONResponse) VisitClassifyCalendarEventResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCalendarConnectionsRequestObject struct {
+}
+
+type ListCalendarConnectionsResponseObject interface {
+	VisitListCalendarConnectionsResponse(w http.ResponseWriter) error
+}
+
+type ListCalendarConnections200JSONResponse []CalendarConnection
+
+func (response ListCalendarConnections200JSONResponse) VisitListCalendarConnectionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCalendarConnections401JSONResponse Error
+
+func (response ListCalendarConnections401JSONResponse) VisitListCalendarConnectionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteCalendarConnectionRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteCalendarConnectionResponseObject interface {
+	VisitDeleteCalendarConnectionResponse(w http.ResponseWriter) error
+}
+
+type DeleteCalendarConnection204Response struct {
+}
+
+func (response DeleteCalendarConnection204Response) VisitDeleteCalendarConnectionResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteCalendarConnection401JSONResponse Error
+
+func (response DeleteCalendarConnection401JSONResponse) VisitDeleteCalendarConnectionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteCalendarConnection404JSONResponse Error
+
+func (response DeleteCalendarConnection404JSONResponse) VisitDeleteCalendarConnectionResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCalendarSourcesRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type ListCalendarSourcesResponseObject interface {
+	VisitListCalendarSourcesResponse(w http.ResponseWriter) error
+}
+
+type ListCalendarSources200JSONResponse []Calendar
+
+func (response ListCalendarSources200JSONResponse) VisitListCalendarSourcesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCalendarSources401JSONResponse Error
+
+func (response ListCalendarSources401JSONResponse) VisitListCalendarSourcesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListCalendarSources404JSONResponse Error
+
+func (response ListCalendarSources404JSONResponse) VisitListCalendarSourcesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateCalendarSourcesRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateCalendarSourcesJSONRequestBody
+}
+
+type UpdateCalendarSourcesResponseObject interface {
+	VisitUpdateCalendarSourcesResponse(w http.ResponseWriter) error
+}
+
+type UpdateCalendarSources200JSONResponse []Calendar
+
+func (response UpdateCalendarSources200JSONResponse) VisitUpdateCalendarSourcesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateCalendarSources401JSONResponse Error
+
+func (response UpdateCalendarSources401JSONResponse) VisitUpdateCalendarSourcesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateCalendarSources404JSONResponse Error
+
+func (response UpdateCalendarSources404JSONResponse) VisitUpdateCalendarSourcesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SyncCalendarRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type SyncCalendarResponseObject interface {
+	VisitSyncCalendarResponse(w http.ResponseWriter) error
+}
+
+type SyncCalendar200JSONResponse SyncResult
+
+func (response SyncCalendar200JSONResponse) VisitSyncCalendarResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SyncCalendar401JSONResponse Error
+
+func (response SyncCalendar401JSONResponse) VisitSyncCalendarResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type SyncCalendar404JSONResponse Error
+
+func (response SyncCalendar404JSONResponse) VisitSyncCalendarResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -1359,6 +2232,12 @@ func (response UpdateTimeEntry409JSONResponse) VisitUpdateTimeEntryResponse(w ht
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Get Google OAuth authorization URL
+	// (GET /api/auth/google/authorize)
+	GoogleAuthorize(ctx context.Context, request GoogleAuthorizeRequestObject) (GoogleAuthorizeResponseObject, error)
+	// Handle Google OAuth callback
+	// (GET /api/auth/google/callback)
+	GoogleCallback(ctx context.Context, request GoogleCallbackRequestObject) (GoogleCallbackResponseObject, error)
 	// Authenticate with email and password
 	// (POST /api/auth/login)
 	Login(ctx context.Context, request LoginRequestObject) (LoginResponseObject, error)
@@ -1371,6 +2250,27 @@ type StrictServerInterface interface {
 	// Create a new user account
 	// (POST /api/auth/signup)
 	Signup(ctx context.Context, request SignupRequestObject) (SignupResponseObject, error)
+	// List calendar events with filters
+	// (GET /api/calendar-events)
+	ListCalendarEvents(ctx context.Context, request ListCalendarEventsRequestObject) (ListCalendarEventsResponseObject, error)
+	// Classify a calendar event (assign to project or skip)
+	// (PUT /api/calendar-events/{id}/classify)
+	ClassifyCalendarEvent(ctx context.Context, request ClassifyCalendarEventRequestObject) (ClassifyCalendarEventResponseObject, error)
+	// List user's calendar connections
+	// (GET /api/calendars)
+	ListCalendarConnections(ctx context.Context, request ListCalendarConnectionsRequestObject) (ListCalendarConnectionsResponseObject, error)
+	// Disconnect a calendar
+	// (DELETE /api/calendars/{id})
+	DeleteCalendarConnection(ctx context.Context, request DeleteCalendarConnectionRequestObject) (DeleteCalendarConnectionResponseObject, error)
+	// List available calendars for a connection
+	// (GET /api/calendars/{id}/sources)
+	ListCalendarSources(ctx context.Context, request ListCalendarSourcesRequestObject) (ListCalendarSourcesResponseObject, error)
+	// Update which calendars are selected for sync
+	// (PUT /api/calendars/{id}/sources)
+	UpdateCalendarSources(ctx context.Context, request UpdateCalendarSourcesRequestObject) (UpdateCalendarSourcesResponseObject, error)
+	// Trigger sync for a calendar connection
+	// (POST /api/calendars/{id}/sync)
+	SyncCalendar(ctx context.Context, request SyncCalendarRequestObject) (SyncCalendarResponseObject, error)
 	// List all projects
 	// (GET /api/projects)
 	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
@@ -1430,6 +2330,56 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// GoogleAuthorize operation middleware
+func (sh *strictHandler) GoogleAuthorize(w http.ResponseWriter, r *http.Request) {
+	var request GoogleAuthorizeRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GoogleAuthorize(ctx, request.(GoogleAuthorizeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GoogleAuthorize")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GoogleAuthorizeResponseObject); ok {
+		if err := validResponse.VisitGoogleAuthorizeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GoogleCallback operation middleware
+func (sh *strictHandler) GoogleCallback(w http.ResponseWriter, r *http.Request, params GoogleCallbackParams) {
+	var request GoogleCallbackRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GoogleCallback(ctx, request.(GoogleCallbackRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GoogleCallback")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GoogleCallbackResponseObject); ok {
+		if err := validResponse.VisitGoogleCallbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // Login operation middleware
@@ -1535,6 +2485,200 @@ func (sh *strictHandler) Signup(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SignupResponseObject); ok {
 		if err := validResponse.VisitSignupResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCalendarEvents operation middleware
+func (sh *strictHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Request, params ListCalendarEventsParams) {
+	var request ListCalendarEventsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCalendarEvents(ctx, request.(ListCalendarEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCalendarEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCalendarEventsResponseObject); ok {
+		if err := validResponse.VisitListCalendarEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ClassifyCalendarEvent operation middleware
+func (sh *strictHandler) ClassifyCalendarEvent(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ClassifyCalendarEventRequestObject
+
+	request.Id = id
+
+	var body ClassifyCalendarEventJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ClassifyCalendarEvent(ctx, request.(ClassifyCalendarEventRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ClassifyCalendarEvent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ClassifyCalendarEventResponseObject); ok {
+		if err := validResponse.VisitClassifyCalendarEventResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCalendarConnections operation middleware
+func (sh *strictHandler) ListCalendarConnections(w http.ResponseWriter, r *http.Request) {
+	var request ListCalendarConnectionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCalendarConnections(ctx, request.(ListCalendarConnectionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCalendarConnections")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCalendarConnectionsResponseObject); ok {
+		if err := validResponse.VisitListCalendarConnectionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteCalendarConnection operation middleware
+func (sh *strictHandler) DeleteCalendarConnection(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteCalendarConnectionRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteCalendarConnection(ctx, request.(DeleteCalendarConnectionRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteCalendarConnection")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteCalendarConnectionResponseObject); ok {
+		if err := validResponse.VisitDeleteCalendarConnectionResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListCalendarSources operation middleware
+func (sh *strictHandler) ListCalendarSources(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ListCalendarSourcesRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListCalendarSources(ctx, request.(ListCalendarSourcesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListCalendarSources")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListCalendarSourcesResponseObject); ok {
+		if err := validResponse.VisitListCalendarSourcesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateCalendarSources operation middleware
+func (sh *strictHandler) UpdateCalendarSources(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateCalendarSourcesRequestObject
+
+	request.Id = id
+
+	var body UpdateCalendarSourcesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateCalendarSources(ctx, request.(UpdateCalendarSourcesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateCalendarSources")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateCalendarSourcesResponseObject); ok {
+		if err := validResponse.VisitUpdateCalendarSourcesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SyncCalendar operation middleware
+func (sh *strictHandler) SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request SyncCalendarRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SyncCalendar(ctx, request.(SyncCalendarRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SyncCalendar")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SyncCalendarResponseObject); ok {
+		if err := validResponse.VisitSyncCalendarResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
