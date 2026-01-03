@@ -7,6 +7,7 @@
 		size?: 'sm' | 'md' | 'lg';
 		disabled?: boolean;
 		loading?: boolean;
+		title?: string;
 		onclick?: () => void;
 		children: Snippet;
 	}
@@ -17,6 +18,7 @@
 		size = 'md',
 		disabled = false,
 		loading = false,
+		title,
 		onclick,
 		children
 	}: Props = $props();
@@ -41,6 +43,7 @@
 	{type}
 	class="{baseClasses} {variantClasses[variant]} {sizeClasses[size]}"
 	disabled={disabled || loading}
+	{title}
 	{onclick}
 >
 	{#if loading}

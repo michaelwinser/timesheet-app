@@ -216,9 +216,11 @@
 			`${hour} AM`;
 	}
 
-	// Group events by hour for a specific day
+	// Group events by hour for a specific day (excludes all-day events)
 	function getEventsByHourForDay(dayEvents: CalendarEvent[]): { hour: number; label: string; events: CalendarEvent[] }[] {
-		const sorted = [...dayEvents].sort(
+		// Filter out all-day events - they're shown separately
+		const timedEvents = dayEvents.filter(e => !isAllDayEvent(e));
+		const sorted = [...timedEvents].sort(
 			(a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
 		);
 
@@ -235,6 +237,11 @@
 		}
 
 		return groups;
+	}
+
+	// Get all-day events for a specific day
+	function getAllDayEventsForDay(dayEvents: CalendarEvent[]): CalendarEvent[] {
+		return dayEvents.filter(e => isAllDayEvent(e));
 	}
 
 	// Group events by date (filtered)
@@ -266,11 +273,11 @@
 	let weekScrollContainer: HTMLDivElement;
 
 	// Calculate first event hour across all visible days for auto-scroll
-	const firstEventHourAllDays = $derived.by(() => {
-		let minHour = 8; // Default
-		for (const day of visibleDays) {
+	function getFirstEventHour(events: Record<string, CalendarEvent[]>, days: Date[]): number {
+		let minHour = 8; // Default to 8 AM if no events
+		for (const day of days) {
 			const dateStr = formatDate(day);
-			const dayEvents = eventsByDate[dateStr] || [];
+			const dayEvents = events[dateStr] || [];
 			for (const event of dayEvents) {
 				if (!isAllDayEvent(event)) {
 					const hour = new Date(event.start_time).getHours();
@@ -278,14 +285,30 @@
 				}
 			}
 		}
-		return Math.max(0, minHour - 1);
-	});
+		return Math.max(0, minHour - 1); // Scroll to 1 hour before first event
+	}
 
-	// Auto-scroll week view to first event
+	// Scroll calendar view to first event
+	function scrollToFirstEvent() {
+		if (!weekScrollContainer || scopeMode === 'day' || displayMode !== 'calendar') return;
+		const firstHour = getFirstEventHour(eventsByDate, visibleDays);
+		const scrollTop = firstHour * hourHeight;
+		weekScrollContainer.scrollTop = scrollTop;
+	}
+
+	// Auto-scroll when events, dates, or view modes change
 	$effect(() => {
-		if (weekScrollContainer && scopeMode !== 'day') {
-			const scrollTop = firstEventHourAllDays * hourHeight;
-			weekScrollContainer.scrollTop = scrollTop;
+		// Track all dependencies that should trigger a scroll
+		const _events = eventsByDate;
+		const _days = visibleDays;
+		const _scope = scopeMode;
+		const _display = displayMode;
+		const _date = currentDate;
+
+		// Use tick to ensure DOM is updated before scrolling
+		if (weekScrollContainer && scopeMode !== 'day' && displayMode === 'calendar') {
+			// Small delay to ensure container is rendered
+			requestAnimationFrame(() => scrollToFirstEvent());
 		}
 	});
 
@@ -351,12 +374,21 @@
 		return result;
 	}
 
-	function getStatusBackground(status: string): string {
+	function getStatusBackground(status: string, needsReview: boolean = false): string {
+		if (status === 'classified' && needsReview) return 'bg-amber-50';
 		switch (status) {
 			case 'classified': return 'bg-green-50';
 			case 'skipped': return 'bg-gray-100';
 			default: return 'bg-white';
 		}
+	}
+
+	function formatConfidenceTitle(projectName: string, confidence: number | null | undefined, source: string | null | undefined): string {
+		if (source === 'manual') return projectName;
+		if (confidence != null) {
+			return `${projectName} (confidence: ${Math.round(confidence * 100)}%)`;
+		}
+		return projectName;
 	}
 
 	// Project categories for sidebar
@@ -593,6 +625,17 @@
 		}
 
 		switch (event.key.toLowerCase()) {
+			// Navigation
+			case 'k':
+				navigatePrevious();
+				break;
+			case 'j':
+				navigateNext();
+				break;
+			case 't':
+				goToToday();
+				break;
+			// Scope modes
 			case 'd':
 				setScopeMode('day');
 				break;
@@ -602,10 +645,12 @@
 			case 'f':
 				setScopeMode('full-week');
 				break;
+			// Display modes
 			case 'c':
 				setDisplayMode('calendar');
 				break;
 			case 'a':
+			case 'l':
 				setDisplayMode('list');
 				break;
 		}
@@ -749,7 +794,7 @@
 	<!-- Navigation (Global) -->
 	<div class="flex items-center justify-between mb-6">
 		<div class="flex items-center gap-2">
-			<Button variant="ghost" onclick={navigatePrevious}>
+			<Button variant="ghost" onclick={navigatePrevious} title="Previous (K)">
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 				</svg>
@@ -765,7 +810,7 @@
 					{endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
 				{/if}
 			</h1>
-			<Button variant="ghost" onclick={navigateNext}>
+			<Button variant="ghost" onclick={navigateNext} title="Next (J)">
 				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
 				</svg>
@@ -813,7 +858,7 @@
 					{weekendEvents.length} weekend
 				</button>
 			{/if}
-			<Button variant="secondary" size="sm" onclick={goToToday}>
+			<Button variant="secondary" size="sm" onclick={goToToday} title="Today (T)">
 				Today
 			</Button>
 		</div>
@@ -866,7 +911,7 @@
 						type="button"
 						class="px-2 py-1 text-xs rounded-md transition-colors {displayMode === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
 						onclick={() => setDisplayMode('list')}
-						title="List view (A)"
+						title="List view (L or A)"
 					>
 						List
 					</button>
@@ -905,64 +950,7 @@
 						return (eventsByDate[dateStr] || []).filter(e => isAllDayEvent(e)).map(e => ({ ...e, dayDate: day }));
 					})}
 
-					<!-- All-day events row -->
-					{#if allDayEventsForWeek.length > 0}
-						{@const activeProjectsList = projects.filter(p => !p.is_archived)}
-						<div class="mb-2 border-b border-gray-200 pb-2 flex">
-							<div class="w-12 flex-shrink-0 text-xs text-gray-400 text-right pr-2 pt-0.5">All day</div>
-							<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
-								{#each visibleDays as day}
-									{@const dateStr = formatDate(day)}
-									{@const dayAllDayEvents = (eventsByDate[dateStr] || []).filter(e => isAllDayEvent(e))}
-									<div class="flex flex-wrap gap-1">
-										{#each dayAllDayEvents as event (event.id)}
-											{@const calendarColor = event.calendar_color || '#9CA3AF'}
-											{@const isPending = event.classification_status === 'pending'}
-											{@const isClassified = event.classification_status === 'classified'}
-											{@const isSkipped = event.classification_status === 'skipped'}
-											{@const needsReview = event.needs_review === true}
-											<!-- svelte-ignore a11y_no_static_element_interactions -->
-											<div
-												class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status)}"
-												style="border-left: 3px solid {calendarColor};"
-												onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
-												onmouseleave={() => handleEventHover(null, null)}
-											>
-												<span class="truncate max-w-[80px]" title={event.title}>{event.title}</span>
-												{#if isClassified && event.project}
-													<span
-														class="w-2.5 h-2.5 rounded-full flex-shrink-0 {needsReview ? 'ring-1 ring-yellow-400' : ''}"
-														style="background-color: {event.project.color}"
-													></span>
-												{:else if isSkipped}
-													<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
-												{:else if isPending}
-													<!-- Quick classify buttons for pending all-day events -->
-													{#each activeProjectsList.slice(0, 3) as project}
-														<button
-															type="button"
-															class="w-2.5 h-2.5 rounded-full hover:ring-1 hover:ring-offset-1 ring-gray-400 transition-shadow"
-															style="background-color: {project.color}"
-															title={project.name}
-															onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
-														></button>
-													{/each}
-													<button
-														type="button"
-														class="w-2.5 h-2.5 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-gray-500 flex items-center justify-center text-[5px]"
-														title="Skip"
-														onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
-													>✕</button>
-												{/if}
-											</div>
-										{/each}
-									</div>
-								{/each}
-							</div>
-						</div>
-					{/if}
-
-					<!-- Day headers (outside scroll) -->
+					<!-- Day headers (outside scroll, above all-day events) -->
 					<div class="flex mb-1">
 						<div class="w-12 flex-shrink-0"></div>
 						<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
@@ -977,6 +965,66 @@
 							{/each}
 						</div>
 					</div>
+
+					<!-- All-day events row (below headers) -->
+					{#if allDayEventsForWeek.length > 0}
+						{@const activeProjectsList = projects.filter(p => !p.is_archived)}
+						<div class="mb-2 border-b border-gray-200 pb-2 flex">
+							<div class="w-12 flex-shrink-0 text-xs text-gray-400 text-right pr-2 pt-0.5">All day</div>
+							<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
+								{#each visibleDays as day}
+									{@const dateStr = formatDate(day)}
+									{@const dayAllDayEvents = (eventsByDate[dateStr] || []).filter(e => isAllDayEvent(e))}
+									<div class="flex flex-wrap gap-1">
+										{#each dayAllDayEvents as event (event.id)}
+											{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
+											{@const isPending = event.classification_status === 'pending'}
+											{@const isClassified = event.classification_status === 'classified'}
+											{@const isSkipped = event.classification_status === 'skipped'}
+											{@const needsReview = event.needs_review === true}
+											<!-- svelte-ignore a11y_no_static_element_interactions -->
+											<div
+												class="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
+												style="border-left: 3px solid {calendarColor};"
+												onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
+												onmouseleave={() => handleEventHover(null, null)}
+											>
+												<span class="truncate max-w-[80px] {isSkipped ? 'line-through text-gray-400' : ''}" title={event.title}>{event.title}</span>
+												{#if isClassified && event.project}
+													<span
+														class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+														style="background-color: {event.project.color}"
+														title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
+													></span>
+												{:else if isSkipped}
+													<span class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
+												{:else if isPending}
+													<!-- Quick classify buttons for pending all-day events -->
+													<div class="flex items-center gap-0.5 ml-1">
+														{#each activeProjectsList.slice(0, 3) as project}
+															<button
+																type="button"
+																class="w-2.5 h-2.5 rounded-full hover:ring-1 hover:ring-offset-1 ring-gray-400 transition-shadow"
+																style="background-color: {project.color}"
+																title={project.name}
+																onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
+															></button>
+														{/each}
+													</div>
+													<button
+														type="button"
+														class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 flex items-center justify-center text-[5px] ml-1"
+														title="Skip - did not attend"
+														onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
+													>✕</button>
+												{/if}
+											</div>
+										{/each}
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
 
 					<!-- Unified scroll container -->
 					<div
@@ -1017,7 +1065,7 @@
 											{@const style = getEventStyle(event)}
 											{@const width = 100 / totalColumns}
 											{@const left = column * width}
-											{@const calendarColor = event.calendar_color || '#9CA3AF'}
+											{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
 											{@const isPending = event.classification_status === 'pending'}
 											{@const isClassified = event.classification_status === 'classified'}
 											{@const isSkipped = event.classification_status === 'skipped'}
@@ -1025,7 +1073,7 @@
 
 											<!-- svelte-ignore a11y_no_static_element_interactions -->
 											<div
-												class="absolute rounded-md border overflow-hidden text-xs {getStatusBackground(event.classification_status)} hover:shadow-md transition-shadow cursor-pointer"
+												class="absolute rounded-md border overflow-hidden text-xs {getStatusBackground(event.classification_status, needsReview)} hover:shadow-md transition-shadow cursor-pointer"
 												style="
 													top: {style.top}px;
 													height: {style.height}px;
@@ -1039,40 +1087,42 @@
 												<div class="p-1 h-full flex flex-col">
 													<!-- Title row -->
 													<div class="flex items-start justify-between gap-1 min-w-0">
-														<span class="font-medium text-gray-900 truncate flex-1">{event.title}</span>
-														<!-- Status indicator: only show for classified/skipped, NOT for pending -->
+														<span class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</span>
+														<!-- Project dot: only for classified events -->
 														{#if isClassified && event.project}
 															<span
-																class="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5 {needsReview ? 'ring-2 ring-yellow-400' : ''}"
+																class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5"
 																style="background-color: {event.project.color}"
-																title="{event.project.name}{needsReview ? ' (needs review)' : ''}"
+																title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
 															></span>
-														{:else if isSkipped}
-															<span
-																class="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5 border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[6px]"
-																title="Skipped"
-															>✕</span>
 														{/if}
 													</div>
 
-													<!-- Quick classification for pending events -->
+													<!-- Bottom row: project buttons (left) and skip button (right) -->
 													{#if isPending && style.height >= 40}
-														<div class="mt-auto pt-1 flex items-center gap-0.5 flex-wrap">
-															{#each activeProjectsList.slice(0, 4) as project}
-																<button
-																	type="button"
-																	class="w-3 h-3 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
-																	style="background-color: {project.color}"
-																	title={project.name}
-																	onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
-																></button>
-															{/each}
+														<div class="mt-auto pt-1 flex items-center justify-between">
+															<div class="flex items-center gap-0.5">
+																{#each activeProjectsList.slice(0, 4) as project}
+																	<button
+																		type="button"
+																		class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+																		style="background-color: {project.color}"
+																		title={project.name}
+																		onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
+																	></button>
+																{/each}
+															</div>
 															<button
 																type="button"
-																class="w-3 h-3 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-gray-500 hover:text-gray-600 flex items-center justify-center text-[6px]"
+																class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[7px]"
 																title="Skip - did not attend"
 																onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
 															>✕</button>
+														</div>
+													{:else if isSkipped}
+														<!-- Skip indicator in bottom right -->
+														<div class="mt-auto flex justify-end">
+															<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
 														</div>
 													{/if}
 												</div>
@@ -1090,10 +1140,78 @@
 					<!-- Single day list -->
 					{@const dateStr = formatDate(currentDate)}
 					{@const dayEvents = eventsByDate[dateStr] || []}
+					{@const allDayEvents = getAllDayEventsForDay(dayEvents)}
 					{@const hourGroups = getEventsByHourForDay(dayEvents)}
+					{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 					<div class="bg-gray-50 rounded-lg p-4 max-h-[32rem] overflow-y-auto">
-						{#if hourGroups.length > 0}
+						{#if allDayEvents.length > 0 || hourGroups.length > 0}
 							<div class="space-y-3">
+								<!-- All-day events section -->
+								{#if allDayEvents.length > 0}
+									<div>
+										<div class="text-xs font-medium text-gray-500 mb-1">All day</div>
+										<div class="space-y-2">
+											{#each allDayEvents as event (event.id)}
+												{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
+												{@const isPending = event.classification_status === 'pending'}
+												{@const isClassified = event.classification_status === 'classified'}
+												{@const isSkipped = event.classification_status === 'skipped'}
+												{@const needsReview = event.needs_review === true}
+												<!-- svelte-ignore a11y_no_static_element_interactions -->
+												<div
+													class="rounded-md border p-2 text-xs cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
+													style="border-left: 3px solid {calendarColor};"
+													class:opacity-50={classifyingId === event.id}
+													class:pointer-events-none={classifyingId === event.id}
+													onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
+													onmouseleave={() => handleEventHover(null, null)}
+												>
+													<div class="flex flex-col gap-1">
+														<div class="flex items-start justify-between gap-1">
+															<div class="flex-1 min-w-0">
+																<div class="font-medium truncate {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</div>
+																<div class="{isSkipped ? 'text-gray-400' : 'text-gray-500'} mt-0.5">All day</div>
+															</div>
+															{#if isClassified && event.project}
+																<span
+																	class="w-4 h-4 rounded-full flex-shrink-0"
+																	style="background-color: {event.project.color}"
+																	title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
+																></span>
+															{/if}
+														</div>
+														{#if isPending}
+															<div class="flex items-center justify-between pt-1">
+																<div class="flex items-center gap-0.5">
+																	{#each activeProjectsList.slice(0, 4) as project}
+																		<button
+																			type="button"
+																			class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+																			style="background-color: {project.color}"
+																			title={project.name}
+																			onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
+																		></button>
+																	{/each}
+																</div>
+																<button
+																	type="button"
+																	class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[7px]"
+																	title="Skip - did not attend"
+																	onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
+																>✕</button>
+															</div>
+														{:else if isSkipped}
+															<div class="flex justify-end">
+																<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
+															</div>
+														{/if}
+													</div>
+												</div>
+											{/each}
+										</div>
+									</div>
+								{/if}
+								<!-- Timed events by hour -->
 								{#each hourGroups as group}
 									<div>
 										<div class="text-xs font-medium text-gray-500 mb-1">{group.label}</div>
@@ -1123,44 +1241,140 @@
 							{#each visibleDays as day}
 								{@const dateStr = formatDate(day)}
 								{@const dayEvents = eventsByDate[dateStr] || []}
+								{@const allDayEvents = getAllDayEventsForDay(dayEvents)}
 								{@const hourGroups = getEventsByHourForDay(dayEvents)}
 								{@const isToday = formatDate(new Date()) === dateStr}
+								{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 
 								<div class="bg-gray-50 rounded-lg p-2 max-h-[32rem] overflow-y-auto {isToday ? 'ring-2 ring-primary-500' : ''}">
 									<h3 class="font-medium text-sm text-center mb-2 pb-1 border-b {isToday ? 'text-primary-600' : 'text-gray-700'}">
 										{formatShortDay(day)}
 									</h3>
-									{#if hourGroups.length > 0}
+									{#if allDayEvents.length > 0 || hourGroups.length > 0}
 										<div class="space-y-2">
+											<!-- All-day events -->
+											{#if allDayEvents.length > 0}
+												<div>
+													<div class="text-xs font-medium text-gray-400 mb-1">All day</div>
+													<div class="space-y-1">
+														{#each allDayEvents as event (event.id)}
+															{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
+															{@const isPending = event.classification_status === 'pending'}
+															{@const isClassified = event.classification_status === 'classified'}
+															{@const isSkipped = event.classification_status === 'skipped'}
+															{@const needsReview = event.needs_review === true}
+															<!-- svelte-ignore a11y_no_static_element_interactions -->
+															<div
+																class="text-xs p-1.5 rounded border cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
+																style="border-left: 3px solid {calendarColor};"
+																onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
+																onmouseleave={() => handleEventHover(null, null)}
+															>
+																<div class="flex flex-col gap-1">
+																	<div class="flex items-start justify-between gap-1">
+																		<div class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</div>
+																		{#if isClassified && event.project}
+																			<span
+																				class="w-3 h-3 rounded-full flex-shrink-0"
+																				style="background-color: {event.project.color}"
+																				title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
+																			></span>
+																		{/if}
+																	</div>
+																	{#if isPending}
+																		<div class="flex items-center justify-between pt-0.5">
+																			<div class="flex items-center gap-0.5">
+																				{#each activeProjectsList.slice(0, 3) as project}
+																					<button
+																						type="button"
+																						class="w-2.5 h-2.5 rounded-full hover:ring-1 hover:ring-offset-1 ring-gray-400 transition-shadow"
+																						style="background-color: {project.color}"
+																						title={project.name}
+																						onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
+																					></button>
+																				{/each}
+																			</div>
+																			<button
+																				type="button"
+																				class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 flex items-center justify-center text-[5px]"
+																				title="Skip - did not attend"
+																				onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
+																			>✕</button>
+																		</div>
+																	{:else if isSkipped}
+																		<div class="flex justify-end">
+																			<span class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
+																		</div>
+																	{/if}
+																</div>
+															</div>
+														{/each}
+													</div>
+												</div>
+											{/if}
+											<!-- Timed events by hour -->
 											{#each hourGroups as group}
 												<div>
 													<div class="text-xs font-medium text-gray-400 mb-1">{group.label}</div>
 													<div class="space-y-1">
 														{#each group.events as event (event.id)}
 															<!-- Compact event card for list columns -->
-															{@const calendarColor = event.calendar_color || '#9CA3AF'}
+															{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
+															{@const isPending = event.classification_status === 'pending'}
+															{@const isClassified = event.classification_status === 'classified'}
+															{@const isSkipped = event.classification_status === 'skipped'}
+															{@const needsReview = event.needs_review === true}
 															<!-- svelte-ignore a11y_no_static_element_interactions -->
 															<div
-																class="text-xs p-1.5 rounded border cursor-pointer hover:shadow-sm transition-shadow {event.classification_status === 'classified' ? 'bg-green-50' : event.classification_status === 'skipped' ? 'bg-gray-100' : 'bg-white'}"
+																class="text-xs p-1.5 rounded border cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
 																style="border-left: 3px solid {calendarColor};"
 																onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
 																onmouseleave={() => handleEventHover(null, null)}
 															>
-																<div class="flex items-start justify-between gap-1">
-																	<span class="font-medium text-gray-900 truncate">{event.title}</span>
-																	{#if event.classification_status === 'classified' && event.project}
-																		<span
-																			class="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5"
-																			style="background-color: {event.project.color}"
-																		></span>
-																	{:else if event.classification_status === 'skipped'}
-																		<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5 border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
-																	{:else}
-																		<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-0.5 bg-amber-200 border border-amber-300"></span>
+																<div class="flex flex-col gap-1">
+																	<!-- Top row: title and project dot -->
+																	<div class="flex items-start justify-between gap-1">
+																		<div class="flex-1 min-w-0">
+																			<div class="font-medium truncate {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</div>
+																			<div class="{isSkipped ? 'text-gray-400' : 'text-gray-500'} mt-0.5">
+																				{new Date(event.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - {new Date(event.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+																			</div>
+																		</div>
+																		{#if isClassified && event.project}
+																			<span
+																				class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5"
+																				style="background-color: {event.project.color}"
+																				title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
+																			></span>
+																		{/if}
+																	</div>
+																	<!-- Bottom row: project buttons (left) and skip button (right) for pending events -->
+																	{#if isPending}
+																		<div class="flex items-center justify-between pt-0.5">
+																			<div class="flex items-center gap-0.5">
+																				{#each activeProjectsList.slice(0, 4) as project}
+																					<button
+																						type="button"
+																						class="w-3 h-3 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+																						style="background-color: {project.color}"
+																						title={project.name}
+																						onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
+																					></button>
+																				{/each}
+																			</div>
+																			<button
+																				type="button"
+																				class="w-3 h-3 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[6px]"
+																				title="Skip - did not attend"
+																				onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
+																			>✕</button>
+																		</div>
+																	{:else if isSkipped}
+																		<!-- Skip indicator in bottom right -->
+																		<div class="flex justify-end">
+																			<span class="w-3 h-3 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[6px]">✕</span>
+																		</div>
 																	{/if}
-																</div>
-																<div class="text-gray-500 mt-0.5">
-																	{new Date(event.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
 																</div>
 															</div>
 														{/each}

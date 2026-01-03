@@ -29,7 +29,7 @@
 	const viewportHours = 10; // 10 hours visible in viewport
 
 	// Calculate first event hour for auto-scroll (based on timed events only)
-	const firstEventHour = $derived.by(() => {
+	function getFirstEventHour(): number {
 		if (timedEvents.length === 0) return 8; // Default to 8 AM if no events
 		let minHour = 24;
 		for (const event of timedEvents) {
@@ -38,13 +38,25 @@
 		}
 		// Start 1 hour before first event, minimum 0
 		return Math.max(0, minHour - 1);
-	});
+	}
 
-	// Scroll to first event when events change
+	// Scroll to first event
+	function scrollToFirstEvent() {
+		if (!scrollContainer) return;
+		const firstHour = getFirstEventHour();
+		const scrollTop = firstHour * hourHeight;
+		scrollContainer.scrollTop = scrollTop;
+	}
+
+	// Scroll to first event when events or date change
 	$effect(() => {
-		if (scrollContainer && timedEvents.length > 0) {
-			const scrollTop = firstEventHour * hourHeight;
-			scrollContainer.scrollTop = scrollTop;
+		// Track dependencies that should trigger a scroll
+		const _events = timedEvents;
+		const _date = date;
+
+		if (scrollContainer) {
+			// Use requestAnimationFrame to ensure DOM is ready
+			requestAnimationFrame(() => scrollToFirstEvent());
 		}
 	});
 
@@ -162,7 +174,8 @@
 	}
 
 	// Get background color based on classification status
-	function getStatusBackground(status: string): string {
+	function getStatusBackground(status: string, needsReview: boolean = false): string {
+		if (status === 'classified' && needsReview) return 'bg-amber-50';
 		switch (status) {
 			case 'classified':
 				return 'bg-green-50';
@@ -171,6 +184,15 @@
 			default:
 				return 'bg-white';
 		}
+	}
+
+	// Format tooltip with confidence score
+	function formatConfidenceTitle(projectName: string, confidence: number | null | undefined, source: string | null | undefined): string {
+		if (source === 'manual') return projectName;
+		if (confidence != null) {
+			return `${projectName} (confidence: ${Math.round(confidence * 100)}%)`;
+		}
+		return projectName;
 	}
 
 	const hours = $derived(Array.from({ length: endHour - startHour }, (_, i) => startHour + i));
@@ -184,25 +206,46 @@
 		<div class="flex items-center gap-1 flex-wrap">
 			<span class="text-xs text-gray-400 w-12 text-right pr-2 flex-shrink-0">All day</span>
 			{#each allDayEvents as event (event.id)}
-				{@const calendarColor = event.calendar_color || '#9CA3AF'}
+				{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
+				{@const isPending = event.classification_status === 'pending'}
+				{@const isClassified = event.classification_status === 'classified'}
+				{@const isSkipped = event.classification_status === 'skipped'}
+				{@const needsReview = event.needs_review === true}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status)}"
+					class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
 					style="border-left: 3px solid {calendarColor};"
 					onmouseenter={(e) => onhover?.(event, e.currentTarget as HTMLElement)}
 					onmouseleave={() => onhover?.(null, null)}
 				>
-					<span class="truncate max-w-[120px]" title={event.title}>{event.title}</span>
-					{#if event.classification_status === 'classified' && event.project}
+					<span class="truncate max-w-[120px] {isSkipped ? 'line-through text-gray-400' : ''}" title={event.title}>{event.title}</span>
+					{#if isClassified && event.project}
 						<span
 							class="w-2.5 h-2.5 rounded-full flex-shrink-0"
 							style="background-color: {event.project.color}"
-							title={event.project.name}
+							title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
 						></span>
-					{:else if event.classification_status === 'skipped'}
-						<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
-					{:else}
-						<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-amber-200 border border-amber-300"></span>
+					{:else if isSkipped}
+						<span class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
+					{:else if isPending}
+						<!-- Quick classify buttons for pending all-day events -->
+						<div class="flex items-center gap-0.5 ml-1">
+							{#each activeProjects.slice(0, 3) as project}
+								<button
+									type="button"
+									class="w-2.5 h-2.5 rounded-full hover:ring-1 hover:ring-offset-1 ring-gray-400 transition-shadow"
+									style="background-color: {project.color}"
+									title={project.name}
+									onclick={(e) => { e.stopPropagation(); onclassify?.(event.id, project.id); }}
+								></button>
+							{/each}
+						</div>
+						<button
+							type="button"
+							class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 flex items-center justify-center text-[5px] ml-1"
+							title="Skip - did not attend"
+							onclick={(e) => { e.stopPropagation(); onskip?.(event.id); }}
+						>✕</button>
 					{/if}
 				</div>
 			{/each}
@@ -243,12 +286,15 @@
 			{@const style = getEventStyle(event)}
 			{@const posStyle = getEventPositionStyle(column, totalColumns)}
 			{@const isPending = event.classification_status === 'pending'}
+			{@const isClassified = event.classification_status === 'classified'}
+			{@const isSkipped = event.classification_status === 'skipped'}
 			{@const needsReview = event.needs_review === true}
-			{@const calendarColor = event.calendar_color || '#9CA3AF'}
+			{@const calendarColor = isSkipped ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
 			{@const usePopup = !!onhover}
+			{@const eventHeight = parseFloat(style.height)}
 
 			<div
-				class="absolute rounded-md border overflow-hidden text-xs {getStatusBackground(event.classification_status)} hover:shadow-md transition-shadow cursor-pointer"
+				class="absolute rounded-md border overflow-hidden text-xs {getStatusBackground(event.classification_status, needsReview)} hover:shadow-md transition-shadow cursor-pointer"
 				style="
 					top: {style.top};
 					height: {style.height};
@@ -260,39 +306,50 @@
 				onmouseenter={(e) => onhover?.(event, e.currentTarget as HTMLElement)}
 				onmouseleave={() => onhover?.(null, null)}
 			>
-				<div class="p-1.5 h-full flex flex-col relative">
-					{#if needsReview}
-						<div
-							class="absolute top-1 right-1 w-2 h-2 bg-yellow-400 rounded-full"
-							title="Needs review - auto-classified with medium confidence"
-						></div>
-					{/if}
-
-					<!-- Compact view: title with classification indicator -->
+				<div class="p-1.5 h-full flex flex-col">
+					<!-- Title row with project dot for classified -->
 					<div class="flex items-start justify-between gap-1 min-w-0">
-						<span class="font-medium text-gray-900 truncate flex-1">{event.title}</span>
-						<!-- Classification indicator (always visible, compact) -->
-						{#if event.classification_status === 'classified' && event.project}
+						<span class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</span>
+						{#if isClassified && event.project}
 							<span
 								class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5"
 								style="background-color: {event.project.color}"
-								title={event.project.name}
-							></span>
-						{:else if event.classification_status === 'skipped'}
-							<span
-								class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 border border-dashed border-gray-300 text-gray-400 flex items-center justify-center text-[6px]"
-								title="Skipped"
-							>✕</span>
-						{:else}
-							<span
-								class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 bg-amber-200 border border-amber-300"
-								title="Pending classification"
+								title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
 							></span>
 						{/if}
 					</div>
 
-					<!-- Only show full classification UI if not using popup -->
-					{#if !usePopup}
+					<!-- Bottom row: project buttons (left) and skip button (right) for pending -->
+					{#if usePopup}
+						<!-- Using popup mode - show quick actions inline if tall enough -->
+						{#if isPending && eventHeight >= 40}
+							<div class="mt-auto pt-1 flex items-center justify-between">
+								<div class="flex items-center gap-0.5">
+									{#each activeProjects.slice(0, 4) as project}
+										<button
+											type="button"
+											class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+											style="background-color: {project.color}"
+											title={project.name}
+											onclick={(e) => { e.stopPropagation(); onclassify?.(event.id, project.id); }}
+										></button>
+									{/each}
+								</div>
+								<button
+									type="button"
+									class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[7px]"
+									title="Skip - did not attend"
+									onclick={(e) => { e.stopPropagation(); onskip?.(event.id); }}
+								>✕</button>
+							</div>
+						{:else if isSkipped}
+							<!-- Skip indicator in bottom right -->
+							<div class="mt-auto flex justify-end">
+								<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
+							</div>
+						{/if}
+					{:else}
+						<!-- Not using popup - show full classification UI -->
 						{#if event.project}
 							<div class="mt-1">
 								<ProjectChip project={event.project} size="sm" />
@@ -303,54 +360,48 @@
 						<div class="mt-auto pt-1">
 							{#if isPending || reclassifyingId === event.id}
 								<!-- Project color circles for quick classification -->
-								<div class="flex flex-wrap gap-1 items-center">
-									{#each activeProjects.slice(0, 5) as project}
-										<button
-											type="button"
-											class="w-4 h-4 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
-											style="background-color: {project.color}"
-											title={project.name}
-											onclick={() => { onclassify?.(event.id, project.id); reclassifyingId = null; }}
-										></button>
-									{/each}
+								<div class="flex items-center justify-between">
+									<div class="flex flex-wrap gap-1 items-center">
+										{#each activeProjects.slice(0, 4) as project}
+											<button
+												type="button"
+												class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+												style="background-color: {project.color}"
+												title={project.name}
+												onclick={() => { onclassify?.(event.id, project.id); reclassifyingId = null; }}
+											></button>
+										{/each}
+										{#if reclassifyingId === event.id}
+											<button
+												type="button"
+												class="text-[10px] text-gray-400 hover:text-gray-600"
+												onclick={() => reclassifyingId = null}
+											>
+												Cancel
+											</button>
+										{/if}
+									</div>
 									<button
 										type="button"
-										class="w-4 h-4 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-gray-500 hover:text-gray-600 flex items-center justify-center text-[8px]"
+										class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[7px]"
 										title="Skip - did not attend"
 										onclick={() => { onskip?.(event.id); reclassifyingId = null; }}
-									>
-										✕
-									</button>
-									{#if reclassifyingId === event.id}
-										<button
-											type="button"
-											class="text-[10px] text-gray-400 hover:text-gray-600"
-											onclick={() => reclassifyingId = null}
-										>
-											Cancel
-										</button>
-									{/if}
+									>✕</button>
 								</div>
-							{:else}
-								<!-- Classified/skipped - click to reclassify -->
-								{#if event.classification_status === 'classified' && event.project}
-									<button
-										type="button"
-										class="w-4 h-4 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
-										style="background-color: {event.project.color}"
-										title="{event.project.name} - click to reclassify"
-										onclick={() => reclassifyingId = event.id}
-									></button>
-								{:else}
-									<button
-										type="button"
-										class="w-4 h-4 rounded-full border border-dashed border-gray-300 text-gray-400 hover:border-gray-500 hover:text-gray-600 flex items-center justify-center text-[8px] hover:ring-1 ring-gray-300 transition-shadow"
-										title="Skipped - click to reclassify"
-										onclick={() => reclassifyingId = event.id}
-									>
-										✕
-									</button>
-								{/if}
+							{:else if isSkipped}
+								<!-- Skip indicator in bottom right -->
+								<div class="flex justify-end">
+									<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
+								</div>
+							{:else if isClassified && event.project}
+								<!-- Classified - click to reclassify -->
+								<button
+									type="button"
+									class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+									style="background-color: {event.project.color}"
+									title="{event.project.name} - click to reclassify"
+									onclick={() => reclassifyingId = event.id}
+								></button>
 							{/if}
 						</div>
 					{/if}
