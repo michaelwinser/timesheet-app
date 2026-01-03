@@ -2,6 +2,7 @@ package handler
 
 import (
 	"github.com/michaelw/timesheet-app/service/internal/api"
+	"github.com/michaelw/timesheet-app/service/internal/classification"
 	"github.com/michaelw/timesheet-app/service/internal/google"
 	"github.com/michaelw/timesheet-app/service/internal/store"
 )
@@ -12,6 +13,7 @@ type Server struct {
 	*ProjectHandler
 	*TimeEntryHandler
 	*CalendarHandler
+	*RulesHandler
 }
 
 // NewServer creates a new server handler
@@ -22,14 +24,17 @@ func NewServer(
 	calendarConns *store.CalendarConnectionStore,
 	calendars *store.CalendarStore,
 	calendarEvents *store.CalendarEventStore,
+	classificationRules *store.ClassificationRuleStore,
 	jwt *JWTService,
 	googleSvc *google.CalendarService,
+	classificationSvc *classification.Service,
 ) *Server {
 	return &Server{
 		AuthHandler:      NewAuthHandler(users, jwt),
 		ProjectHandler:   NewProjectHandler(projects),
 		TimeEntryHandler: NewTimeEntryHandler(entries, projects),
 		CalendarHandler:  NewCalendarHandler(calendarConns, calendars, calendarEvents, entries, googleSvc),
+		RulesHandler:     NewRulesHandler(classificationRules, classificationSvc),
 	}
 }
 

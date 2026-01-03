@@ -54,6 +54,22 @@ const (
 	ListCalendarEventsParamsClassificationStatusSkipped    ListCalendarEventsParamsClassificationStatus = "skipped"
 )
 
+// ApplyRulesRequest defines model for ApplyRulesRequest.
+type ApplyRulesRequest struct {
+	// DryRun If true, return what would be classified without making changes
+	DryRun    *bool               `json:"dry_run,omitempty"`
+	EndDate   *openapi_types.Date `json:"end_date,omitempty"`
+	StartDate *openapi_types.Date `json:"start_date,omitempty"`
+}
+
+// ApplyRulesResponse defines model for ApplyRulesResponse.
+type ApplyRulesResponse struct {
+	Classified []ClassifiedEvent `json:"classified"`
+
+	// Skipped Events that matched no rules or were below confidence threshold
+	Skipped int `json:"skipped"`
+}
+
 // AuthResponse defines model for AuthResponse.
 type AuthResponse struct {
 	Token string `json:"token"`
@@ -132,6 +148,42 @@ type CalendarEventClassificationSource string
 // CalendarEventClassificationStatus defines model for CalendarEvent.ClassificationStatus.
 type CalendarEventClassificationStatus string
 
+// ClassificationRule defines model for ClassificationRule.
+type ClassificationRule struct {
+	// Attended For attendance rules - true=attended, false=did not attend
+	Attended  *bool              `json:"attended"`
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	IsEnabled bool               `json:"is_enabled"`
+
+	// ProjectColor Color of target project (joined for convenience)
+	ProjectColor *string `json:"project_color"`
+
+	// ProjectId Target project for matching events (null for attendance rules)
+	ProjectId *openapi_types.UUID `json:"project_id"`
+
+	// ProjectName Name of target project (joined for convenience)
+	ProjectName *string `json:"project_name"`
+
+	// Query Gmail-style query (e.g., "domain:acme.com title:standup")
+	Query     string             `json:"query"`
+	UpdatedAt *time.Time         `json:"updated_at,omitempty"`
+	UserId    openapi_types.UUID `json:"user_id"`
+
+	// Weight Rule weight for scoring (higher = stronger vote)
+	Weight float32 `json:"weight"`
+}
+
+// ClassifiedEvent defines model for ClassifiedEvent.
+type ClassifiedEvent struct {
+	Confidence float32            `json:"confidence"`
+	EventId    openapi_types.UUID `json:"event_id"`
+
+	// NeedsReview True if confidence is between floor and ceiling thresholds
+	NeedsReview bool               `json:"needs_review"`
+	ProjectId   openapi_types.UUID `json:"project_id"`
+}
+
 // ClassifyEventRequest defines model for ClassifyEventRequest.
 type ClassifyEventRequest struct {
 	// ProjectId Project to assign this event to. Omit or null to skip the event.
@@ -160,6 +212,13 @@ type LoginRequest struct {
 	Password string              `json:"password"`
 }
 
+// MatchedEvent defines model for MatchedEvent.
+type MatchedEvent struct {
+	EventId   openapi_types.UUID `json:"event_id"`
+	StartTime time.Time          `json:"start_time"`
+	Title     string             `json:"title"`
+}
+
 // OAuthAuthorizeResponse defines model for OAuthAuthorizeResponse.
 type OAuthAuthorizeResponse struct {
 	// State State token for CSRF protection
@@ -167,6 +226,19 @@ type OAuthAuthorizeResponse struct {
 
 	// Url URL to redirect user for OAuth consent
 	Url string `json:"url"`
+}
+
+// PreviewStats defines model for PreviewStats.
+type PreviewStats struct {
+	// AlreadyCorrect Events already classified to the target project
+	AlreadyCorrect int `json:"already_correct"`
+
+	// ManualConflicts Events with manual classifications that conflict
+	ManualConflicts int `json:"manual_conflicts"`
+	TotalMatches    int `json:"total_matches"`
+
+	// WouldChange Events that would be reclassified
+	WouldChange int `json:"would_change"`
 }
 
 // Project defines model for Project.
@@ -203,6 +275,61 @@ type ProjectUpdate struct {
 	IsHiddenByDefault      *bool   `json:"is_hidden_by_default,omitempty"`
 	Name                   *string `json:"name,omitempty"`
 	ShortCode              *string `json:"short_code,omitempty"`
+}
+
+// RuleConflict defines model for RuleConflict.
+type RuleConflict struct {
+	CurrentProjectId *openapi_types.UUID `json:"current_project_id"`
+
+	// CurrentSource How the event was classified (manual, rule, llm)
+	CurrentSource     *string             `json:"current_source,omitempty"`
+	EventId           openapi_types.UUID  `json:"event_id"`
+	ProposedProjectId *openapi_types.UUID `json:"proposed_project_id"`
+}
+
+// RuleCreate defines model for RuleCreate.
+type RuleCreate struct {
+	// Attended For attendance rules - false means "did not attend"
+	Attended  *bool `json:"attended,omitempty"`
+	IsEnabled *bool `json:"is_enabled,omitempty"`
+
+	// ProjectId Target project (required unless attended is set)
+	ProjectId *openapi_types.UUID `json:"project_id,omitempty"`
+
+	// Query Gmail-style query string
+	Query  string   `json:"query"`
+	Weight *float32 `json:"weight,omitempty"`
+}
+
+// RulePreviewRequest defines model for RulePreviewRequest.
+type RulePreviewRequest struct {
+	// EndDate End of date range to search
+	EndDate *openapi_types.Date `json:"end_date,omitempty"`
+
+	// ProjectId Target project (for conflict detection)
+	ProjectId *openapi_types.UUID `json:"project_id,omitempty"`
+
+	// Query Query to preview
+	Query string `json:"query"`
+
+	// StartDate Start of date range to search
+	StartDate *openapi_types.Date `json:"start_date,omitempty"`
+}
+
+// RulePreviewResponse defines model for RulePreviewResponse.
+type RulePreviewResponse struct {
+	Conflicts []RuleConflict `json:"conflicts"`
+	Matches   []MatchedEvent `json:"matches"`
+	Stats     PreviewStats   `json:"stats"`
+}
+
+// RuleUpdate defines model for RuleUpdate.
+type RuleUpdate struct {
+	Attended  *bool               `json:"attended"`
+	IsEnabled *bool               `json:"is_enabled,omitempty"`
+	ProjectId *openapi_types.UUID `json:"project_id"`
+	Query     *string             `json:"query,omitempty"`
+	Weight    *float32            `json:"weight,omitempty"`
 }
 
 // SignupRequest defines model for SignupRequest.
@@ -300,6 +427,12 @@ type ListProjectsParams struct {
 	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
 }
 
+// ListRulesParams defines parameters for ListRules.
+type ListRulesParams struct {
+	// IncludeDisabled Include disabled rules
+	IncludeDisabled *bool `form:"include_disabled,omitempty" json:"include_disabled,omitempty"`
+}
+
 // ListTimeEntriesParams defines parameters for ListTimeEntries.
 type ListTimeEntriesParams struct {
 	// StartDate Filter entries on or after this date
@@ -329,6 +462,18 @@ type CreateProjectJSONRequestBody = ProjectCreate
 
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = ProjectUpdate
+
+// CreateRuleJSONRequestBody defines body for CreateRule for application/json ContentType.
+type CreateRuleJSONRequestBody = RuleCreate
+
+// ApplyRulesJSONRequestBody defines body for ApplyRules for application/json ContentType.
+type ApplyRulesJSONRequestBody = ApplyRulesRequest
+
+// PreviewRuleJSONRequestBody defines body for PreviewRule for application/json ContentType.
+type PreviewRuleJSONRequestBody = RulePreviewRequest
+
+// UpdateRuleJSONRequestBody defines body for UpdateRule for application/json ContentType.
+type UpdateRuleJSONRequestBody = RuleUpdate
 
 // CreateTimeEntryJSONRequestBody defines body for CreateTimeEntry for application/json ContentType.
 type CreateTimeEntryJSONRequestBody = TimeEntryCreate
@@ -392,6 +537,27 @@ type ServerInterface interface {
 	// Update a project
 	// (PUT /api/projects/{id})
 	UpdateProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// List all classification rules
+	// (GET /api/rules)
+	ListRules(w http.ResponseWriter, r *http.Request, params ListRulesParams)
+	// Create a new classification rule
+	// (POST /api/rules)
+	CreateRule(w http.ResponseWriter, r *http.Request)
+	// Apply classification rules to pending events
+	// (POST /api/rules/apply)
+	ApplyRules(w http.ResponseWriter, r *http.Request)
+	// Preview what events a rule would match
+	// (POST /api/rules/preview)
+	PreviewRule(w http.ResponseWriter, r *http.Request)
+	// Delete a rule
+	// (DELETE /api/rules/{id})
+	DeleteRule(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Get a rule by ID
+	// (GET /api/rules/{id})
+	GetRule(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Update a rule
+	// (PUT /api/rules/{id})
+	UpdateRule(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List time entries
 	// (GET /api/time-entries)
 	ListTimeEntries(w http.ResponseWriter, r *http.Request, params ListTimeEntriesParams)
@@ -518,6 +684,48 @@ func (_ Unimplemented) GetProject(w http.ResponseWriter, r *http.Request, id ope
 // Update a project
 // (PUT /api/projects/{id})
 func (_ Unimplemented) UpdateProject(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List all classification rules
+// (GET /api/rules)
+func (_ Unimplemented) ListRules(w http.ResponseWriter, r *http.Request, params ListRulesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a new classification rule
+// (POST /api/rules)
+func (_ Unimplemented) CreateRule(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Apply classification rules to pending events
+// (POST /api/rules/apply)
+func (_ Unimplemented) ApplyRules(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Preview what events a rule would match
+// (POST /api/rules/preview)
+func (_ Unimplemented) PreviewRule(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a rule
+// (DELETE /api/rules/{id})
+func (_ Unimplemented) DeleteRule(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a rule by ID
+// (GET /api/rules/{id})
+func (_ Unimplemented) GetRule(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update a rule
+// (PUT /api/rules/{id})
+func (_ Unimplemented) UpdateRule(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1081,6 +1289,192 @@ func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// ListRules operation middleware
+func (siw *ServerInterfaceWrapper) ListRules(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListRulesParams
+
+	// ------------- Optional query parameter "include_disabled" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "include_disabled", r.URL.Query(), &params.IncludeDisabled)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include_disabled", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRules(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateRule operation middleware
+func (siw *ServerInterfaceWrapper) CreateRule(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateRule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyRules operation middleware
+func (siw *ServerInterfaceWrapper) ApplyRules(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyRules(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PreviewRule operation middleware
+func (siw *ServerInterfaceWrapper) PreviewRule(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewRule(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteRule operation middleware
+func (siw *ServerInterfaceWrapper) DeleteRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRule operation middleware
+func (siw *ServerInterfaceWrapper) GetRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateRule operation middleware
+func (siw *ServerInterfaceWrapper) UpdateRule(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateRule(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTimeEntries operation middleware
 func (siw *ServerInterfaceWrapper) ListTimeEntries(w http.ResponseWriter, r *http.Request) {
 
@@ -1409,6 +1803,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/api/projects/{id}", wrapper.UpdateProject)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/rules", wrapper.ListRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/rules", wrapper.CreateRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/rules/apply", wrapper.ApplyRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/rules/preview", wrapper.PreviewRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/rules/{id}", wrapper.DeleteRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/rules/{id}", wrapper.GetRule)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/rules/{id}", wrapper.UpdateRule)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/time-entries", wrapper.ListTimeEntries)
@@ -2028,6 +2443,242 @@ func (response UpdateProject404JSONResponse) VisitUpdateProjectResponse(w http.R
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListRulesRequestObject struct {
+	Params ListRulesParams
+}
+
+type ListRulesResponseObject interface {
+	VisitListRulesResponse(w http.ResponseWriter) error
+}
+
+type ListRules200JSONResponse []ClassificationRule
+
+func (response ListRules200JSONResponse) VisitListRulesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListRules401JSONResponse Error
+
+func (response ListRules401JSONResponse) VisitListRulesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateRuleRequestObject struct {
+	Body *CreateRuleJSONRequestBody
+}
+
+type CreateRuleResponseObject interface {
+	VisitCreateRuleResponse(w http.ResponseWriter) error
+}
+
+type CreateRule201JSONResponse ClassificationRule
+
+func (response CreateRule201JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateRule400JSONResponse Error
+
+func (response CreateRule400JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateRule401JSONResponse Error
+
+func (response CreateRule401JSONResponse) VisitCreateRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ApplyRulesRequestObject struct {
+	Body *ApplyRulesJSONRequestBody
+}
+
+type ApplyRulesResponseObject interface {
+	VisitApplyRulesResponse(w http.ResponseWriter) error
+}
+
+type ApplyRules200JSONResponse ApplyRulesResponse
+
+func (response ApplyRules200JSONResponse) VisitApplyRulesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ApplyRules401JSONResponse Error
+
+func (response ApplyRules401JSONResponse) VisitApplyRulesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PreviewRuleRequestObject struct {
+	Body *PreviewRuleJSONRequestBody
+}
+
+type PreviewRuleResponseObject interface {
+	VisitPreviewRuleResponse(w http.ResponseWriter) error
+}
+
+type PreviewRule200JSONResponse RulePreviewResponse
+
+func (response PreviewRule200JSONResponse) VisitPreviewRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PreviewRule400JSONResponse Error
+
+func (response PreviewRule400JSONResponse) VisitPreviewRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type PreviewRule401JSONResponse Error
+
+func (response PreviewRule401JSONResponse) VisitPreviewRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteRuleRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteRuleResponseObject interface {
+	VisitDeleteRuleResponse(w http.ResponseWriter) error
+}
+
+type DeleteRule204Response struct {
+}
+
+func (response DeleteRule204Response) VisitDeleteRuleResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteRule401JSONResponse Error
+
+func (response DeleteRule401JSONResponse) VisitDeleteRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteRule404JSONResponse Error
+
+func (response DeleteRule404JSONResponse) VisitDeleteRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRuleRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetRuleResponseObject interface {
+	VisitGetRuleResponse(w http.ResponseWriter) error
+}
+
+type GetRule200JSONResponse ClassificationRule
+
+func (response GetRule200JSONResponse) VisitGetRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRule401JSONResponse Error
+
+func (response GetRule401JSONResponse) VisitGetRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetRule404JSONResponse Error
+
+func (response GetRule404JSONResponse) VisitGetRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateRuleRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateRuleJSONRequestBody
+}
+
+type UpdateRuleResponseObject interface {
+	VisitUpdateRuleResponse(w http.ResponseWriter) error
+}
+
+type UpdateRule200JSONResponse ClassificationRule
+
+func (response UpdateRule200JSONResponse) VisitUpdateRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateRule400JSONResponse Error
+
+func (response UpdateRule400JSONResponse) VisitUpdateRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateRule401JSONResponse Error
+
+func (response UpdateRule401JSONResponse) VisitUpdateRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateRule404JSONResponse Error
+
+func (response UpdateRule404JSONResponse) VisitUpdateRuleResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ListTimeEntriesRequestObject struct {
 	Params ListTimeEntriesParams
 }
@@ -2286,6 +2937,27 @@ type StrictServerInterface interface {
 	// Update a project
 	// (PUT /api/projects/{id})
 	UpdateProject(ctx context.Context, request UpdateProjectRequestObject) (UpdateProjectResponseObject, error)
+	// List all classification rules
+	// (GET /api/rules)
+	ListRules(ctx context.Context, request ListRulesRequestObject) (ListRulesResponseObject, error)
+	// Create a new classification rule
+	// (POST /api/rules)
+	CreateRule(ctx context.Context, request CreateRuleRequestObject) (CreateRuleResponseObject, error)
+	// Apply classification rules to pending events
+	// (POST /api/rules/apply)
+	ApplyRules(ctx context.Context, request ApplyRulesRequestObject) (ApplyRulesResponseObject, error)
+	// Preview what events a rule would match
+	// (POST /api/rules/preview)
+	PreviewRule(ctx context.Context, request PreviewRuleRequestObject) (PreviewRuleResponseObject, error)
+	// Delete a rule
+	// (DELETE /api/rules/{id})
+	DeleteRule(ctx context.Context, request DeleteRuleRequestObject) (DeleteRuleResponseObject, error)
+	// Get a rule by ID
+	// (GET /api/rules/{id})
+	GetRule(ctx context.Context, request GetRuleRequestObject) (GetRuleResponseObject, error)
+	// Update a rule
+	// (PUT /api/rules/{id})
+	UpdateRule(ctx context.Context, request UpdateRuleRequestObject) (UpdateRuleResponseObject, error)
 	// List time entries
 	// (GET /api/time-entries)
 	ListTimeEntries(ctx context.Context, request ListTimeEntriesRequestObject) (ListTimeEntriesResponseObject, error)
@@ -2821,6 +3493,210 @@ func (sh *strictHandler) UpdateProject(w http.ResponseWriter, r *http.Request, i
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateProjectResponseObject); ok {
 		if err := validResponse.VisitUpdateProjectResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListRules operation middleware
+func (sh *strictHandler) ListRules(w http.ResponseWriter, r *http.Request, params ListRulesParams) {
+	var request ListRulesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListRules(ctx, request.(ListRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListRulesResponseObject); ok {
+		if err := validResponse.VisitListRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateRule operation middleware
+func (sh *strictHandler) CreateRule(w http.ResponseWriter, r *http.Request) {
+	var request CreateRuleRequestObject
+
+	var body CreateRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateRule(ctx, request.(CreateRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateRuleResponseObject); ok {
+		if err := validResponse.VisitCreateRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ApplyRules operation middleware
+func (sh *strictHandler) ApplyRules(w http.ResponseWriter, r *http.Request) {
+	var request ApplyRulesRequestObject
+
+	var body ApplyRulesJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApplyRules(ctx, request.(ApplyRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApplyRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApplyRulesResponseObject); ok {
+		if err := validResponse.VisitApplyRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PreviewRule operation middleware
+func (sh *strictHandler) PreviewRule(w http.ResponseWriter, r *http.Request) {
+	var request PreviewRuleRequestObject
+
+	var body PreviewRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PreviewRule(ctx, request.(PreviewRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PreviewRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PreviewRuleResponseObject); ok {
+		if err := validResponse.VisitPreviewRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteRule operation middleware
+func (sh *strictHandler) DeleteRule(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteRuleRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteRule(ctx, request.(DeleteRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteRuleResponseObject); ok {
+		if err := validResponse.VisitDeleteRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetRule operation middleware
+func (sh *strictHandler) GetRule(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetRuleRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRule(ctx, request.(GetRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRuleResponseObject); ok {
+		if err := validResponse.VisitGetRuleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateRule operation middleware
+func (sh *strictHandler) UpdateRule(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateRuleRequestObject
+
+	request.Id = id
+
+	var body UpdateRuleJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateRule(ctx, request.(UpdateRuleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateRule")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateRuleResponseObject); ok {
+		if err := validResponse.VisitUpdateRuleResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

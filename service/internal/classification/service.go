@@ -11,12 +11,6 @@ import (
 	"github.com/michaelw/timesheet-app/service/internal/store"
 )
 
-// Confidence thresholds
-const (
-	ConfidenceFloor   = 0.5 // Below: don't classify
-	ConfidenceCeiling = 0.8 // Above: auto-classify without review flag
-)
-
 // Source represents how an event was classified
 type Source string
 
@@ -26,8 +20,8 @@ const (
 	SourceLLM    Source = "llm"
 )
 
-// Vote represents a single vote in the scoring system
-type Vote struct {
+// ServiceVote represents a vote with UUIDs for database storage
+type ServiceVote struct {
 	RuleID    *uuid.UUID
 	ProjectID *uuid.UUID
 	Attended  *bool
@@ -35,17 +29,19 @@ type Vote struct {
 	Source    Source
 }
 
-// ClassificationResult represents the result of classifying an event
+// ClassificationResult represents the result of classifying an event (service layer)
 type ClassificationResult struct {
 	ProjectID   *uuid.UUID
 	Attended    *bool
 	Confidence  float64
 	NeedsReview bool
 	Source      Source
-	Votes       []Vote
+	Votes       []ServiceVote
 }
 
-// Service orchestrates classification of calendar events
+// Service orchestrates classification of calendar events.
+// It handles I/O and database operations, delegating pure classification
+// logic to the Classify function.
 type Service struct {
 	pool       *pgxpool.Pool
 	ruleStore  *store.ClassificationRuleStore
@@ -64,203 +60,79 @@ func NewService(pool *pgxpool.Pool, ruleStore *store.ClassificationRuleStore, ev
 // ClassifyEvent evaluates all rules against an event and returns the classification result
 func (s *Service) ClassifyEvent(ctx context.Context, userID uuid.UUID, event *store.CalendarEvent) (*ClassificationResult, error) {
 	// Get all enabled rules for the user
-	rules, err := s.ruleStore.List(ctx, userID, false)
+	storeRules, err := s.ruleStore.List(ctx, userID, false)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert event to properties
-	props := eventToProperties(event)
+	// Convert to library types
+	rules := storeRulesToLibraryRules(storeRules)
+	item := eventToItem(event)
 
-	// Evaluate project rules
-	projectResult := s.evaluateProjectRules(rules, props)
-
-	// For now, return project result
-	// Attendance rules would be evaluated separately
-	return projectResult, nil
-}
-
-// evaluateProjectRules evaluates all project-targeting rules and returns scores
-func (s *Service) evaluateProjectRules(rules []*store.ClassificationRule, props *EventProperties) *ClassificationResult {
-	// Map of project_id -> total score
-	scores := make(map[uuid.UUID]float64)
-	votes := make([]Vote, 0)
-
-	var totalWeight float64
-
-	for _, rule := range rules {
-		// Skip attendance rules
-		if rule.ProjectID == nil {
-			continue
-		}
-
-		// Parse and evaluate the query
-		ast, err := Parse(rule.Query)
-		if err != nil {
-			// Skip invalid rules
-			continue
-		}
-
-		if Evaluate(ast, props) {
-			scores[*rule.ProjectID] += rule.Weight
-			totalWeight += rule.Weight
-			votes = append(votes, Vote{
-				RuleID:    &rule.ID,
-				ProjectID: rule.ProjectID,
-				Weight:    rule.Weight,
-				Source:    SourceRule,
-			})
-		}
-	}
-
-	if len(scores) == 0 {
+	// Use pure classifier
+	results := Classify(rules, []Item{item}, DefaultConfig())
+	if len(results) == 0 {
 		return &ClassificationResult{
 			ProjectID:   nil,
 			Confidence:  0,
 			NeedsReview: false,
 			Source:      SourceRule,
-			Votes:       votes,
-		}
+			Votes:       nil,
+		}, nil
 	}
 
-	// Find the winner
-	var winnerID uuid.UUID
-	var winnerScore float64
-
-	for projectID, score := range scores {
-		if score > winnerScore {
-			winnerID = projectID
-			winnerScore = score
-		}
-	}
-
-	// Calculate confidence
-	confidence := winnerScore / totalWeight
-	if confidence > 1.0 {
-		confidence = 1.0
-	}
-
-	// Determine if review is needed
-	needsReview := confidence >= ConfidenceFloor && confidence < ConfidenceCeiling
-
-	// Don't classify if below floor
-	if confidence < ConfidenceFloor {
-		return &ClassificationResult{
-			ProjectID:   nil,
-			Confidence:  confidence,
-			NeedsReview: false,
-			Source:      SourceRule,
-			Votes:       votes,
-		}
-	}
-
-	return &ClassificationResult{
-		ProjectID:   &winnerID,
-		Confidence:  confidence,
-		NeedsReview: needsReview,
-		Source:      SourceRule,
-		Votes:       votes,
-	}
+	// Convert result back to service types
+	return libraryResultToServiceResult(results[0], storeRules), nil
 }
 
 // EvaluateAttendance evaluates attendance rules for an event
 func (s *Service) EvaluateAttendance(ctx context.Context, userID uuid.UUID, event *store.CalendarEvent) (*ClassificationResult, error) {
 	// Get attendance rules
-	rules, err := s.ruleStore.ListAttendanceRules(ctx, userID)
+	storeRules, err := s.ruleStore.ListAttendanceRules(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	props := eventToProperties(event)
+	// Convert to library types
+	rules := storeRulesToAttendanceRules(storeRules)
+	item := eventToItem(event)
 
-	// Map of attended (true/false) -> total score
-	scores := make(map[bool]float64)
-	votes := make([]Vote, 0)
-
-	var totalWeight float64
-
-	for _, rule := range rules {
-		if rule.Attended == nil {
-			continue
-		}
-
-		ast, err := Parse(rule.Query)
-		if err != nil {
-			continue
-		}
-
-		if Evaluate(ast, props) {
-			scores[*rule.Attended] += rule.Weight
-			totalWeight += rule.Weight
-			votes = append(votes, Vote{
-				RuleID:   &rule.ID,
-				Attended: rule.Attended,
-				Weight:   rule.Weight,
-				Source:   SourceRule,
-			})
-		}
-	}
-
-	if len(scores) == 0 {
-		// Default: assume attended
+	// Use pure classifier for attendance
+	results := ClassifyAttendance(rules, []Item{item}, DefaultConfig())
+	if len(results) == 0 {
 		attended := true
 		return &ClassificationResult{
 			Attended:    &attended,
 			Confidence:  1.0,
 			NeedsReview: false,
 			Source:      SourceRule,
-			Votes:       votes,
+			Votes:       nil,
 		}, nil
 	}
 
-	// Find winner
-	var winnerAttended bool
-	var winnerScore float64
-
-	for attended, score := range scores {
-		if score > winnerScore {
-			winnerAttended = attended
-			winnerScore = score
-		}
-	}
-
-	confidence := winnerScore / totalWeight
-	if confidence > 1.0 {
-		confidence = 1.0
-	}
-
-	needsReview := confidence >= ConfidenceFloor && confidence < ConfidenceCeiling
-
-	if confidence < ConfidenceFloor {
-		attended := true // Default to attended if uncertain
-		return &ClassificationResult{
-			Attended:    &attended,
-			Confidence:  confidence,
-			NeedsReview: true,
-			Source:      SourceRule,
-			Votes:       votes,
-		}, nil
-	}
-
-	return &ClassificationResult{
-		Attended:    &winnerAttended,
-		Confidence:  confidence,
-		NeedsReview: needsReview,
-		Source:      SourceRule,
-		Votes:       votes,
-	}, nil
+	// Convert result back to service types
+	return attendanceResultToServiceResult(results[0], storeRules), nil
 }
 
 // PreviewRule evaluates a query against events and returns matching events with conflict info
 func (s *Service) PreviewRule(ctx context.Context, userID uuid.UUID, query string, targetProjectID *uuid.UUID, startDate, endDate *time.Time) (*RulePreview, error) {
-	// Parse the query first
-	ast, err := Parse(query)
+	// Get events in the date range
+	events, err := s.eventStore.List(ctx, userID, startDate, endDate, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Get events in the date range
-	events, err := s.eventStore.List(ctx, userID, startDate, endDate, nil, nil)
+	// Convert events to items
+	items := make([]Item, 0, len(events))
+	eventMap := make(map[string]*store.CalendarEvent)
+	for _, event := range events {
+		item := eventToItem(event)
+		items = append(items, item)
+		eventMap[item.ID] = event
+	}
+
+	// Use pure library to find matches
+	matchingIDs, err := PreviewRules(query, items)
 	if err != nil {
 		return nil, err
 	}
@@ -270,34 +142,35 @@ func (s *Service) PreviewRule(ctx context.Context, userID uuid.UUID, query strin
 		Conflicts: make([]*Conflict, 0),
 	}
 
-	for _, event := range events {
-		props := eventToProperties(event)
+	for _, id := range matchingIDs {
+		event := eventMap[id]
+		if event == nil {
+			continue
+		}
 
-		if Evaluate(ast, props) {
-			matched := &MatchedEvent{
-				EventID:   event.ID,
-				Title:     event.Title,
-				StartTime: event.StartTime,
+		matched := &MatchedEvent{
+			EventID:   event.ID,
+			Title:     event.Title,
+			StartTime: event.StartTime,
+		}
+		preview.Matches = append(preview.Matches, matched)
+
+		// Check for conflicts
+		if event.ProjectID != nil && targetProjectID != nil && *event.ProjectID != *targetProjectID {
+			var currentSource string
+			if event.ClassificationSource != nil {
+				currentSource = string(*event.ClassificationSource)
 			}
-			preview.Matches = append(preview.Matches, matched)
 
-			// Check for conflicts
-			if event.ProjectID != nil && targetProjectID != nil && *event.ProjectID != *targetProjectID {
-				var currentSource string
-				if event.ClassificationSource != nil {
-					currentSource = string(*event.ClassificationSource)
-				}
+			preview.Conflicts = append(preview.Conflicts, &Conflict{
+				EventID:          event.ID,
+				CurrentProjectID: event.ProjectID,
+				CurrentSource:    currentSource,
+				ProposedProject:  targetProjectID,
+			})
 
-				preview.Conflicts = append(preview.Conflicts, &Conflict{
-					EventID:          event.ID,
-					CurrentProjectID: event.ProjectID,
-					CurrentSource:    currentSource,
-					ProposedProject:  targetProjectID,
-				})
-
-				if currentSource == "manual" {
-					preview.Stats.ManualConflicts++
-				}
+			if currentSource == "manual" {
+				preview.Stats.ManualConflicts++
 			}
 		}
 	}
@@ -339,35 +212,6 @@ type PreviewStats struct {
 	ManualConflicts int `json:"manual_conflicts"`
 }
 
-// eventToProperties converts a CalendarEvent to EventProperties
-func eventToProperties(event *store.CalendarEvent) *EventProperties {
-	props := &EventProperties{
-		Title:       event.Title,
-		StartTime:   event.StartTime,
-		EndTime:     event.EndTime,
-		IsRecurring: event.IsRecurring,
-	}
-
-	if event.Description != nil {
-		props.Description = *event.Description
-	}
-
-	if event.ResponseStatus != nil {
-		props.ResponseStatus = *event.ResponseStatus
-	}
-
-	if event.Transparency != nil {
-		props.Transparency = *event.Transparency
-	}
-
-	// Parse attendees from JSON
-	if event.Attendees != nil {
-		props.Attendees = event.Attendees
-	}
-
-	return props
-}
-
 // ApplyRules runs classification on pending events
 func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, dryRun bool) (*ApplyResult, error) {
 	// Get pending events
@@ -377,36 +221,62 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, startDate, e
 		return nil, err
 	}
 
-	result := &ApplyResult{
+	// Get all enabled rules
+	storeRules, err := s.ruleStore.List(ctx, userID, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert rules to library types
+	rules := storeRulesToLibraryRules(storeRules)
+
+	// Convert events to items
+	items := make([]Item, 0, len(events))
+	eventMap := make(map[string]*store.CalendarEvent)
+	for _, event := range events {
+		item := eventToItem(event)
+		items = append(items, item)
+		eventMap[item.ID] = event
+	}
+
+	// Use pure classifier
+	results := Classify(rules, items, DefaultConfig())
+
+	applyResult := &ApplyResult{
 		Classified: make([]*ClassifiedEvent, 0),
 		Skipped:    0,
 	}
 
-	for _, event := range events {
-		classResult, err := s.ClassifyEvent(ctx, userID, event)
-		if err != nil {
+	for _, libResult := range results {
+		event := eventMap[libResult.ItemID]
+		if event == nil {
 			continue
 		}
 
-		if classResult.ProjectID == nil {
-			result.Skipped++
+		if libResult.TargetID == "" {
+			applyResult.Skipped++
+			continue
+		}
+
+		projectID, err := uuid.Parse(libResult.TargetID)
+		if err != nil {
+			applyResult.Skipped++
 			continue
 		}
 
 		classified := &ClassifiedEvent{
 			EventID:     event.ID,
-			ProjectID:   *classResult.ProjectID,
-			Confidence:  classResult.Confidence,
-			NeedsReview: classResult.NeedsReview,
+			ProjectID:   projectID,
+			Confidence:  libResult.Confidence,
+			NeedsReview: libResult.NeedsReview,
 		}
-		result.Classified = append(result.Classified, classified)
+		applyResult.Classified = append(applyResult.Classified, classified)
 
 		if !dryRun {
 			// Apply the classification
 			source := store.SourceRule
-			_, err := s.eventStore.Classify(ctx, userID, event.ID, classResult.ProjectID, false)
+			_, err := s.eventStore.Classify(ctx, userID, event.ID, &projectID, false)
 			if err != nil {
-				// Log error but continue
 				continue
 			}
 
@@ -417,14 +287,14 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, startDate, e
 				    needs_review = $4,
 				    classification_source = $5
 				WHERE id = $1 AND user_id = $2
-			`, event.ID, userID, classResult.Confidence, classResult.NeedsReview, source)
+			`, event.ID, userID, libResult.Confidence, libResult.NeedsReview, source)
 			if err != nil {
 				continue
 			}
 		}
 	}
 
-	return result, nil
+	return applyResult, nil
 }
 
 // ApplyResult contains the results of applying rules
@@ -442,6 +312,150 @@ type ClassifiedEvent struct {
 }
 
 // MarshalVotes converts votes to JSON for storage/debugging
-func MarshalVotes(votes []Vote) ([]byte, error) {
+func MarshalVotes(votes []ServiceVote) ([]byte, error) {
 	return json.Marshal(votes)
+}
+
+// --- Conversion functions between store types and library types ---
+
+// storeRulesToLibraryRules converts store rules to pure library rules (project classification)
+func storeRulesToLibraryRules(storeRules []*store.ClassificationRule) []Rule {
+	rules := make([]Rule, 0, len(storeRules))
+	for _, sr := range storeRules {
+		// Skip attendance rules for project classification
+		if sr.ProjectID == nil {
+			continue
+		}
+		rules = append(rules, Rule{
+			ID:       sr.ID.String(),
+			Query:    sr.Query,
+			TargetID: sr.ProjectID.String(),
+			Weight:   sr.Weight,
+		})
+	}
+	return rules
+}
+
+// storeRulesToAttendanceRules converts store rules to pure library rules (attendance)
+func storeRulesToAttendanceRules(storeRules []*store.ClassificationRule) []Rule {
+	rules := make([]Rule, 0, len(storeRules))
+	for _, sr := range storeRules {
+		// Only process attendance rules
+		if sr.Attended == nil {
+			continue
+		}
+		targetID := "attended:true"
+		if !*sr.Attended {
+			targetID = TargetDNA
+		}
+		rules = append(rules, Rule{
+			ID:       sr.ID.String(),
+			Query:    sr.Query,
+			TargetID: targetID,
+			Weight:   sr.Weight,
+		})
+	}
+	return rules
+}
+
+// eventToItem converts a CalendarEvent to a library Item
+func eventToItem(event *store.CalendarEvent) Item {
+	props := make(map[string]any)
+
+	props["title"] = event.Title
+	props["start_time"] = event.StartTime
+	props["end_time"] = event.EndTime
+	props["is_recurring"] = event.IsRecurring
+
+	if event.Description != nil {
+		props["description"] = *event.Description
+	}
+
+	if event.ResponseStatus != nil {
+		props["response_status"] = *event.ResponseStatus
+	}
+
+	if event.Transparency != nil {
+		props["transparency"] = *event.Transparency
+	}
+
+	if event.Attendees != nil {
+		props["attendees"] = event.Attendees
+	}
+
+	return Item{
+		ID:         event.ID.String(),
+		Properties: props,
+	}
+}
+
+// libraryResultToServiceResult converts a library Result to a ServiceResult
+func libraryResultToServiceResult(result Result, storeRules []*store.ClassificationRule) *ClassificationResult {
+	// Build a map of rule IDs to store rules for vote conversion
+	ruleMap := make(map[string]*store.ClassificationRule)
+	for _, r := range storeRules {
+		ruleMap[r.ID.String()] = r
+	}
+
+	// Convert votes
+	votes := make([]ServiceVote, 0, len(result.Votes))
+	for _, v := range result.Votes {
+		storeRule := ruleMap[v.RuleID]
+		if storeRule != nil {
+			votes = append(votes, ServiceVote{
+				RuleID:    &storeRule.ID,
+				ProjectID: storeRule.ProjectID,
+				Weight:    v.Weight,
+				Source:    SourceRule,
+			})
+		}
+	}
+
+	// Parse project ID
+	var projectID *uuid.UUID
+	if result.TargetID != "" {
+		if id, err := uuid.Parse(result.TargetID); err == nil {
+			projectID = &id
+		}
+	}
+
+	return &ClassificationResult{
+		ProjectID:   projectID,
+		Confidence:  result.Confidence,
+		NeedsReview: result.NeedsReview,
+		Source:      SourceRule,
+		Votes:       votes,
+	}
+}
+
+// attendanceResultToServiceResult converts an AttendanceResult to a ServiceResult
+func attendanceResultToServiceResult(result AttendanceResult, storeRules []*store.ClassificationRule) *ClassificationResult {
+	// Build a map of rule IDs to store rules
+	ruleMap := make(map[string]*store.ClassificationRule)
+	for _, r := range storeRules {
+		ruleMap[r.ID.String()] = r
+	}
+
+	// Convert votes
+	votes := make([]ServiceVote, 0, len(result.Votes))
+	for _, v := range result.Votes {
+		storeRule := ruleMap[v.RuleID]
+		if storeRule != nil {
+			votes = append(votes, ServiceVote{
+				RuleID:   &storeRule.ID,
+				Attended: storeRule.Attended,
+				Weight:   v.Weight,
+				Source:   SourceRule,
+			})
+		}
+	}
+
+	attended := result.Attended
+	return &ClassificationResult{
+		Attended:    &attended,
+		Confidence:  result.Confidence,
+		NeedsReview: result.NeedsReview,
+		Source:      SourceRule,
+		Votes:       votes,
+	}
 }

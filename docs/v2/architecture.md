@@ -199,7 +199,7 @@ The Service has internal structure:
 | `ClassificationService` | Matches events to projects using Classifier |
 | `SyncService` | Fetches events from calendar providers |
 | `InvoiceService` | Creates invoices, locks entries |
-| `Classifier` | Rule/fingerprint/LLM matching engine |
+| `Classifier` | Pure library for rule matching - no I/O, no DB access (see [analysis](analysis-classification-boundaries.md)) |
 | `Summarizer` | Generates descriptions from events |
 
 ### Repositories
@@ -343,6 +343,7 @@ MCP is a thin adapter over the Service API, not a separate implementation.
 | `components.md` | Web Client | Widget catalog, props/events contracts |
 | `api-spec.yaml` | Service | OpenAPI contract |
 | `decisions/*.md` | All | Architectural decision records |
+| `analysis-classification-boundaries.md` | Service | Classification library architecture analysis |
 
 ---
 

@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/michaelw/timesheet-app/service/internal/api"
+	"github.com/michaelw/timesheet-app/service/internal/classification"
 	"github.com/michaelw/timesheet-app/service/internal/crypto"
 	"github.com/michaelw/timesheet-app/service/internal/database"
 	"github.com/michaelw/timesheet-app/service/internal/google"
@@ -78,15 +79,19 @@ func main() {
 	calendarConnectionStore := store.NewCalendarConnectionStore(db.Pool, cryptoService)
 	calendarStore := store.NewCalendarStore(db.Pool)
 	calendarEventStore := store.NewCalendarEventStore(db.Pool)
+	classificationRuleStore := store.NewClassificationRuleStore(db.Pool)
 
 	// Initialize services
 	jwtService := handler.NewJWTService(jwtSecret, jwtExpiration)
+	classificationService := classification.NewService(db.Pool, classificationRuleStore, calendarEventStore)
 
 	// Initialize handlers
 	serverHandler := handler.NewServer(
 		userStore, projectStore, timeEntryStore,
 		calendarConnectionStore, calendarStore, calendarEventStore,
+		classificationRuleStore,
 		jwtService, googleService,
+		classificationService,
 	)
 
 	// Create router

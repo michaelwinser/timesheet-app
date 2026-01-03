@@ -23,6 +23,8 @@ tags:
     description: Time entry tracking
   - name: calendars
     description: Calendar integration and event management
+  - name: rules
+    description: Classification rules for automatic event categorization
 
 paths:
   # Auth endpoints
@@ -826,6 +828,243 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # Classification Rules endpoints
+  /api/rules:
+    get:
+      operationId: listRules
+      tags: [rules]
+      summary: List all classification rules
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: include_disabled
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include disabled rules
+      responses:
+        '200':
+          description: List of rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClassificationRule'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createRule
+      tags: [rules]
+      summary: Create a new classification rule
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleCreate'
+      responses:
+        '201':
+          description: Rule created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassificationRule'
+        '400':
+          description: Invalid request (bad query syntax)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/rules/{id}:
+    get:
+      operationId: getRule
+      tags: [rules]
+      summary: Get a rule by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Rule details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassificationRule'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      operationId: updateRule
+      tags: [rules]
+      summary: Update a rule
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RuleUpdate'
+      responses:
+        '200':
+          description: Rule updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassificationRule'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: deleteRule
+      tags: [rules]
+      summary: Delete a rule
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Rule deleted
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Rule not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/rules/preview:
+    post:
+      operationId: previewRule
+      tags: [rules]
+      summary: Preview what events a rule would match
+      description: |
+        Evaluates a query against existing events without creating a rule.
+        Returns matching events and potential conflicts with existing classifications.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RulePreviewRequest'
+      responses:
+        '200':
+          description: Preview results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RulePreviewResponse'
+        '400':
+          description: Invalid query syntax
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/rules/apply:
+    post:
+      operationId: applyRules
+      tags: [rules]
+      summary: Apply classification rules to pending events
+      description: |
+        Runs all enabled rules against pending (unclassified) events.
+        Use dry_run=true to see what would be classified without making changes.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApplyRulesRequest'
+      responses:
+        '200':
+          description: Classification results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplyRulesResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1247,3 +1486,222 @@ components:
             type: string
             format: uuid
           description: IDs of calendars to enable for syncing
+
+    # Classification Rule schemas
+    ClassificationRule:
+      type: object
+      required: [id, user_id, query, weight, is_enabled, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        query:
+          type: string
+          description: Gmail-style query (e.g., "domain:acme.com title:standup")
+          example: 'domain:acme.com title:"weekly sync"'
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Target project for matching events (null for attendance rules)
+        project_name:
+          type: string
+          nullable: true
+          description: Name of target project (joined for convenience)
+        project_color:
+          type: string
+          nullable: true
+          description: Color of target project (joined for convenience)
+        attended:
+          type: boolean
+          nullable: true
+          description: For attendance rules - true=attended, false=did not attend
+        weight:
+          type: number
+          format: float
+          minimum: 0
+          default: 1.0
+          description: Rule weight for scoring (higher = stronger vote)
+        is_enabled:
+          type: boolean
+          default: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    RuleCreate:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          description: Gmail-style query string
+          example: 'title:standup domain:acme.com'
+        project_id:
+          type: string
+          format: uuid
+          description: Target project (required unless attended is set)
+        attended:
+          type: boolean
+          description: For attendance rules - false means "did not attend"
+        weight:
+          type: number
+          format: float
+          minimum: 0
+          default: 1.0
+        is_enabled:
+          type: boolean
+          default: true
+
+    RuleUpdate:
+      type: object
+      properties:
+        query:
+          type: string
+        project_id:
+          type: string
+          format: uuid
+          nullable: true
+        attended:
+          type: boolean
+          nullable: true
+        weight:
+          type: number
+          format: float
+          minimum: 0
+        is_enabled:
+          type: boolean
+
+    RulePreviewRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          description: Query to preview
+        project_id:
+          type: string
+          format: uuid
+          description: Target project (for conflict detection)
+        start_date:
+          type: string
+          format: date
+          description: Start of date range to search
+        end_date:
+          type: string
+          format: date
+          description: End of date range to search
+
+    RulePreviewResponse:
+      type: object
+      required: [matches, conflicts, stats]
+      properties:
+        matches:
+          type: array
+          items:
+            $ref: '#/components/schemas/MatchedEvent'
+        conflicts:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleConflict'
+        stats:
+          $ref: '#/components/schemas/PreviewStats'
+
+    MatchedEvent:
+      type: object
+      required: [event_id, title, start_time]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+
+    RuleConflict:
+      type: object
+      required: [event_id]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        current_project_id:
+          type: string
+          format: uuid
+          nullable: true
+        current_source:
+          type: string
+          description: How the event was classified (manual, rule, llm)
+        proposed_project_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    PreviewStats:
+      type: object
+      required: [total_matches, already_correct, would_change, manual_conflicts]
+      properties:
+        total_matches:
+          type: integer
+        already_correct:
+          type: integer
+          description: Events already classified to the target project
+        would_change:
+          type: integer
+          description: Events that would be reclassified
+        manual_conflicts:
+          type: integer
+          description: Events with manual classifications that conflict
+
+    ApplyRulesRequest:
+      type: object
+      properties:
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        dry_run:
+          type: boolean
+          default: false
+          description: If true, return what would be classified without making changes
+
+    ApplyRulesResponse:
+      type: object
+      required: [classified, skipped]
+      properties:
+        classified:
+          type: array
+          items:
+            $ref: '#/components/schemas/ClassifiedEvent'
+        skipped:
+          type: integer
+          description: Events that matched no rules or were below confidence threshold
+
+    ClassifiedEvent:
+      type: object
+      required: [event_id, project_id, confidence, needs_review]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        needs_review:
+          type: boolean
+          description: True if confidence is between floor and ceiling thresholds
