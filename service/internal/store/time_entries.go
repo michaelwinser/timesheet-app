@@ -210,6 +210,49 @@ func (s *TimeEntryStore) Update(ctx context.Context, userID, entryID uuid.UUID, 
 	return entry, nil
 }
 
+// CreateFromCalendar creates or updates a time entry from a calendar event
+// Unlike manual creation, this accumulates hours if an entry already exists
+func (s *TimeEntryStore) CreateFromCalendar(ctx context.Context, userID, projectID uuid.UUID, date time.Time, hours float64, description *string) (*TimeEntry, error) {
+	entry := &TimeEntry{
+		ID:           uuid.New(),
+		UserID:       userID,
+		ProjectID:    projectID,
+		Date:         date,
+		Hours:        hours,
+		Description:  description,
+		Source:       "calendar",
+		HasUserEdits: false,
+		CreatedAt:    time.Now().UTC(),
+		UpdatedAt:    time.Now().UTC(),
+	}
+
+	// Use upsert - if entry exists for same project/date, add hours (unless user edited)
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO time_entries (id, user_id, project_id, date, hours, description, source, has_user_edits, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (user_id, project_id, date) DO UPDATE SET
+			hours = CASE
+				WHEN time_entries.has_user_edits THEN time_entries.hours
+				ELSE time_entries.hours + EXCLUDED.hours
+			END,
+			description = CASE
+				WHEN time_entries.has_user_edits THEN time_entries.description
+				WHEN time_entries.description IS NULL THEN EXCLUDED.description
+				WHEN EXCLUDED.description IS NULL THEN time_entries.description
+				ELSE time_entries.description || E'\n' || EXCLUDED.description
+			END,
+			updated_at = EXCLUDED.updated_at
+	`, entry.ID, entry.UserID, entry.ProjectID, entry.Date, entry.Hours,
+		entry.Description, entry.Source, entry.HasUserEdits, entry.CreatedAt, entry.UpdatedAt)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Fetch the actual entry (in case it was an update)
+	return s.GetByProjectAndDate(ctx, userID, projectID, date)
+}
+
 // Delete removes a time entry
 func (s *TimeEntryStore) Delete(ctx context.Context, userID, entryID uuid.UUID) error {
 	// Check if invoiced

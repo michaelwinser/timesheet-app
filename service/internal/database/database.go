@@ -153,4 +153,130 @@ var migrations = []migration{
 			CREATE INDEX IF NOT EXISTS idx_time_entries_date ON time_entries(date);
 		`,
 	},
+	{
+		version: 4,
+		sql: `
+			CREATE TABLE IF NOT EXISTS calendar_connections (
+				id UUID PRIMARY KEY,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				provider TEXT NOT NULL DEFAULT 'google',
+				credentials_encrypted BYTEA NOT NULL,
+				last_synced_at TIMESTAMPTZ,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(user_id, provider)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_calendar_connections_user_id ON calendar_connections(user_id);
+		`,
+	},
+	{
+		version: 5,
+		sql: `
+			DO $$ BEGIN
+				CREATE TYPE classification_status AS ENUM ('pending', 'classified', 'skipped');
+			EXCEPTION
+				WHEN duplicate_object THEN null;
+			END $$;
+
+			DO $$ BEGIN
+				CREATE TYPE classification_source AS ENUM ('rule', 'fingerprint', 'manual', 'llm');
+			EXCEPTION
+				WHEN duplicate_object THEN null;
+			END $$;
+
+			CREATE TABLE IF NOT EXISTS calendar_events (
+				id UUID PRIMARY KEY,
+				connection_id UUID NOT NULL REFERENCES calendar_connections(id) ON DELETE CASCADE,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				external_id TEXT NOT NULL,
+				title TEXT NOT NULL,
+				description TEXT,
+				start_time TIMESTAMPTZ NOT NULL,
+				end_time TIMESTAMPTZ NOT NULL,
+				attendees JSONB DEFAULT '[]',
+				is_recurring BOOLEAN NOT NULL DEFAULT false,
+				response_status TEXT,
+				transparency TEXT,
+				is_orphaned BOOLEAN NOT NULL DEFAULT false,
+				is_suppressed BOOLEAN NOT NULL DEFAULT false,
+				classification_status classification_status NOT NULL DEFAULT 'pending',
+				classification_source classification_source,
+				project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(connection_id, external_id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_calendar_events_user_id ON calendar_events(user_id);
+			CREATE INDEX IF NOT EXISTS idx_calendar_events_connection_id ON calendar_events(connection_id);
+			CREATE INDEX IF NOT EXISTS idx_calendar_events_start_time ON calendar_events(start_time);
+			CREATE INDEX IF NOT EXISTS idx_calendar_events_classification ON calendar_events(classification_status);
+		`,
+	},
+	{
+		version: 6,
+		sql: `
+			ALTER TABLE calendar_connections
+			ADD COLUMN IF NOT EXISTS sync_token TEXT;
+		`,
+	},
+	{
+		version: 7,
+		sql: `
+			-- Create calendars table for multi-calendar support
+			CREATE TABLE IF NOT EXISTS calendars (
+				id UUID PRIMARY KEY,
+				connection_id UUID NOT NULL REFERENCES calendar_connections(id) ON DELETE CASCADE,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				external_id TEXT NOT NULL,
+				name TEXT NOT NULL,
+				color TEXT,
+				is_primary BOOLEAN NOT NULL DEFAULT false,
+				is_selected BOOLEAN NOT NULL DEFAULT false,
+				sync_token TEXT,
+				last_synced_at TIMESTAMPTZ,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(connection_id, external_id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_calendars_connection_id ON calendars(connection_id);
+			CREATE INDEX IF NOT EXISTS idx_calendars_user_id ON calendars(user_id);
+
+			-- Add calendar_id to calendar_events (nullable for backward compatibility)
+			ALTER TABLE calendar_events
+			ADD COLUMN IF NOT EXISTS calendar_id UUID REFERENCES calendars(id) ON DELETE CASCADE;
+
+			CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar_id ON calendar_events(calendar_id);
+
+			-- Migrate existing data: create "primary" calendar for each existing connection
+			-- and link existing events to it
+			INSERT INTO calendars (id, connection_id, user_id, external_id, name, is_primary, is_selected, sync_token, last_synced_at, created_at, updated_at)
+			SELECT
+				gen_random_uuid(),
+				cc.id,
+				cc.user_id,
+				'primary',
+				'Primary Calendar',
+				true,
+				true,
+				cc.sync_token,
+				cc.last_synced_at,
+				cc.created_at,
+				cc.updated_at
+			FROM calendar_connections cc
+			WHERE NOT EXISTS (
+				SELECT 1 FROM calendars c WHERE c.connection_id = cc.id AND c.external_id = 'primary'
+			);
+
+			-- Update existing events to reference the primary calendar
+			UPDATE calendar_events ce
+			SET calendar_id = c.id
+			FROM calendars c
+			WHERE ce.connection_id = c.connection_id
+			AND c.external_id = 'primary'
+			AND ce.calendar_id IS NULL;
+		`,
+	},
 }
