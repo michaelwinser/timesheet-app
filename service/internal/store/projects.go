@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -140,7 +141,7 @@ func (s *ProjectStore) Update(ctx context.Context, userID, projectID uuid.UUID, 
 		if setClauses != "" {
 			setClauses += ", "
 		}
-		setClauses += key + " = $" + string(rune('0'+argNum))
+		setClauses += fmt.Sprintf("%s = $%d", key, argNum)
 		args = append(args, value)
 		argNum++
 	}
