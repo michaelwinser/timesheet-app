@@ -20,6 +20,7 @@ help:
 	@echo "Database:"
 	@echo "  make db-up       Start PostgreSQL only"
 	@echo "  make db-reset    Reset database (WARNING: deletes data)"
+	@echo "  make db-clear-classifications  Reset all events to pending"
 	@echo "  make psql        Connect to PostgreSQL shell"
 	@echo ""
 	@echo "Development:"
@@ -83,6 +84,18 @@ db-reset:
 	@echo "Database reset. Starting API to run migrations..."
 	docker compose start api
 	@echo "Done! Database has been reset."
+
+db-clear-classifications:
+	@echo "Clearing all event classifications..."
+	docker compose exec postgres psql -U timesheet -d timesheet_v2 -c "\
+		UPDATE calendar_events SET \
+			classification_status = 'pending', \
+			classification_source = NULL, \
+			classification_confidence = NULL, \
+			needs_review = false, \
+			project_id = NULL, \
+			updated_at = NOW();"
+	@echo "Done! All events reset to pending."
 
 psql:
 	docker compose exec postgres psql -U timesheet -d timesheet_v2

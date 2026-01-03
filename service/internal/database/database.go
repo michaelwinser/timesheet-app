@@ -327,4 +327,14 @@ var migrations = []migration{
 			CREATE INDEX IF NOT EXISTS idx_calendar_events_needs_review ON calendar_events(needs_review) WHERE needs_review = true;
 		`,
 	},
+	{
+		version: 9,
+		sql: `
+			-- Add fingerprint fields to projects for auto-generating classification rules
+			ALTER TABLE projects
+			ADD COLUMN IF NOT EXISTS fingerprint_domains TEXT[] DEFAULT '{}',
+			ADD COLUMN IF NOT EXISTS fingerprint_emails TEXT[] DEFAULT '{}',
+			ADD COLUMN IF NOT EXISTS fingerprint_keywords TEXT[] DEFAULT '{}';
+		`,
+	},
 }

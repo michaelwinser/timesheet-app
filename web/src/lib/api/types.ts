@@ -22,6 +22,9 @@ export interface Project {
 	is_archived: boolean;
 	is_hidden_by_default?: boolean;
 	does_not_accumulate_hours?: boolean;
+	fingerprint_domains?: string[];
+	fingerprint_emails?: string[];
+	fingerprint_keywords?: string[];
 	created_at: string;
 	updated_at?: string;
 }
@@ -33,6 +36,9 @@ export interface ProjectCreate {
 	is_billable?: boolean;
 	is_hidden_by_default?: boolean;
 	does_not_accumulate_hours?: boolean;
+	fingerprint_domains?: string[];
+	fingerprint_emails?: string[];
+	fingerprint_keywords?: string[];
 }
 
 export interface ProjectUpdate {
@@ -43,6 +49,9 @@ export interface ProjectUpdate {
 	is_archived?: boolean;
 	is_hidden_by_default?: boolean;
 	does_not_accumulate_hours?: boolean;
+	fingerprint_domains?: string[];
+	fingerprint_emails?: string[];
+	fingerprint_keywords?: string[];
 }
 
 export interface TimeEntry {

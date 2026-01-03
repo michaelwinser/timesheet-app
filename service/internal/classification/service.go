@@ -11,31 +11,22 @@ import (
 	"github.com/michaelw/timesheet-app/service/internal/store"
 )
 
-// Source represents how an event was classified
-type Source string
-
-const (
-	SourceManual Source = "manual"
-	SourceRule   Source = "rule"
-	SourceLLM    Source = "llm"
-)
-
 // ServiceVote represents a vote with UUIDs for database storage
 type ServiceVote struct {
 	RuleID    *uuid.UUID
-	ProjectID *uuid.UUID
+	TargetID  *uuid.UUID
 	Attended  *bool
 	Weight    float64
-	Source    Source
+	Source    MatchSource
 }
 
 // ClassificationResult represents the result of classifying an event (service layer)
 type ClassificationResult struct {
-	ProjectID   *uuid.UUID
+	TargetID    *uuid.UUID
 	Attended    *bool
 	Confidence  float64
 	NeedsReview bool
-	Source      Source
+	Source      MatchSource
 	Votes       []ServiceVote
 }
 
@@ -57,8 +48,9 @@ func NewService(pool *pgxpool.Pool, ruleStore *store.ClassificationRuleStore, ev
 	}
 }
 
-// ClassifyEvent evaluates all rules against an event and returns the classification result
-func (s *Service) ClassifyEvent(ctx context.Context, userID uuid.UUID, event *store.CalendarEvent) (*ClassificationResult, error) {
+// ClassifyEvent evaluates rules and targets against an event and returns the classification result.
+// Targets represent classification destinations (e.g., projects) with their fingerprint attributes.
+func (s *Service) ClassifyEvent(ctx context.Context, userID uuid.UUID, event *store.CalendarEvent, targets []Target) (*ClassificationResult, error) {
 	// Get all enabled rules for the user
 	storeRules, err := s.ruleStore.List(ctx, userID, false)
 	if err != nil {
@@ -69,14 +61,14 @@ func (s *Service) ClassifyEvent(ctx context.Context, userID uuid.UUID, event *st
 	rules := storeRulesToLibraryRules(storeRules)
 	item := eventToItem(event)
 
-	// Use pure classifier
-	results := Classify(rules, []Item{item}, DefaultConfig())
+	// Use pure classifier with targets
+	results := Classify(rules, targets, []Item{item}, DefaultConfig())
 	if len(results) == 0 {
 		return &ClassificationResult{
-			ProjectID:   nil,
+			TargetID:    nil,
 			Confidence:  0,
 			NeedsReview: false,
-			Source:      SourceRule,
+			Source:      MatchSourceRule,
 			Votes:       nil,
 		}, nil
 	}
@@ -105,7 +97,7 @@ func (s *Service) EvaluateAttendance(ctx context.Context, userID uuid.UUID, even
 			Attended:    &attended,
 			Confidence:  1.0,
 			NeedsReview: false,
-			Source:      SourceRule,
+			Source:      MatchSourceRule,
 			Votes:       nil,
 		}, nil
 	}
@@ -212,8 +204,10 @@ type PreviewStats struct {
 	ManualConflicts int `json:"manual_conflicts"`
 }
 
-// ApplyRules runs classification on pending events
-func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, dryRun bool) (*ApplyResult, error) {
+// ApplyRules runs classification on pending events.
+// Targets represent classification destinations (e.g., projects) with their fingerprint attributes.
+// The caller is responsible for providing targets with appropriate attributes.
+func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Target, startDate, endDate *time.Time, dryRun bool) (*ApplyResult, error) {
 	// Get pending events
 	pendingStatus := store.StatusPending
 	events, err := s.eventStore.List(ctx, userID, startDate, endDate, &pendingStatus, nil)
@@ -239,8 +233,8 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, startDate, e
 		eventMap[item.ID] = event
 	}
 
-	// Use pure classifier
-	results := Classify(rules, items, DefaultConfig())
+	// Use pure classifier with targets
+	results := Classify(rules, targets, items, DefaultConfig())
 
 	applyResult := &ApplyResult{
 		Classified: make([]*ClassifiedEvent, 0),
@@ -258,7 +252,7 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, startDate, e
 			continue
 		}
 
-		projectID, err := uuid.Parse(libResult.TargetID)
+		targetID, err := uuid.Parse(libResult.TargetID)
 		if err != nil {
 			applyResult.Skipped++
 			continue
@@ -266,16 +260,20 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, startDate, e
 
 		classified := &ClassifiedEvent{
 			EventID:     event.ID,
-			ProjectID:   projectID,
+			TargetID:    targetID,
 			Confidence:  libResult.Confidence,
 			NeedsReview: libResult.NeedsReview,
 		}
 		applyResult.Classified = append(applyResult.Classified, classified)
 
 		if !dryRun {
-			// Apply the classification
+			// Map MatchSource to store.ClassificationSource
 			source := store.SourceRule
-			_, err := s.eventStore.Classify(ctx, userID, event.ID, &projectID, false)
+			if libResult.MatchSource == MatchSourceFingerprint {
+				source = store.SourceFingerprint
+			}
+
+			_, err := s.eventStore.Classify(ctx, userID, event.ID, &targetID, false)
 			if err != nil {
 				continue
 			}
@@ -306,7 +304,7 @@ type ApplyResult struct {
 // ClassifiedEvent represents an event that was classified
 type ClassifiedEvent struct {
 	EventID     uuid.UUID `json:"event_id"`
-	ProjectID   uuid.UUID `json:"project_id"`
+	TargetID    uuid.UUID `json:"target_id"`
 	Confidence  float64   `json:"confidence"`
 	NeedsReview bool      `json:"needs_review"`
 }
@@ -360,32 +358,32 @@ func storeRulesToAttendanceRules(storeRules []*store.ClassificationRule) []Rule 
 
 // eventToItem converts a CalendarEvent to a library Item
 func eventToItem(event *store.CalendarEvent) Item {
-	props := make(map[string]any)
+	attrs := make(map[string]any)
 
-	props["title"] = event.Title
-	props["start_time"] = event.StartTime
-	props["end_time"] = event.EndTime
-	props["is_recurring"] = event.IsRecurring
+	attrs["title"] = event.Title
+	attrs["start_time"] = event.StartTime
+	attrs["end_time"] = event.EndTime
+	attrs["is_recurring"] = event.IsRecurring
 
 	if event.Description != nil {
-		props["description"] = *event.Description
+		attrs["description"] = *event.Description
 	}
 
 	if event.ResponseStatus != nil {
-		props["response_status"] = *event.ResponseStatus
+		attrs["response_status"] = *event.ResponseStatus
 	}
 
 	if event.Transparency != nil {
-		props["transparency"] = *event.Transparency
+		attrs["transparency"] = *event.Transparency
 	}
 
 	if event.Attendees != nil {
-		props["attendees"] = event.Attendees
+		attrs["attendees"] = event.Attendees
 	}
 
 	return Item{
 		ID:         event.ID.String(),
-		Properties: props,
+		Attributes: attrs,
 	}
 }
 
@@ -400,30 +398,36 @@ func libraryResultToServiceResult(result Result, storeRules []*store.Classificat
 	// Convert votes
 	votes := make([]ServiceVote, 0, len(result.Votes))
 	for _, v := range result.Votes {
-		storeRule := ruleMap[v.RuleID]
-		if storeRule != nil {
-			votes = append(votes, ServiceVote{
-				RuleID:    &storeRule.ID,
-				ProjectID: storeRule.ProjectID,
-				Weight:    v.Weight,
-				Source:    SourceRule,
-			})
+		vote := ServiceVote{
+			Weight: v.Weight,
+			Source: v.Source,
 		}
+		// For user-defined rules, include the rule ID
+		if storeRule := ruleMap[v.RuleID]; storeRule != nil {
+			vote.RuleID = &storeRule.ID
+			vote.TargetID = storeRule.ProjectID
+		} else {
+			// For fingerprint-generated rules, parse target ID
+			if id, err := uuid.Parse(v.TargetID); err == nil {
+				vote.TargetID = &id
+			}
+		}
+		votes = append(votes, vote)
 	}
 
-	// Parse project ID
-	var projectID *uuid.UUID
+	// Parse target ID
+	var targetID *uuid.UUID
 	if result.TargetID != "" {
 		if id, err := uuid.Parse(result.TargetID); err == nil {
-			projectID = &id
+			targetID = &id
 		}
 	}
 
 	return &ClassificationResult{
-		ProjectID:   projectID,
+		TargetID:    targetID,
 		Confidence:  result.Confidence,
 		NeedsReview: result.NeedsReview,
-		Source:      SourceRule,
+		Source:      result.MatchSource,
 		Votes:       votes,
 	}
 }
@@ -445,7 +449,7 @@ func attendanceResultToServiceResult(result AttendanceResult, storeRules []*stor
 				RuleID:   &storeRule.ID,
 				Attended: storeRule.Attended,
 				Weight:   v.Weight,
-				Source:   SourceRule,
+				Source:   v.Source,
 			})
 		}
 	}
@@ -455,7 +459,7 @@ func attendanceResultToServiceResult(result AttendanceResult, storeRules []*stor
 		Attended:    &attended,
 		Confidence:  result.Confidence,
 		NeedsReview: result.NeedsReview,
-		Source:      SourceRule,
+		Source:      MatchSourceRule,
 		Votes:       votes,
 	}
 }

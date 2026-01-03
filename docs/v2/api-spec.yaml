@@ -1160,6 +1160,21 @@ components:
         does_not_accumulate_hours:
           type: boolean
           default: false
+        fingerprint_domains:
+          type: array
+          items:
+            type: string
+          description: Domain patterns for auto-classification (e.g., "acme.com")
+        fingerprint_emails:
+          type: array
+          items:
+            type: string
+          description: Email addresses for auto-classification
+        fingerprint_keywords:
+          type: array
+          items:
+            type: string
+          description: Keywords to match in event titles/descriptions
         created_at:
           type: string
           format: date-time
@@ -1190,6 +1205,18 @@ components:
         does_not_accumulate_hours:
           type: boolean
           default: false
+        fingerprint_domains:
+          type: array
+          items:
+            type: string
+        fingerprint_emails:
+          type: array
+          items:
+            type: string
+        fingerprint_keywords:
+          type: array
+          items:
+            type: string
 
     ProjectUpdate:
       type: object
@@ -1211,6 +1238,18 @@ components:
           type: boolean
         does_not_accumulate_hours:
           type: boolean
+        fingerprint_domains:
+          type: array
+          items:
+            type: string
+        fingerprint_emails:
+          type: array
+          items:
+            type: string
+        fingerprint_keywords:
+          type: array
+          items:
+            type: string
 
     # Time Entry schemas
     TimeEntry:

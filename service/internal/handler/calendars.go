@@ -23,6 +23,7 @@ type CalendarHandler struct {
 	calendars         *store.CalendarStore
 	events            *store.CalendarEventStore
 	entries           *store.TimeEntryStore
+	projects          *store.ProjectStore
 	google            *google.CalendarService
 	classificationSvc *classification.Service
 	stateMu           sync.RWMutex
@@ -35,6 +36,7 @@ func NewCalendarHandler(
 	calendars *store.CalendarStore,
 	events *store.CalendarEventStore,
 	entries *store.TimeEntryStore,
+	projects *store.ProjectStore,
 	googleSvc *google.CalendarService,
 	classificationSvc *classification.Service,
 ) *CalendarHandler {
@@ -43,6 +45,7 @@ func NewCalendarHandler(
 		calendars:         calendars,
 		events:            events,
 		entries:           entries,
+		projects:          projects,
 		google:            googleSvc,
 		classificationSvc: classificationSvc,
 		stateStore:        make(map[string]uuid.UUID),
@@ -288,12 +291,19 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 
 	// Auto-apply classification rules to newly synced events
 	if h.classificationSvc != nil {
-		result, err := h.classificationSvc.ApplyRules(ctx, userID, nil, nil, false)
+		// Fetch projects and convert to targets for classification
+		projects, err := h.projects.List(ctx, userID, true) // Include archived
 		if err != nil {
-			log.Printf("Failed to apply classification rules after sync: %v", err)
-			// Don't fail the sync, just log the error
-		} else if len(result.Classified) > 0 {
-			log.Printf("Auto-classified %d events after sync", len(result.Classified))
+			log.Printf("Failed to fetch projects for classification: %v", err)
+		} else {
+			targets := projectsToTargets(projects)
+			result, err := h.classificationSvc.ApplyRules(ctx, userID, targets, nil, nil, false)
+			if err != nil {
+				log.Printf("Failed to apply classification rules after sync: %v", err)
+				// Don't fail the sync, just log the error
+			} else if len(result.Classified) > 0 {
+				log.Printf("Auto-classified %d events after sync", len(result.Classified))
+			}
 		}
 	}
 

@@ -249,38 +249,53 @@ type PreviewStats struct {
 
 // Project defines model for Project.
 type Project struct {
-	Color                  string             `json:"color"`
-	CreatedAt              time.Time          `json:"created_at"`
-	DoesNotAccumulateHours *bool              `json:"does_not_accumulate_hours,omitempty"`
-	Id                     openapi_types.UUID `json:"id"`
-	IsArchived             bool               `json:"is_archived"`
-	IsBillable             bool               `json:"is_billable"`
-	IsHiddenByDefault      *bool              `json:"is_hidden_by_default,omitempty"`
-	Name                   string             `json:"name"`
-	ShortCode              *string            `json:"short_code,omitempty"`
-	UpdatedAt              *time.Time         `json:"updated_at,omitempty"`
-	UserId                 openapi_types.UUID `json:"user_id"`
+	Color                  string    `json:"color"`
+	CreatedAt              time.Time `json:"created_at"`
+	DoesNotAccumulateHours *bool     `json:"does_not_accumulate_hours,omitempty"`
+
+	// FingerprintDomains Domain patterns for auto-classification (e.g., "acme.com")
+	FingerprintDomains *[]string `json:"fingerprint_domains,omitempty"`
+
+	// FingerprintEmails Email addresses for auto-classification
+	FingerprintEmails *[]string `json:"fingerprint_emails,omitempty"`
+
+	// FingerprintKeywords Keywords to match in event titles/descriptions
+	FingerprintKeywords *[]string          `json:"fingerprint_keywords,omitempty"`
+	Id                  openapi_types.UUID `json:"id"`
+	IsArchived          bool               `json:"is_archived"`
+	IsBillable          bool               `json:"is_billable"`
+	IsHiddenByDefault   *bool              `json:"is_hidden_by_default,omitempty"`
+	Name                string             `json:"name"`
+	ShortCode           *string            `json:"short_code,omitempty"`
+	UpdatedAt           *time.Time         `json:"updated_at,omitempty"`
+	UserId              openapi_types.UUID `json:"user_id"`
 }
 
 // ProjectCreate defines model for ProjectCreate.
 type ProjectCreate struct {
-	Color                  *string `json:"color,omitempty"`
-	DoesNotAccumulateHours *bool   `json:"does_not_accumulate_hours,omitempty"`
-	IsBillable             *bool   `json:"is_billable,omitempty"`
-	IsHiddenByDefault      *bool   `json:"is_hidden_by_default,omitempty"`
-	Name                   string  `json:"name"`
-	ShortCode              *string `json:"short_code,omitempty"`
+	Color                  *string   `json:"color,omitempty"`
+	DoesNotAccumulateHours *bool     `json:"does_not_accumulate_hours,omitempty"`
+	FingerprintDomains     *[]string `json:"fingerprint_domains,omitempty"`
+	FingerprintEmails      *[]string `json:"fingerprint_emails,omitempty"`
+	FingerprintKeywords    *[]string `json:"fingerprint_keywords,omitempty"`
+	IsBillable             *bool     `json:"is_billable,omitempty"`
+	IsHiddenByDefault      *bool     `json:"is_hidden_by_default,omitempty"`
+	Name                   string    `json:"name"`
+	ShortCode              *string   `json:"short_code,omitempty"`
 }
 
 // ProjectUpdate defines model for ProjectUpdate.
 type ProjectUpdate struct {
-	Color                  *string `json:"color,omitempty"`
-	DoesNotAccumulateHours *bool   `json:"does_not_accumulate_hours,omitempty"`
-	IsArchived             *bool   `json:"is_archived,omitempty"`
-	IsBillable             *bool   `json:"is_billable,omitempty"`
-	IsHiddenByDefault      *bool   `json:"is_hidden_by_default,omitempty"`
-	Name                   *string `json:"name,omitempty"`
-	ShortCode              *string `json:"short_code,omitempty"`
+	Color                  *string   `json:"color,omitempty"`
+	DoesNotAccumulateHours *bool     `json:"does_not_accumulate_hours,omitempty"`
+	FingerprintDomains     *[]string `json:"fingerprint_domains,omitempty"`
+	FingerprintEmails      *[]string `json:"fingerprint_emails,omitempty"`
+	FingerprintKeywords    *[]string `json:"fingerprint_keywords,omitempty"`
+	IsArchived             *bool     `json:"is_archived,omitempty"`
+	IsBillable             *bool     `json:"is_billable,omitempty"`
+	IsHiddenByDefault      *bool     `json:"is_hidden_by_default,omitempty"`
+	Name                   *string   `json:"name,omitempty"`
+	ShortCode              *string   `json:"short_code,omitempty"`
 }
 
 // RuleConflict defines model for RuleConflict.

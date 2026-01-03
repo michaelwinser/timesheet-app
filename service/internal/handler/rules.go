@@ -14,19 +14,44 @@ import (
 
 // RulesHandler implements the classification rules endpoints
 type RulesHandler struct {
-	rules              *store.ClassificationRuleStore
-	classificationSvc  *classification.Service
+	rules             *store.ClassificationRuleStore
+	projects          *store.ProjectStore
+	classificationSvc *classification.Service
 }
 
 // NewRulesHandler creates a new rules handler
 func NewRulesHandler(
 	rules *store.ClassificationRuleStore,
+	projects *store.ProjectStore,
 	classificationSvc *classification.Service,
 ) *RulesHandler {
 	return &RulesHandler{
 		rules:             rules,
+		projects:          projects,
 		classificationSvc: classificationSvc,
 	}
+}
+
+// projectsToTargets converts store projects to classification targets
+func projectsToTargets(projects []*store.Project) []classification.Target {
+	targets := make([]classification.Target, len(projects))
+	for i, p := range projects {
+		attrs := make(map[string]any)
+		if len(p.FingerprintDomains) > 0 {
+			attrs["domains"] = p.FingerprintDomains
+		}
+		if len(p.FingerprintEmails) > 0 {
+			attrs["emails"] = p.FingerprintEmails
+		}
+		if len(p.FingerprintKeywords) > 0 {
+			attrs["keywords"] = p.FingerprintKeywords
+		}
+		targets[i] = classification.Target{
+			ID:         p.ID.String(),
+			Attributes: attrs,
+		}
+	}
+	return targets
 }
 
 // ListRules returns all classification rules for the authenticated user
@@ -348,7 +373,14 @@ func (h *RulesHandler) ApplyRules(ctx context.Context, req api.ApplyRulesRequest
 		dryRun = *req.Body.DryRun
 	}
 
-	result, err := h.classificationSvc.ApplyRules(ctx, userID, startDate, endDate, dryRun)
+	// Fetch projects and convert to targets for classification
+	projects, err := h.projects.List(ctx, userID, true) // Include archived
+	if err != nil {
+		return nil, err
+	}
+	targets := projectsToTargets(projects)
+
+	result, err := h.classificationSvc.ApplyRules(ctx, userID, targets, startDate, endDate, dryRun)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +390,7 @@ func (h *RulesHandler) ApplyRules(ctx context.Context, req api.ApplyRulesRequest
 	for i, c := range result.Classified {
 		classified[i] = api.ClassifiedEvent{
 			EventId:     c.EventID,
-			ProjectId:   c.ProjectID,
+			ProjectId:   c.TargetID,
 			Confidence:  float32(c.Confidence),
 			NeedsReview: c.NeedsReview,
 		}

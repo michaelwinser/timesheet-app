@@ -154,6 +154,15 @@ func (h *ProjectHandler) UpdateProject(ctx context.Context, req api.UpdateProjec
 	if req.Body.DoesNotAccumulateHours != nil {
 		updates["does_not_accumulate_hours"] = *req.Body.DoesNotAccumulateHours
 	}
+	if req.Body.FingerprintDomains != nil {
+		updates["fingerprint_domains"] = *req.Body.FingerprintDomains
+	}
+	if req.Body.FingerprintEmails != nil {
+		updates["fingerprint_emails"] = *req.Body.FingerprintEmails
+	}
+	if req.Body.FingerprintKeywords != nil {
+		updates["fingerprint_keywords"] = *req.Body.FingerprintKeywords
+	}
 
 	project, err := h.projects.Update(ctx, userID, req.Id, updates)
 	if err != nil {
@@ -213,6 +222,15 @@ func projectToAPI(p *store.Project) api.Project {
 		IsHiddenByDefault:      &p.IsHiddenByDefault,
 		DoesNotAccumulateHours: &p.DoesNotAccumulateHours,
 		UpdatedAt:              &p.UpdatedAt,
+	}
+	if len(p.FingerprintDomains) > 0 {
+		proj.FingerprintDomains = &p.FingerprintDomains
+	}
+	if len(p.FingerprintEmails) > 0 {
+		proj.FingerprintEmails = &p.FingerprintEmails
+	}
+	if len(p.FingerprintKeywords) > 0 {
+		proj.FingerprintKeywords = &p.FingerprintKeywords
 	}
 	return proj
 }

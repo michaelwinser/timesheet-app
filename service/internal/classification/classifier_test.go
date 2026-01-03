@@ -18,19 +18,19 @@ func TestClassify_SingleRule(t *testing.T) {
 	items := []Item{
 		{
 			ID: "event-1",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title": "Daily Standup",
 			},
 		},
 		{
 			ID: "event-2",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title": "Lunch meeting",
 			},
 		},
 	}
 
-	results := Classify(rules, items, DefaultConfig())
+	results := Classify(rules, nil, items, DefaultConfig())
 
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results, got %d", len(results))
@@ -81,14 +81,14 @@ func TestClassify_MultipleRulesScoring(t *testing.T) {
 	items := []Item{
 		{
 			ID: "event-1",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title":     "Meeting with Acme",
 				"attendees": []string{"bob@acme.com"},
 			},
 		},
 	}
 
-	results := Classify(rules, items, DefaultConfig())
+	results := Classify(rules, nil, items, DefaultConfig())
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -131,13 +131,13 @@ func TestClassify_ConflictingRules(t *testing.T) {
 	items := []Item{
 		{
 			ID: "event-1",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title": "Weekly Sync",
 			},
 		},
 	}
 
-	results := Classify(rules, items, DefaultConfig())
+	results := Classify(rules, nil, items, DefaultConfig())
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -192,13 +192,13 @@ func TestClassify_BelowConfidenceFloor(t *testing.T) {
 	items := []Item{
 		{
 			ID: "event-1",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title": "Weekly Sync",
 			},
 		},
 	}
 
-	results := Classify(rules, items, config)
+	results := Classify(rules, nil, items, config)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -234,13 +234,13 @@ func TestClassify_AboveConfidenceCeiling(t *testing.T) {
 	items := []Item{
 		{
 			ID: "event-1",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title": "Daily Standup",
 			},
 		},
 	}
 
-	results := Classify(rules, items, config)
+	results := Classify(rules, nil, items, config)
 
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
@@ -272,14 +272,14 @@ func TestClassifyAttendance_DNA(t *testing.T) {
 	items := []Item{
 		{
 			ID: "event-1",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title":           "Meeting I declined",
 				"response_status": "declined",
 			},
 		},
 		{
 			ID: "event-2",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title":           "Meeting I accepted",
 				"response_status": "accepted",
 			},
@@ -307,19 +307,19 @@ func TestPreviewRules(t *testing.T) {
 	items := []Item{
 		{
 			ID: "event-1",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title": "Daily Standup",
 			},
 		},
 		{
 			ID: "event-2",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title": "Lunch meeting",
 			},
 		},
 		{
 			ID: "event-3",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title": "Team Standup",
 			},
 		},
@@ -355,7 +355,7 @@ func TestPreviewRules_InvalidQuery(t *testing.T) {
 	items := []Item{
 		{
 			ID: "event-1",
-			Properties: map[string]any{
+			Attributes: map[string]any{
 				"title": "Test",
 			},
 		},
@@ -367,11 +367,11 @@ func TestPreviewRules_InvalidQuery(t *testing.T) {
 	}
 }
 
-func TestItemToProperties_AllFields(t *testing.T) {
+func TestItemToAttributes_AllFields(t *testing.T) {
 	now := time.Now()
 	item := Item{
 		ID: "test-event",
-		Properties: map[string]any{
+		Attributes: map[string]any{
 			"title":           "Test Meeting",
 			"description":     "A test description",
 			"attendees":       []string{"alice@example.com", "bob@example.com"},
