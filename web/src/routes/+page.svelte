@@ -4,14 +4,14 @@
 	import { goto } from '$app/navigation';
 	import AppShell from '$lib/components/AppShell.svelte';
 	import { Button, Modal, Input } from '$lib/components/primitives';
-	import { ProjectChip, TimeEntryCard, CalendarEventCard, TimeGrid } from '$lib/components/widgets';
+	import { ProjectChip, TimeEntryCard, CalendarEventCard, TimeGrid, EventPopup } from '$lib/components/widgets';
 	import { api } from '$lib/api/client';
 	import type { Project, TimeEntry, CalendarEvent, CalendarConnection } from '$lib/api/types';
 
-	// View mode: 'day' or 'week'
-	type ViewMode = 'day' | 'week';
-	// Display style within the view
-	type DisplayStyle = 'grid' | 'list';
+	// Scope: how many days to show
+	type ScopeMode = 'day' | 'week' | 'full-week';
+	// Display: how to render events
+	type DisplayMode = 'calendar' | 'list';
 
 	// State
 	let projects = $state<Project[]>([]);
@@ -19,11 +19,17 @@
 	let calendarEvents = $state<CalendarEvent[]>([]);
 	let loading = $state(true);
 	let currentDate = $state(getDateFromUrl());
-	let viewMode = $state<ViewMode>(getViewModeFromUrl());
-	let displayStyle = $state<DisplayStyle>('grid');
+	let scopeMode = $state<ScopeMode>(getScopeModeFromUrl());
+	let displayMode = $state<DisplayMode>(getDisplayModeFromUrl());
 	let showClassificationPanel = $state(true);
 	let classifyingId = $state<string | null>(null);
 	let syncing = $state(false);
+
+	// Hover popup state
+	let hoveredEvent = $state<CalendarEvent | null>(null);
+	let hoveredElement = $state<HTMLElement | null>(null);
+	let hoverShowTimeout: ReturnType<typeof setTimeout>;
+	let hoverHideTimeout: ReturnType<typeof setTimeout>;
 
 	// Project visibility filtering
 	let visibleProjectIds = $state<Set<string>>(new Set());
@@ -44,24 +50,43 @@
 		return getToday();
 	}
 
-	// Get view mode from URL or default to 'week'
-	function getViewModeFromUrl(): ViewMode {
+	// Get scope mode from URL or default to 'week'
+	function getScopeModeFromUrl(): ScopeMode {
 		if (typeof window !== 'undefined') {
 			const params = new URLSearchParams(window.location.search);
-			const viewParam = params.get('view');
-			if (viewParam === 'day' || viewParam === 'week') {
-				return viewParam;
+			const scopeParam = params.get('scope');
+			if (scopeParam === 'day' || scopeParam === 'week' || scopeParam === 'full-week') {
+				return scopeParam;
 			}
+			// Legacy support: map old 'view' param
+			const viewParam = params.get('view');
+			if (viewParam === 'day') return 'day';
+			if (viewParam === 'week') return 'week';
 		}
 		return 'week';
 	}
 
-	// Update URL when date or view mode changes
-	function updateUrl(date: Date, view: ViewMode) {
+	// Get display mode from URL or default to 'calendar'
+	function getDisplayModeFromUrl(): DisplayMode {
+		if (typeof window !== 'undefined') {
+			const params = new URLSearchParams(window.location.search);
+			const displayParam = params.get('display');
+			if (displayParam === 'calendar' || displayParam === 'list') {
+				return displayParam;
+			}
+		}
+		return 'calendar';
+	}
+
+	// Update URL when date or modes change
+	function updateUrl(date: Date, scope: ScopeMode, display: DisplayMode) {
 		const dateStr = formatDate(date);
 		const url = new URL(window.location.href);
 		url.searchParams.set('date', dateStr);
-		url.searchParams.set('view', view);
+		url.searchParams.set('scope', scope);
+		url.searchParams.set('display', display);
+		// Clean up legacy param
+		url.searchParams.delete('view');
 		goto(url.pathname + url.search, { replaceState: true, keepFocus: true });
 	}
 
@@ -121,23 +146,37 @@
 		return `${startDate.toLocaleTimeString([], options)} - ${endDate.toLocaleTimeString([], options)}`;
 	}
 
-	// Derived date range based on view mode
+	// Derived date range based on scope mode
 	const weekStart = $derived(getWeekStart(currentDate));
 	const weekDays = $derived(getWeekDays(weekStart));
+	const weekdaysOnly = $derived(weekDays.slice(0, 5)); // Mon-Fri
 
-	// The visible days depend on the view mode
-	const visibleDays = $derived(viewMode === 'day' ? [currentDate] : weekDays);
+	// The visible days depend on the scope mode
+	const visibleDays = $derived.by(() => {
+		if (scopeMode === 'day') return [currentDate];
+		if (scopeMode === 'week') return weekdaysOnly;
+		return weekDays; // full-week
+	});
 
-	// Date range for API calls (end date is inclusive, so we use the same day for both day and week views)
-	const startDate = $derived(viewMode === 'day' ? currentDate : weekStart);
+	// Date range for API calls - always fetch full week to detect weekend events
+	const startDate = $derived(scopeMode === 'day' ? currentDate : weekStart);
 	const endDate = $derived.by(() => {
-		if (viewMode === 'day') {
-			// For day mode, end date is the same day (API should treat dates as inclusive)
+		if (scopeMode === 'day') {
 			return currentDate;
 		} else {
-			// For week mode, end date is 6 days after start (Sunday)
+			// Always fetch through Sunday for weekend detection
 			return new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
 		}
+	});
+
+	// Weekend events (for warning when in week mode)
+	const weekendEvents = $derived.by(() => {
+		if (scopeMode !== 'week') return [];
+		return calendarEvents.filter(e => {
+			const eventDate = new Date(e.start_time);
+			const day = eventDate.getDay();
+			return day === 0 || day === 6; // Sunday or Saturday
+		});
 	});
 
 	// Group entries by date (filtered by visible projects)
@@ -168,6 +207,33 @@
 			return false;
 		})
 	);
+
+	// Group filtered events by hour for list view
+	const eventsByHour = $derived.by(() => {
+		// First sort by start time
+		const sorted = [...filteredCalendarEvents].sort(
+			(a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
+		);
+
+		// Group by hour
+		const groups: { hour: number; label: string; events: CalendarEvent[] }[] = [];
+		let currentHour = -1;
+
+		for (const event of sorted) {
+			const startHour = new Date(event.start_time).getHours();
+			if (startHour !== currentHour) {
+				currentHour = startHour;
+				const label = startHour === 0 ? '12 AM' :
+					startHour === 12 ? '12 PM' :
+					startHour > 12 ? `${startHour - 12} PM` :
+					`${startHour} AM`;
+				groups.push({ hour: startHour, label, events: [] });
+			}
+			groups[groups.length - 1].events.push(event);
+		}
+
+		return groups;
+	});
 
 	// Group events by date (filtered)
 	const eventsByDate = $derived.by(() => {
@@ -326,29 +392,102 @@
 		}
 	}
 
+	// Handle hover events for popup
+	function handleEventHover(event: CalendarEvent | null, element: HTMLElement | null) {
+		clearTimeout(hoverShowTimeout);
+		clearTimeout(hoverHideTimeout);
+
+		if (event && element) {
+			// Show popup after short delay
+			hoverShowTimeout = setTimeout(() => {
+				hoveredEvent = event;
+				hoveredElement = element;
+			}, 150);
+		} else {
+			// Hide popup after short delay (allows moving to popup)
+			hoverHideTimeout = setTimeout(() => {
+				hoveredEvent = null;
+				hoveredElement = null;
+			}, 100);
+		}
+	}
+
+	function handlePopupClose() {
+		hoveredEvent = null;
+		hoveredElement = null;
+	}
+
+	function handlePopupClassify(projectId: string) {
+		if (hoveredEvent) {
+			handleClassify(hoveredEvent.id, projectId);
+		}
+	}
+
+	function handlePopupSkip() {
+		if (hoveredEvent) {
+			handleSkip(hoveredEvent.id);
+		}
+	}
+
 	function navigatePrevious() {
 		const d = new Date(currentDate);
-		d.setDate(d.getDate() - (viewMode === 'day' ? 1 : 7));
+		d.setDate(d.getDate() - (scopeMode === 'day' ? 1 : 7));
 		currentDate = d;
-		updateUrl(d, viewMode);
+		updateUrl(d, scopeMode, displayMode);
 	}
 
 	function navigateNext() {
 		const d = new Date(currentDate);
-		d.setDate(d.getDate() + (viewMode === 'day' ? 1 : 7));
+		d.setDate(d.getDate() + (scopeMode === 'day' ? 1 : 7));
 		currentDate = d;
-		updateUrl(d, viewMode);
+		updateUrl(d, scopeMode, displayMode);
 	}
 
 	function goToToday() {
 		const today = getToday();
 		currentDate = today;
-		updateUrl(today, viewMode);
+		updateUrl(today, scopeMode, displayMode);
 	}
 
-	function setViewMode(mode: ViewMode) {
-		viewMode = mode;
-		updateUrl(currentDate, mode);
+	function setScopeMode(mode: ScopeMode) {
+		scopeMode = mode;
+		updateUrl(currentDate, mode, displayMode);
+	}
+
+	function setDisplayMode(mode: DisplayMode) {
+		displayMode = mode;
+		updateUrl(currentDate, scopeMode, mode);
+	}
+
+	// Keyboard shortcuts
+	function handleKeydown(event: KeyboardEvent) {
+		// Ignore if typing in an input field
+		const target = event.target as HTMLElement;
+		if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
+			return;
+		}
+		// Ignore if modifier keys are pressed
+		if (event.metaKey || event.ctrlKey || event.altKey) {
+			return;
+		}
+
+		switch (event.key.toLowerCase()) {
+			case 'd':
+				setScopeMode('day');
+				break;
+			case 'w':
+				setScopeMode('week');
+				break;
+			case 'f':
+				setScopeMode('full-week');
+				break;
+			case 'c':
+				setDisplayMode('calendar');
+				break;
+			case 'a':
+				setDisplayMode('list');
+				break;
+		}
 	}
 
 	function openAddModal(date: Date) {
@@ -434,7 +573,8 @@
 	// Handle URL changes (browser back/forward)
 	$effect(() => {
 		const dateParam = $page.url.searchParams.get('date');
-		const viewParam = $page.url.searchParams.get('view');
+		const scopeParam = $page.url.searchParams.get('scope');
+		const displayParam = $page.url.searchParams.get('display');
 
 		if (dateParam) {
 			const parsed = new Date(dateParam + 'T00:00:00');
@@ -443,9 +583,15 @@
 			}
 		}
 
-		if (viewParam === 'day' || viewParam === 'week') {
-			if (viewParam !== viewMode) {
-				viewMode = viewParam;
+		if (scopeParam === 'day' || scopeParam === 'week' || scopeParam === 'full-week') {
+			if (scopeParam !== scopeMode) {
+				scopeMode = scopeParam;
+			}
+		}
+
+		if (displayParam === 'calendar' || displayParam === 'list') {
+			if (displayParam !== displayMode) {
+				displayMode = displayParam;
 			}
 		}
 	});
@@ -454,11 +600,15 @@
 	onMount(() => {
 		// Set URL if not already set
 		if (!window.location.search.includes('date=')) {
-			updateUrl(currentDate, viewMode);
+			updateUrl(currentDate, scopeMode, displayMode);
 		}
 		loadData();
 		// Trigger auto-sync for stale connections (runs in background)
 		autoSyncStaleConnections();
+
+		// Add keyboard listener
+		window.addEventListener('keydown', handleKeydown);
+		return () => window.removeEventListener('keydown', handleKeydown);
 	});
 
 	// Reload when date range changes
@@ -471,7 +621,7 @@
 </script>
 
 <svelte:head>
-	<title>{viewMode === 'day' ? 'Day' : 'Week'} View - Timesheet</title>
+	<title>{scopeMode === 'day' ? 'Day' : scopeMode === 'week' ? 'Week' : 'Full Week'} View - Timesheet</title>
 </svelte:head>
 
 <AppShell wide>
@@ -484,8 +634,11 @@
 				</svg>
 			</Button>
 			<h1 class="text-lg font-semibold text-gray-900">
-				{#if viewMode === 'day'}
+				{#if scopeMode === 'day'}
 					{formatFullDayLabel(currentDate)}
+				{:else if scopeMode === 'week'}
+					{weekStart.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} -
+					{weekdaysOnly[4].toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
 				{:else}
 					{weekStart.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} -
 					{endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
@@ -498,23 +651,47 @@
 			</Button>
 		</div>
 		<div class="flex items-center gap-3">
-			<!-- View mode toggle -->
+			<!-- Scope mode toggle -->
 			<div class="flex bg-gray-100 rounded-lg p-0.5">
 				<button
 					type="button"
-					class="px-3 py-1 text-sm rounded-md transition-colors {viewMode === 'day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
-					onclick={() => setViewMode('day')}
+					class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'day' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
+					onclick={() => setScopeMode('day')}
+					title="Day (D)"
 				>
 					Day
 				</button>
 				<button
 					type="button"
-					class="px-3 py-1 text-sm rounded-md transition-colors {viewMode === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
-					onclick={() => setViewMode('week')}
+					class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
+					onclick={() => setScopeMode('week')}
+					title="Week Mon-Fri (W)"
 				>
 					Week
 				</button>
+				<button
+					type="button"
+					class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'full-week' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
+					onclick={() => setScopeMode('full-week')}
+					title="Full Week Mon-Sun (F)"
+				>
+					Full
+				</button>
 			</div>
+			<!-- Weekend warning -->
+			{#if weekendEvents.length > 0}
+				<button
+					type="button"
+					class="flex items-center gap-1 px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded-md hover:bg-amber-200 transition-colors"
+					onclick={() => setScopeMode('full-week')}
+					title="Click to show full week"
+				>
+					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+					</svg>
+					{weekendEvents.length} weekend
+				</button>
+			{/if}
 			<Button variant="secondary" size="sm" onclick={goToToday}>
 				Today
 			</Button>
@@ -554,19 +731,21 @@
 				</h2>
 			</div>
 			<div class="flex items-center gap-2">
-				<!-- Display style toggle -->
+				<!-- Display mode toggle -->
 				<div class="flex bg-gray-100 rounded-lg p-0.5">
 					<button
 						type="button"
-						class="px-2 py-1 text-xs rounded-md transition-colors {displayStyle === 'grid' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
-						onclick={() => displayStyle = 'grid'}
+						class="px-2 py-1 text-xs rounded-md transition-colors {displayMode === 'calendar' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
+						onclick={() => setDisplayMode('calendar')}
+						title="Calendar view (C)"
 					>
-						Grid
+						Calendar
 					</button>
 					<button
 						type="button"
-						class="px-2 py-1 text-xs rounded-md transition-colors {displayStyle === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
-						onclick={() => displayStyle = 'list'}
+						class="px-2 py-1 text-xs rounded-md transition-colors {displayMode === 'list' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'}"
+						onclick={() => setDisplayMode('list')}
+						title="List view (A)"
 					>
 						List
 					</button>
@@ -582,9 +761,9 @@
 		</div>
 
 		{#if showClassificationPanel}
-			{#if displayStyle === 'grid'}
+			{#if displayMode === 'calendar'}
 				<!-- Time Grid View -->
-				{#if viewMode === 'day'}
+				{#if scopeMode === 'day'}
 					<!-- Single day - full width time grid -->
 					{@const dateStr = formatDate(currentDate)}
 					{@const dayEvents = eventsByDate[dateStr] || []}
@@ -595,6 +774,7 @@
 							date={currentDate}
 							onclassify={(eventId, projectId) => handleClassify(eventId, projectId)}
 							onskip={(eventId) => handleSkip(eventId)}
+							onhover={handleEventHover}
 						/>
 					</div>
 				{:else}
@@ -616,6 +796,7 @@
 										date={day}
 										onclassify={(eventId, projectId) => handleClassify(eventId, projectId)}
 										onskip={(eventId) => handleSkip(eventId)}
+										onhover={handleEventHover}
 									/>
 								</div>
 							{/each}
@@ -623,22 +804,35 @@
 					</div>
 				{/if}
 			{:else}
-				<!-- List View -->
-				{#if filteredCalendarEvents.length > 0}
-					<div class="space-y-2 max-h-[32rem] overflow-y-auto">
-						{#each filteredCalendarEvents as event (event.id)}
-							<div class={classifyingId === event.id ? 'opacity-50 pointer-events-none' : ''}>
-								<CalendarEventCard
-									{event}
-									{projects}
-									onclassify={(projectId) => handleClassify(event.id, projectId)}
-									onskip={() => handleSkip(event.id)}
-								/>
+				<!-- List View with hour groups -->
+				{#if eventsByHour.length > 0}
+					<div class="space-y-4 max-h-[32rem] overflow-y-auto">
+						{#each eventsByHour as group}
+							<div>
+								<!-- Hour header -->
+								<div class="flex items-center gap-2 mb-2">
+									<span class="text-xs font-medium text-gray-500 uppercase tracking-wide">{group.label}</span>
+									<div class="flex-1 border-t border-gray-200"></div>
+									<span class="text-xs text-gray-400">{group.events.length} event{group.events.length !== 1 ? 's' : ''}</span>
+								</div>
+								<!-- Events in this hour -->
+								<div class="space-y-2 pl-2">
+									{#each group.events as event (event.id)}
+										<div class={classifyingId === event.id ? 'opacity-50 pointer-events-none' : ''}>
+											<CalendarEventCard
+												{event}
+												{projects}
+												onclassify={(projectId) => handleClassify(event.id, projectId)}
+												onskip={() => handleSkip(event.id)}
+											/>
+										</div>
+									{/each}
+								</div>
 							</div>
 						{/each}
 					</div>
 				{:else}
-					<p class="text-sm text-gray-400 py-8 text-center">No calendar events for this {viewMode === 'day' ? 'day' : 'week'}</p>
+					<p class="text-sm text-gray-400 py-8 text-center">No calendar events for this {scopeMode === 'day' ? 'day' : 'week'}</p>
 				{/if}
 			{/if}
 		{/if}
@@ -664,7 +858,7 @@
 							<div class="flex items-center justify-between mb-3">
 								<div class="flex items-center gap-3">
 									<span class="font-medium {isToday ? 'text-primary-600' : 'text-gray-900'}">
-										{viewMode === 'day' ? 'Time Entries' : formatDayLabel(day)}
+										{scopeMode === 'day' ? 'Time Entries' : formatDayLabel(day)}
 									</span>
 									{#if dayTotal > 0}
 										<span class="text-sm text-gray-500">{dayTotal}h</span>
@@ -701,7 +895,7 @@
 		<!-- Sidebar with project totals -->
 		<div class="lg:w-72">
 			<div class="bg-white border rounded-lg p-4 sticky top-4">
-				<h2 class="font-semibold text-gray-900 mb-4">{viewMode === 'day' ? 'Day' : 'Week'} Summary</h2>
+				<h2 class="font-semibold text-gray-900 mb-4">{scopeMode === 'day' ? 'Day' : 'Week'} Summary</h2>
 
 				<div class="mb-4 pb-4 border-b">
 					<div class="text-3xl font-bold text-gray-900">{totalHours}h</div>
@@ -811,11 +1005,23 @@
 				{/if}
 
 				{#if activeProjects.length === 0 && hiddenProjects.length === 0 && archivedTotals.length === 0}
-					<p class="text-sm text-gray-400">No entries {viewMode === 'day' ? 'today' : 'this week'}</p>
+					<p class="text-sm text-gray-400">No entries {scopeMode === 'day' ? 'today' : 'this week'}</p>
 				{/if}
 			</div>
 		</div>
 	</div>
+
+	<!-- Event hover popup -->
+	{#if hoveredEvent}
+		<EventPopup
+			event={hoveredEvent}
+			{projects}
+			anchorElement={hoveredElement}
+			onclassify={handlePopupClassify}
+			onskip={handlePopupSkip}
+			onclose={handlePopupClose}
+		/>
+	{/if}
 
 	<!-- Add entry modal -->
 	<Modal bind:open={showAddModal} title="Add Time Entry">
