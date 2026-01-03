@@ -279,4 +279,52 @@ var migrations = []migration{
 			AND ce.calendar_id IS NULL;
 		`,
 	},
+	{
+		version: 8,
+		sql: `
+			-- Classification rules table
+			CREATE TABLE IF NOT EXISTS classification_rules (
+				id UUID PRIMARY KEY,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				query TEXT NOT NULL,
+				project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+				attended BOOLEAN,
+				weight FLOAT NOT NULL DEFAULT 1.0,
+				is_enabled BOOLEAN NOT NULL DEFAULT true,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				-- Constraint: must target either project or attendance, not both
+				CONSTRAINT rule_has_target CHECK (
+					(project_id IS NOT NULL AND attended IS NULL) OR
+					(project_id IS NULL AND attended IS NOT NULL)
+				)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_classification_rules_user_id ON classification_rules(user_id);
+			CREATE INDEX IF NOT EXISTS idx_classification_rules_project_id ON classification_rules(project_id);
+
+			-- Classification overrides for reclassification feedback
+			CREATE TABLE IF NOT EXISTS classification_overrides (
+				id UUID PRIMARY KEY,
+				event_id UUID NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				from_project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+				to_project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+				from_source TEXT,
+				reason TEXT,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_classification_overrides_event_id ON classification_overrides(event_id);
+			CREATE INDEX IF NOT EXISTS idx_classification_overrides_user_id ON classification_overrides(user_id);
+
+			-- Add confidence and needs_review to calendar_events
+			ALTER TABLE calendar_events
+			ADD COLUMN IF NOT EXISTS classification_confidence FLOAT,
+			ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT false,
+			ADD COLUMN IF NOT EXISTS classification_rule_id UUID REFERENCES classification_rules(id) ON DELETE SET NULL;
+
+			CREATE INDEX IF NOT EXISTS idx_calendar_events_needs_review ON calendar_events(needs_review) WHERE needs_review = true;
+		`,
+	},
 }
