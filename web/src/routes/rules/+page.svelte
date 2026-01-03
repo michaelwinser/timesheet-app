@@ -40,6 +40,10 @@
 	let deletingRule = $state<ClassificationRule | null>(null);
 	let deleting = $state(false);
 
+	// Apply rules state
+	let applying = $state(false);
+	let applyResult = $state<{ classified: number; skipped: number } | null>(null);
+
 	async function loadData() {
 		loading = true;
 		error = '';
@@ -222,6 +226,28 @@
 		}
 	}
 
+	async function handleApplyRules() {
+		applying = true;
+		applyResult = null;
+		error = '';
+		try {
+			const result = await api.applyRules({});
+			applyResult = {
+				classified: result.classified.length,
+				skipped: result.skipped
+			};
+			// Clear the result after 5 seconds
+			setTimeout(() => {
+				applyResult = null;
+			}, 5000);
+		} catch (e) {
+			console.error('Failed to apply rules:', e);
+			error = e instanceof Error ? e.message : 'Failed to apply rules';
+		} finally {
+			applying = false;
+		}
+	}
+
 	function formatDate(dateStr: string): string {
 		return new Date(dateStr).toLocaleDateString([], {
 			weekday: 'short',
@@ -247,8 +273,21 @@
 	<div class="max-w-3xl mx-auto">
 		<div class="flex items-center justify-between mb-6">
 			<h1 class="text-2xl font-bold text-gray-900">Rules</h1>
-			<Button variant="primary" onclick={openNewRule}>+ New Rule</Button>
+			<div class="flex items-center gap-3">
+				{#if rules.length > 0}
+					<Button variant="secondary" loading={applying} onclick={handleApplyRules}>
+						Apply Rules
+					</Button>
+				{/if}
+				<Button variant="primary" onclick={openNewRule}>+ New Rule</Button>
+			</div>
 		</div>
+
+		{#if applyResult}
+			<div class="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">
+				Applied rules: {applyResult.classified} events classified, {applyResult.skipped} skipped
+			</div>
+		{/if}
 
 		{#if error}
 			<div class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">

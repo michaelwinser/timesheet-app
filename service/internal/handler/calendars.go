@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/michaelw/timesheet-app/service/internal/api"
+	"github.com/michaelw/timesheet-app/service/internal/classification"
 	"github.com/michaelw/timesheet-app/service/internal/google"
 	"github.com/michaelw/timesheet-app/service/internal/store"
 	gcal "google.golang.org/api/calendar/v3"
@@ -18,13 +19,14 @@ import (
 
 // CalendarHandler implements the calendar endpoints
 type CalendarHandler struct {
-	connections *store.CalendarConnectionStore
-	calendars   *store.CalendarStore
-	events      *store.CalendarEventStore
-	entries     *store.TimeEntryStore
-	google      *google.CalendarService
-	stateMu     sync.RWMutex
-	stateStore  map[string]uuid.UUID // In production, use Redis
+	connections       *store.CalendarConnectionStore
+	calendars         *store.CalendarStore
+	events            *store.CalendarEventStore
+	entries           *store.TimeEntryStore
+	google            *google.CalendarService
+	classificationSvc *classification.Service
+	stateMu           sync.RWMutex
+	stateStore        map[string]uuid.UUID // In production, use Redis
 }
 
 // NewCalendarHandler creates a new calendar handler
@@ -34,14 +36,16 @@ func NewCalendarHandler(
 	events *store.CalendarEventStore,
 	entries *store.TimeEntryStore,
 	googleSvc *google.CalendarService,
+	classificationSvc *classification.Service,
 ) *CalendarHandler {
 	return &CalendarHandler{
-		connections: connections,
-		calendars:   calendars,
-		events:      events,
-		entries:     entries,
-		google:      googleSvc,
-		stateStore:  make(map[string]uuid.UUID),
+		connections:       connections,
+		calendars:         calendars,
+		events:            events,
+		entries:           entries,
+		google:            googleSvc,
+		classificationSvc: classificationSvc,
+		stateStore:        make(map[string]uuid.UUID),
 	}
 }
 
@@ -281,6 +285,17 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 
 	// Update connection last synced
 	h.connections.UpdateLastSynced(ctx, conn.ID)
+
+	// Auto-apply classification rules to newly synced events
+	if h.classificationSvc != nil {
+		result, err := h.classificationSvc.ApplyRules(ctx, userID, nil, nil, false)
+		if err != nil {
+			log.Printf("Failed to apply classification rules after sync: %v", err)
+			// Don't fail the sync, just log the error
+		} else if len(result.Classified) > 0 {
+			log.Printf("Auto-classified %d events after sync", len(result.Classified))
+		}
+	}
 
 	return api.SyncCalendar200JSONResponse{
 		EventsCreated:  totalCreated,

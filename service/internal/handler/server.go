@@ -33,7 +33,7 @@ func NewServer(
 		AuthHandler:      NewAuthHandler(users, jwt),
 		ProjectHandler:   NewProjectHandler(projects),
 		TimeEntryHandler: NewTimeEntryHandler(entries, projects),
-		CalendarHandler:  NewCalendarHandler(calendarConns, calendars, calendarEvents, entries, googleSvc),
+		CalendarHandler:  NewCalendarHandler(calendarConns, calendars, calendarEvents, entries, googleSvc, classificationSvc),
 		RulesHandler:     NewRulesHandler(classificationRules, classificationSvc),
 	}
 }
