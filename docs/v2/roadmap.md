@@ -106,18 +106,15 @@ A hybrid classification system combining rules, LLM suggestions, and manual inpu
 }
 ```
 
-#### 1.4 LLM Integration
+#### 1.4 Review Indicators
 
-**Rule Suggestions (daily job):**
-- Analyze recent manual classifications
-- Detect patterns (3+ similar manual classifications)
-- Propose rules for user review
-- Include reclassification feedback as training signal
+Visual feedback for events that need attention.
 
-**Reclassification Feedback:**
-- When user overrides LLM/rule classification, capture reason
-- Store as training data for future suggestions
-- "Why?" prompt: optional short explanation
+| Location | Indicator |
+|----------|-----------|
+| Week/Day view header | Badge: "N events need review" |
+| Event card | Yellow dot if `needs_review=true` |
+| Rules page | Section: "Suggested rules (N)" |
 
 #### 1.5 Project Fingerprints
 
@@ -133,13 +130,18 @@ Gmail-style search that serves multiple purposes:
 - **Classify**: Apply to search results
 - **Create Rule**: Save search as rule
 
-#### 1.7 Review Indicators
+#### 1.7 LLM Integration
 
-| Location | Indicator |
-|----------|-----------|
-| Week/Day view header | Badge: "N events need review" |
-| Event card | Yellow dot if `needs_review=true` |
-| Rules page | Section: "Suggested rules (N)" |
+**Rule Suggestions (daily job):**
+- Analyze recent manual classifications
+- Detect patterns (3+ similar manual classifications)
+- Propose rules for user review
+- Include reclassification feedback as training signal
+
+**Reclassification Feedback:**
+- When user overrides LLM/rule classification, capture reason
+- Store as training data for future suggestions
+- "Why?" prompt: optional short explanation
 
 **Reference**: [prd-rules-v2.md](../prd-rules-v2.md), [llm-classification-design.md](../llm-classification-design.md)
 
@@ -309,5 +311,6 @@ Not currently planned, but architecture supports:
 
 | Date | Change |
 |------|--------|
+| 2026-01-02 | Reordered Phase 1: Review Indicators (1.4), Fingerprints (1.5), Search UI (1.6), LLM (1.7) |
 | 2025-01-02 | Refined Phase 1 with scoring-based classification, LLM integration |
 | 2025-01-02 | Initial roadmap created |
