@@ -37,52 +37,111 @@ The **MCP Server** enables AI-assisted workflows, avoiding complex UI for bulk o
 
 | Feature | Priority | Complexity | Reference |
 |---------|----------|------------|-----------|
-| Classification Rules (query DSL) | High | Medium | [prd-rules-v2.md](../prd-rules-v2.md) |
-| Project Fingerprints | High | Low | [prd-rules-v2.md](../prd-rules-v2.md) |
+| Classification System | High | High | [ADR-003](decisions/003-scoring-classification.md) |
 | Billing Periods | Medium | Low | [ADR-002](decisions/002-billing-periods.md) |
 | Invoicing | Medium | Medium | [prd-invoicing.md](../prd-invoicing.md) |
 | MCP Server | Medium | Medium | [prd-mcp-server.md](../prd-mcp-server.md) |
 | Google Sheets Export | Low | Low | [prd-project-spreadsheets.md](../prd-project-spreadsheets.md) |
-| LLM Classification | Low | High | [llm-classification-design.md](../llm-classification-design.md) |
 
 ---
 
 ## Phases
 
-### Phase 1: Classification Rules (Current Priority)
+### Phase 1: Classification System (Current Priority)
 
-Enable automatic classification of calendar events based on user-defined rules.
+A hybrid classification system combining rules, LLM suggestions, and manual input.
 
-**Goal**: Reduce manual classification to edge cases only.
+**Goal**: Reduce manual classification to edge cases only, while preserving user control.
 
-**Deliverables**:
+**Architecture**: See [ADR-003](decisions/003-scoring-classification.md)
 
-1. **Query Parser & Evaluator**
-   - Parse Gmail-style query syntax: `domain:example.com title:"weekly sync"`
-   - Evaluate queries against calendar events
-   - Support: title, description, attendees, domain, email, response, recurring, day-of-week
+#### 1.1 Classification Model
 
-2. **Rules API**
-   - `GET/POST /api/rules` - List and create rules
-   - `GET/PUT/DELETE /api/rules/{id}` - Manage individual rules
-   - `POST /api/rules/preview` - Preview matching events for a query
+**Two Independent Dimensions:**
+- **Attendance**: Did I attend? (yes/no) - evaluated separately
+- **Project**: Which project? - evaluated separately
 
-3. **Project Fingerprints**
-   - Add domains, emails, keywords to projects
-   - Auto-generate rules from fingerprints
-   - Store on Project entity (new fields: `fingerprint_domains`, `fingerprint_emails`, `fingerprint_keywords`)
+**Scoring/Accumulator Approach:**
+- All matching rules "vote" for their target (not first-match-wins)
+- Multiple rules agreeing increases confidence
+- Conflicting rules surface for user review
 
-4. **Rules Page (Web)**
-   - Text input with live preview
-   - Rules grouped by target project
-   - Drag-to-reorder priority
+**Confidence Thresholds:**
+- Below floor (0.5): Don't classify, leave pending
+- Floor to ceiling (0.5-0.8): Classify but flag for review
+- Above ceiling (0.8): Auto-classify, no flag
 
-5. **Apply Rules on Sync**
-   - After fetching events, run classification rules
-   - Create/update time entries for matches
-   - Track `classification_source: rule` vs `manual`
+**Classification Sources:**
+- `manual`: User clicked to classify
+- `rule`: Rules engine classified
+- `llm`: LLM suggestion accepted
 
-**Reference**: [prd-rules-v2.md](../prd-rules-v2.md)
+#### 1.2 Query Engine
+
+- Parse Gmail-style syntax: `domain:example.com title:"weekly sync"`
+- Properties: title, description, attendees, domain, email, response, recurring, day-of-week
+- Evaluate queries against calendar events
+- Return match scores for accumulator
+
+#### 1.3 Rules Engine
+
+- Rules have query + target (project or "did not attend") + weight
+- All rules evaluated; matching rules contribute votes
+- UI shows "priority" toggle (doubles weight internally)
+- Weights stored as floats for LLM tuning
+
+**API:**
+- `GET/POST /api/rules` - List and create rules
+- `GET/PUT/DELETE /api/rules/{id}` - Manage individual rules
+- `POST /api/rules/preview` - Preview with conflict detection
+
+**Preview Response:**
+```json
+{
+  "matches": [...],
+  "conflicts": [
+    {"event_id": "...", "current_project": "X", "current_source": "manual", "proposed": "Y"}
+  ],
+  "stats": {"total": 47, "would_change": 5, "manual_conflicts": 2}
+}
+```
+
+#### 1.4 LLM Integration
+
+**Rule Suggestions (daily job):**
+- Analyze recent manual classifications
+- Detect patterns (3+ similar manual classifications)
+- Propose rules for user review
+- Include reclassification feedback as training signal
+
+**Reclassification Feedback:**
+- When user overrides LLM/rule classification, capture reason
+- Store as training data for future suggestions
+- "Why?" prompt: optional short explanation
+
+#### 1.5 Project Fingerprints
+
+- Add domains, emails, keywords to projects
+- Auto-generate rules from fingerprints
+- Fingerprint rules contribute to scoring like any other rule
+
+#### 1.6 Search UI (Classification Hub)
+
+Gmail-style search that serves multiple purposes:
+- **Search**: Find events matching criteria
+- **Preview**: See what a rule would match
+- **Classify**: Apply to search results
+- **Create Rule**: Save search as rule
+
+#### 1.7 Review Indicators
+
+| Location | Indicator |
+|----------|-----------|
+| Week/Day view header | Badge: "N events need review" |
+| Event card | Yellow dot if `needs_review=true` |
+| Rules page | Section: "Suggested rules (N)" |
+
+**Reference**: [prd-rules-v2.md](../prd-rules-v2.md), [llm-classification-design.md](../llm-classification-design.md)
 
 ---
 
@@ -229,6 +288,7 @@ Not currently planned, but architecture supports:
 | **Decisions** | |
 | [ADR-001](decisions/001-time-entry-per-day.md) | One entry per project per day |
 | [ADR-002](decisions/002-billing-periods.md) | Rate management via periods |
+| [ADR-003](decisions/003-scoring-classification.md) | Scoring-based classification |
 
 ---
 
@@ -249,4 +309,5 @@ Not currently planned, but architecture supports:
 
 | Date | Change |
 |------|--------|
-| 2024-01-02 | Initial roadmap created |
+| 2025-01-02 | Refined Phase 1 with scoring-based classification, LLM integration |
+| 2025-01-02 | Initial roadmap created |

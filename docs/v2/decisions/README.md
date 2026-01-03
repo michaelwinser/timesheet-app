@@ -13,8 +13,9 @@ An ADR documents a significant architectural decision, including:
 
 | # | Title | Status |
 |---|-------|--------|
-| [001](001-time-entry-per-day.md) | One TimeEntry Per Project Per Day | Proposed |
+| [001](001-time-entry-per-day.md) | One TimeEntry Per Project Per Day | Accepted |
 | [002](002-billing-periods.md) | Billing Periods for Rate Management | Proposed |
+| [003](003-scoring-classification.md) | Scoring-Based Classification | Accepted |
 
 ## Status Values
 
