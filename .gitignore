@@ -36,3 +36,8 @@ Thumbs.db
 
 # Conversation exports
 conversation.txt
+
+# Web frontend
+web/.svelte-kit/
+web/build/
+web/node_modules/
