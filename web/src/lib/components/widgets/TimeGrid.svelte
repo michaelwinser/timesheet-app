@@ -27,7 +27,7 @@
 	const startHour = 0; // Midnight
 	const endHour = 24; // Midnight (full 24h)
 	const hourHeight = 60; // pixels per hour
-	const viewportHours = 10; // 10 hours visible in viewport
+	const viewportHours = 15; // 15 hours visible in viewport (50% taller than original 10)
 
 	// Calculate first event hour for auto-scroll (based on timed events only)
 	function getFirstEventHour(): number {
