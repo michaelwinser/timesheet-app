@@ -11,7 +11,7 @@
 	let { children, wide = false }: Props = $props();
 
 	const navItems = [
-		{ href: '/', label: 'Week', icon: 'calendar' },
+		{ href: '/', label: 'Calendar', icon: 'calendar' },
 		{ href: '/projects', label: 'Projects', icon: 'folder' },
 		{ href: '/rules', label: 'Rules', icon: 'rules' },
 		{ href: '/settings', label: 'Settings', icon: 'cog' }
