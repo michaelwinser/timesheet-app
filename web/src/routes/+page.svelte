@@ -268,7 +268,7 @@
 	const gridStartHour = 0;
 	const gridEndHour = 24;
 	const hourHeight = 60;
-	const viewportHours = 10;
+	const viewportHours = 15; // 15 hours visible (50% taller than original 10)
 	const gridHeight = (gridEndHour - gridStartHour) * hourHeight;
 	const hours = Array.from({ length: gridEndHour - gridStartHour }, (_, i) => gridStartHour + i);
 
