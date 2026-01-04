@@ -148,7 +148,7 @@ func generateTargetRules(targets []Target) ([]Rule, map[string]bool) {
 				ruleID := fmt.Sprintf("fp:keyword:%s:%s", target.ID, keyword)
 				rules = append(rules, Rule{
 					ID:       ruleID,
-					Query:    "title:" + keyword,
+					Query:    "title:" + quoteIfNeeded(keyword),
 					TargetID: target.ID,
 					Weight:   1.0,
 				})
@@ -170,6 +170,14 @@ func getStringSlice(m map[string]any, key string) ([]string, bool) {
 		return slice, len(slice) > 0
 	}
 	return nil, false
+}
+
+// quoteIfNeeded wraps a value in quotes if it contains spaces
+func quoteIfNeeded(value string) string {
+	if strings.Contains(value, " ") {
+		return `"` + value + `"`
+	}
+	return value
 }
 
 // classifyItem evaluates all rules against a single item

@@ -276,6 +276,8 @@ type PreviewStats struct {
 
 // Project defines model for Project.
 type Project struct {
+	// Client Client name for classification filtering
+	Client                 *string   `json:"client,omitempty"`
 	Color                  string    `json:"color"`
 	CreatedAt              time.Time `json:"created_at"`
 	DoesNotAccumulateHours *bool     `json:"does_not_accumulate_hours,omitempty"`
@@ -300,6 +302,7 @@ type Project struct {
 
 // ProjectCreate defines model for ProjectCreate.
 type ProjectCreate struct {
+	Client                 *string   `json:"client,omitempty"`
 	Color                  *string   `json:"color,omitempty"`
 	DoesNotAccumulateHours *bool     `json:"does_not_accumulate_hours,omitempty"`
 	FingerprintDomains     *[]string `json:"fingerprint_domains,omitempty"`
@@ -313,6 +316,7 @@ type ProjectCreate struct {
 
 // ProjectUpdate defines model for ProjectUpdate.
 type ProjectUpdate struct {
+	Client                 *string   `json:"client,omitempty"`
 	Color                  *string   `json:"color,omitempty"`
 	DoesNotAccumulateHours *bool     `json:"does_not_accumulate_hours,omitempty"`
 	FingerprintDomains     *[]string `json:"fingerprint_domains,omitempty"`
@@ -469,6 +473,15 @@ type ListCalendarEventsParams struct {
 // ListCalendarEventsParamsClassificationStatus defines parameters for ListCalendarEvents.
 type ListCalendarEventsParamsClassificationStatus string
 
+// SyncCalendarParams defines parameters for SyncCalendar.
+type SyncCalendarParams struct {
+	// StartDate Start date for on-demand sync (defaults to 90 days ago)
+	StartDate *openapi_types.Date `form:"start_date,omitempty" json:"start_date,omitempty"`
+
+	// EndDate End date for on-demand sync (defaults to 30 days from now)
+	EndDate *openapi_types.Date `form:"end_date,omitempty" json:"end_date,omitempty"`
+}
+
 // ListProjectsParams defines parameters for ListProjects.
 type ListProjectsParams struct {
 	// IncludeArchived Include archived projects
@@ -575,7 +588,7 @@ type ServerInterface interface {
 	UpdateCalendarSources(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Trigger sync for a calendar connection
 	// (POST /api/calendars/{id}/sync)
-	SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params SyncCalendarParams)
 	// List all projects
 	// (GET /api/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, params ListProjectsParams)
@@ -713,7 +726,7 @@ func (_ Unimplemented) UpdateCalendarSources(w http.ResponseWriter, r *http.Requ
 
 // Trigger sync for a calendar connection
 // (POST /api/calendars/{id}/sync)
-func (_ Unimplemented) SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (_ Unimplemented) SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params SyncCalendarParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1212,8 +1225,27 @@ func (siw *ServerInterfaceWrapper) SyncCalendar(w http.ResponseWriter, r *http.R
 
 	r = r.WithContext(ctx)
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SyncCalendarParams
+
+	// ------------- Optional query parameter "start_date" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "start_date", r.URL.Query(), &params.StartDate)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start_date", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "end_date" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "end_date", r.URL.Query(), &params.EndDate)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "end_date", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.SyncCalendar(w, r, id)
+		siw.Handler.SyncCalendar(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2343,7 +2375,8 @@ func (response UpdateCalendarSources404JSONResponse) VisitUpdateCalendarSourcesR
 }
 
 type SyncCalendarRequestObject struct {
-	Id openapi_types.UUID `json:"id"`
+	Id     openapi_types.UUID `json:"id"`
+	Params SyncCalendarParams
 }
 
 type SyncCalendarResponseObject interface {
@@ -3485,10 +3518,11 @@ func (sh *strictHandler) UpdateCalendarSources(w http.ResponseWriter, r *http.Re
 }
 
 // SyncCalendar operation middleware
-func (sh *strictHandler) SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+func (sh *strictHandler) SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params SyncCalendarParams) {
 	var request SyncCalendarRequestObject
 
 	request.Id = id
+	request.Params = params
 
 	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
 		return sh.ssi.SyncCalendar(ctx, request.(SyncCalendarRequestObject))

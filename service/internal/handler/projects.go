@@ -163,6 +163,9 @@ func (h *ProjectHandler) UpdateProject(ctx context.Context, req api.UpdateProjec
 	if req.Body.FingerprintKeywords != nil {
 		updates["fingerprint_keywords"] = *req.Body.FingerprintKeywords
 	}
+	if req.Body.Client != nil {
+		updates["client"] = *req.Body.Client
+	}
 
 	project, err := h.projects.Update(ctx, userID, req.Id, updates)
 	if err != nil {
@@ -219,6 +222,7 @@ func projectToAPI(p *store.Project) api.Project {
 		IsArchived:             p.IsArchived,
 		CreatedAt:              p.CreatedAt,
 		ShortCode:              p.ShortCode,
+		Client:                 p.Client,
 		IsHiddenByDefault:      &p.IsHiddenByDefault,
 		DoesNotAccumulateHours: &p.DoesNotAccumulateHours,
 		UpdatedAt:              &p.UpdatedAt,

@@ -152,8 +152,12 @@ class ApiClient {
 		return this.request('DELETE', `/calendars/${id}`);
 	}
 
-	async syncCalendar(id: string): Promise<SyncResult> {
-		return this.request('POST', `/calendars/${id}/sync`);
+	async syncCalendar(id: string, params?: { start_date?: string; end_date?: string }): Promise<SyncResult> {
+		const searchParams = new URLSearchParams();
+		if (params?.start_date) searchParams.set('start_date', params.start_date);
+		if (params?.end_date) searchParams.set('end_date', params.end_date);
+		const query = searchParams.toString();
+		return this.request('POST', `/calendars/${id}/sync${query ? `?${query}` : ''}`);
 	}
 
 	async listCalendarSources(id: string): Promise<Calendar[]> {

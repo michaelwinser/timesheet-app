@@ -17,6 +17,7 @@ export interface Project {
 	user_id: string;
 	name: string;
 	short_code?: string;
+	client?: string;
 	color: string;
 	is_billable: boolean;
 	is_archived: boolean;
@@ -32,6 +33,7 @@ export interface Project {
 export interface ProjectCreate {
 	name: string;
 	short_code?: string;
+	client?: string;
 	color?: string;
 	is_billable?: boolean;
 	is_hidden_by_default?: boolean;
@@ -44,6 +46,7 @@ export interface ProjectCreate {
 export interface ProjectUpdate {
 	name?: string;
 	short_code?: string;
+	client?: string;
 	color?: string;
 	is_billable?: boolean;
 	is_archived?: boolean;

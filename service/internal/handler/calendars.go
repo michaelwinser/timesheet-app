@@ -272,11 +272,23 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 		}
 	}
 
+	// Extract optional date range parameters for on-demand sync
+	var minTime, maxTime *time.Time
+	if req.Params.StartDate != nil {
+		t := req.Params.StartDate.Time
+		minTime = &t
+	}
+	if req.Params.EndDate != nil {
+		// Add a day to end_date to include the full day
+		t := req.Params.EndDate.Time.AddDate(0, 0, 1)
+		maxTime = &t
+	}
+
 	var totalCreated, totalUpdated, totalOrphaned int
 
 	// Sync each selected calendar
 	for _, cal := range selectedCalendars {
-		created, updated, orphaned, err := h.syncSingleCalendar(ctx, creds, conn, cal, userID)
+		created, updated, orphaned, err := h.syncSingleCalendar(ctx, creds, conn, cal, userID, minTime, maxTime)
 		if err != nil {
 			log.Printf("Failed to sync calendar %s: %v", cal.Name, err)
 			continue
@@ -315,10 +327,17 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 }
 
 // syncSingleCalendar syncs events from a single calendar
-func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.OAuthCredentials, conn *store.CalendarConnection, cal *store.Calendar, userID uuid.UUID) (created, updated, orphaned int, err error) {
+// If minTime/maxTime are nil, uses default range (-366 to +32 days) and incremental sync when available
+// The calendar's synced window is expanded to track which date ranges have been synced
+func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.OAuthCredentials, conn *store.CalendarConnection, cal *store.Calendar, userID uuid.UUID, minTime, maxTime *time.Time) (created, updated, orphaned int, err error) {
 	var syncResult *google.SyncResult
+	var syncMinTime, syncMaxTime time.Time
+
+	// Determine if this is a default range sync or on-demand
+	isDefaultRangeSync := minTime == nil && maxTime == nil
 
 	// Try incremental sync if we have a sync token
+	// Incremental sync works regardless of date range - it returns all changes since last sync
 	if cal.SyncToken != nil && *cal.SyncToken != "" {
 		syncResult, err = h.google.FetchEventsIncremental(ctx, creds, cal.ExternalID, *cal.SyncToken)
 		if err != nil {
@@ -332,10 +351,17 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 
 	// Full sync if no token or incremental failed
 	if syncResult == nil {
-		minTime := time.Now().AddDate(0, 0, -90)
-		maxTime := time.Now().AddDate(0, 0, 30)
+		// Use provided dates or defaults (-366 to +32 days)
+		syncMinTime = time.Now().AddDate(0, 0, -366)
+		syncMaxTime = time.Now().AddDate(0, 0, 32)
+		if minTime != nil {
+			syncMinTime = *minTime
+		}
+		if maxTime != nil {
+			syncMaxTime = *maxTime
+		}
 
-		syncResult, err = h.google.FetchEvents(ctx, creds, cal.ExternalID, minTime, maxTime)
+		syncResult, err = h.google.FetchEvents(ctx, creds, cal.ExternalID, syncMinTime, syncMaxTime)
 		if err != nil {
 			return 0, 0, 0, err
 		}
@@ -366,13 +392,43 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 		created++
 	}
 
-	// For full sync, mark events not in the result as orphaned
+	// For full sync, mark events within the synced range as orphaned if not in the result
+	// This uses the tracked sync window for accurate orphaning
 	if syncResult.FullSync && len(externalIDs) > 0 {
-		orphanCount, markErr := h.events.MarkOrphanedExceptByCalendar(ctx, cal.ID, externalIDs)
-		if markErr != nil {
-			return created, updated, orphaned, markErr
+		// Determine the orphan range based on the calendar's tracked sync window
+		orphanMinTime := syncMinTime
+		orphanMaxTime := syncMaxTime
+
+		// If we have a tracked sync window, use it to bound orphaning
+		// This ensures we only orphan events within dates we've actually synced
+		if cal.MinSyncedDate != nil && cal.MinSyncedDate.Before(orphanMinTime) {
+			orphanMinTime = *cal.MinSyncedDate
 		}
-		orphaned += int(orphanCount)
+		if cal.MaxSyncedDate != nil && cal.MaxSyncedDate.After(orphanMaxTime) {
+			orphanMaxTime = *cal.MaxSyncedDate
+		}
+
+		// For default range sync, orphan within the full tracked window
+		// For on-demand sync, only orphan within the requested range
+		if isDefaultRangeSync {
+			orphanCount, markErr := h.events.MarkOrphanedInRangeExceptByCalendar(ctx, cal.ID, externalIDs, orphanMinTime, orphanMaxTime)
+			if markErr != nil {
+				return created, updated, orphaned, markErr
+			}
+			orphaned += int(orphanCount)
+		} else {
+			// On-demand sync: only orphan within the specific requested range
+			orphanCount, markErr := h.events.MarkOrphanedInRangeExceptByCalendar(ctx, cal.ID, externalIDs, syncMinTime, syncMaxTime)
+			if markErr != nil {
+				return created, updated, orphaned, markErr
+			}
+			orphaned += int(orphanCount)
+		}
+	}
+
+	// Expand the tracked sync window
+	if syncResult.FullSync {
+		h.calendars.ExpandSyncedWindow(ctx, cal.ID, syncMinTime, syncMaxTime)
 	}
 
 	// Save the new sync token

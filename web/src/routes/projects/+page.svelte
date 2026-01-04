@@ -15,12 +15,32 @@
 	let showCreateModal = $state(false);
 	let createName = $state('');
 	let createCode = $state('');
+	let createClient = $state('');
 	let createColor = $state('#3B82F6');
 	let createBillable = $state(true);
 	let createSubmitting = $state(false);
 
 	const activeProjects = $derived(projects.filter((p) => !p.is_archived));
 	const archivedProjects = $derived(projects.filter((p) => p.is_archived));
+
+	// Group active projects by client
+	const projectsByClient = $derived(() => {
+		const groups = new Map<string, Project[]>();
+		for (const project of activeProjects) {
+			const clientName = project.client || '';
+			if (!groups.has(clientName)) {
+				groups.set(clientName, []);
+			}
+			groups.get(clientName)!.push(project);
+		}
+		// Sort: clients with names first (alphabetically), then projects without client
+		const sortedEntries = Array.from(groups.entries()).sort((a, b) => {
+			if (a[0] === '' && b[0] !== '') return 1;
+			if (a[0] !== '' && b[0] === '') return -1;
+			return a[0].localeCompare(b[0]);
+		});
+		return sortedEntries;
+	});
 
 	async function loadProjects() {
 		loading = true;
@@ -36,6 +56,7 @@
 	function openCreateModal() {
 		createName = '';
 		createCode = '';
+		createClient = '';
 		createColor = '#3B82F6';
 		createBillable = true;
 		showCreateModal = true;
@@ -48,6 +69,7 @@
 			const newProject = await api.createProject({
 				name: createName.trim(),
 				short_code: createCode.trim() || undefined,
+				client: createClient.trim() || undefined,
 				color: createColor,
 				is_billable: createBillable
 			});
@@ -86,11 +108,7 @@
 				<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
 			</div>
 		{:else}
-			<div class="space-y-3">
-				{#each activeProjects as project (project.id)}
-					<ProjectListItem {project} onclick={() => goto(`/projects/${project.id}`)} />
-				{/each}
-
+			<div class="space-y-6">
 				{#if activeProjects.length === 0}
 					<div class="text-center py-12 text-gray-500">
 						<p>No projects yet.</p>
@@ -102,10 +120,34 @@
 							Create your first project
 						</button>
 					</div>
+				{:else}
+					{#each projectsByClient() as [clientName, clientProjects] (clientName)}
+						<div>
+							<h2 class="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+								{#if clientName}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+									</svg>
+									{clientName}
+								{:else}
+									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+									</svg>
+									No Client
+								{/if}
+								<span class="text-gray-400">({clientProjects.length})</span>
+							</h2>
+							<div class="space-y-2">
+								{#each clientProjects as project (project.id)}
+									<ProjectListItem {project} onclick={() => goto(`/projects/${project.id}`)} />
+								{/each}
+							</div>
+						</div>
+					{/each}
 				{/if}
 
 				{#if archivedProjects.length > 0}
-					<div class="pt-6">
+					<div class="pt-2 border-t">
 						<button
 							type="button"
 							class="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
@@ -123,7 +165,7 @@
 						</button>
 
 						{#if showArchived}
-							<div class="mt-3 space-y-3">
+							<div class="mt-3 space-y-2">
 								{#each archivedProjects as project (project.id)}
 									<ProjectListItem {project} onclick={() => goto(`/projects/${project.id}`)} />
 								{/each}
@@ -151,6 +193,13 @@
 				label="Short code (optional)"
 				bind:value={createCode}
 				placeholder="e.g., ACM"
+			/>
+
+			<Input
+				type="text"
+				label="Client (optional)"
+				bind:value={createClient}
+				placeholder="e.g., Acme Corp"
 			/>
 
 			<div>

@@ -14,18 +14,20 @@ var ErrCalendarNotFound = errors.New("calendar not found")
 
 // Calendar represents a calendar within a connection (e.g., one of multiple Google calendars)
 type Calendar struct {
-	ID           uuid.UUID
-	ConnectionID uuid.UUID
-	UserID       uuid.UUID
-	ExternalID   string // Google Calendar ID (e.g., "primary", "user@example.com")
-	Name         string
-	Color        *string
-	IsPrimary    bool
-	IsSelected   bool
-	SyncToken    *string
-	LastSyncedAt *time.Time
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID            uuid.UUID
+	ConnectionID  uuid.UUID
+	UserID        uuid.UUID
+	ExternalID    string // Google Calendar ID (e.g., "primary", "user@example.com")
+	Name          string
+	Color         *string
+	IsPrimary     bool
+	IsSelected    bool
+	SyncToken     *string
+	LastSyncedAt  *time.Time
+	MinSyncedDate *time.Time // Earliest date that has been fully synced
+	MaxSyncedDate *time.Time // Latest date that has been fully synced
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 // CalendarStore provides PostgreSQL-backed calendar storage
@@ -70,7 +72,8 @@ func (s *CalendarStore) Upsert(ctx context.Context, cal *Calendar) (*Calendar, e
 func (s *CalendarStore) ListByConnection(ctx context.Context, connectionID uuid.UUID) ([]*Calendar, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, connection_id, user_id, external_id, name, color,
-		       is_primary, is_selected, sync_token, last_synced_at, created_at, updated_at
+		       is_primary, is_selected, sync_token, last_synced_at,
+		       min_synced_date, max_synced_date, created_at, updated_at
 		FROM calendars
 		WHERE connection_id = $1
 		ORDER BY is_primary DESC, name ASC
@@ -85,7 +88,8 @@ func (s *CalendarStore) ListByConnection(ctx context.Context, connectionID uuid.
 		cal := &Calendar{}
 		err := rows.Scan(
 			&cal.ID, &cal.ConnectionID, &cal.UserID, &cal.ExternalID, &cal.Name, &cal.Color,
-			&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt, &cal.CreatedAt, &cal.UpdatedAt,
+			&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt,
+			&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.CreatedAt, &cal.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -100,7 +104,8 @@ func (s *CalendarStore) ListByConnection(ctx context.Context, connectionID uuid.
 func (s *CalendarStore) ListSelectedByConnection(ctx context.Context, connectionID uuid.UUID) ([]*Calendar, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, connection_id, user_id, external_id, name, color,
-		       is_primary, is_selected, sync_token, last_synced_at, created_at, updated_at
+		       is_primary, is_selected, sync_token, last_synced_at,
+		       min_synced_date, max_synced_date, created_at, updated_at
 		FROM calendars
 		WHERE connection_id = $1 AND is_selected = true
 		ORDER BY is_primary DESC, name ASC
@@ -115,7 +120,8 @@ func (s *CalendarStore) ListSelectedByConnection(ctx context.Context, connection
 		cal := &Calendar{}
 		err := rows.Scan(
 			&cal.ID, &cal.ConnectionID, &cal.UserID, &cal.ExternalID, &cal.Name, &cal.Color,
-			&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt, &cal.CreatedAt, &cal.UpdatedAt,
+			&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt,
+			&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.CreatedAt, &cal.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -131,12 +137,14 @@ func (s *CalendarStore) GetByID(ctx context.Context, calendarID uuid.UUID) (*Cal
 	cal := &Calendar{}
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, connection_id, user_id, external_id, name, color,
-		       is_primary, is_selected, sync_token, last_synced_at, created_at, updated_at
+		       is_primary, is_selected, sync_token, last_synced_at,
+		       min_synced_date, max_synced_date, created_at, updated_at
 		FROM calendars
 		WHERE id = $1
 	`, calendarID).Scan(
 		&cal.ID, &cal.ConnectionID, &cal.UserID, &cal.ExternalID, &cal.Name, &cal.Color,
-		&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt, &cal.CreatedAt, &cal.UpdatedAt,
+		&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt,
+		&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.CreatedAt, &cal.UpdatedAt,
 	)
 
 	if err != nil {
@@ -206,6 +214,29 @@ func (s *CalendarStore) UpdateLastSynced(ctx context.Context, calendarID uuid.UU
 		SET last_synced_at = $2, updated_at = $2
 		WHERE id = $1
 	`, calendarID, now)
+	return err
+}
+
+// ExpandSyncedWindow expands the min/max synced date window for a calendar
+// The window is expanded to include the new min/max dates, never shrunk
+func (s *CalendarStore) ExpandSyncedWindow(ctx context.Context, calendarID uuid.UUID, minDate, maxDate time.Time) error {
+	now := time.Now().UTC()
+	_, err := s.pool.Exec(ctx, `
+		UPDATE calendars
+		SET
+			min_synced_date = CASE
+				WHEN min_synced_date IS NULL THEN $2
+				WHEN $2 < min_synced_date THEN $2
+				ELSE min_synced_date
+			END,
+			max_synced_date = CASE
+				WHEN max_synced_date IS NULL THEN $3
+				WHEN $3 > max_synced_date THEN $3
+				ELSE max_synced_date
+			END,
+			updated_at = $4
+		WHERE id = $1
+	`, calendarID, minDate, maxDate, now)
 	return err
 }
 

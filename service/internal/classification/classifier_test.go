@@ -1,6 +1,7 @@
 package classification
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -406,4 +407,193 @@ func TestItemToAttributes_AllFields(t *testing.T) {
 	if !props.IsRecurring {
 		t.Error("expected IsRecurring to be true")
 	}
+}
+
+func TestClassify_MultiWordKeywordFingerprint(t *testing.T) {
+	// Test that multi-word keywords in target attributes are properly quoted
+	// and matched (issue #19)
+	targets := []Target{
+		{
+			ID: "project-a",
+			Attributes: map[string]any{
+				"keywords": []string{"out of office", "team meeting"},
+			},
+		},
+	}
+
+	items := []Item{
+		{
+			ID: "event-1",
+			Attributes: map[string]any{
+				"title": "Out of Office - John",
+			},
+		},
+		{
+			ID: "event-2",
+			Attributes: map[string]any{
+				"title": "Weekly Team Meeting",
+			},
+		},
+		{
+			ID: "event-3",
+			Attributes: map[string]any{
+				"title": "Lunch",
+			},
+		},
+	}
+
+	results := Classify(nil, targets, items, DefaultConfig())
+
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+
+	// First event should match "out of office"
+	if results[0].TargetID != "project-a" {
+		t.Errorf("event-1: expected TargetID project-a, got %s", results[0].TargetID)
+	}
+
+	// Second event should match "team meeting"
+	if results[1].TargetID != "project-a" {
+		t.Errorf("event-2: expected TargetID project-a, got %s", results[1].TargetID)
+	}
+
+	// Third event should not match
+	if results[2].TargetID != "" {
+		t.Errorf("event-3: expected empty TargetID, got %s", results[2].TargetID)
+	}
+}
+
+func TestQuoteIfNeeded(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"standup", "standup"},
+		{"out of office", `"out of office"`},
+		{"team meeting", `"team meeting"`},
+		{"single", "single"},
+		{"with  multiple   spaces", `"with  multiple   spaces"`},
+	}
+
+	for _, tt := range tests {
+		result := quoteIfNeeded(tt.input)
+		if result != tt.expected {
+			t.Errorf("quoteIfNeeded(%q) = %q, expected %q", tt.input, result, tt.expected)
+		}
+	}
+}
+
+func TestEvaluateExtended_ProjectFilter(t *testing.T) {
+	projectName := "Acme Project"
+	clientName := "Acme Corp"
+	confidence := 0.9
+
+	props := &ExtendedEventProperties{
+		EventProperties: EventProperties{
+			Title: "Team Standup",
+		},
+		ProjectName:  &projectName,
+		ClientName:   &clientName,
+		Confidence:   &confidence,
+		IsClassified: true,
+	}
+
+	tests := []struct {
+		query    string
+		expected bool
+	}{
+		{"project:acme", true},
+		{"project:unknown", false},
+		{"client:acme", true},
+		{"client:unknown", false},
+		{"confidence:high", true},
+		{"confidence:medium", false},
+		{"confidence:low", false},
+		{"project:acme client:acme", true},
+		{"project:acme confidence:high", true},
+	}
+
+	for _, tt := range tests {
+		ast, err := Parse(tt.query)
+		if err != nil {
+			t.Errorf("Parse(%q) error: %v", tt.query, err)
+			continue
+		}
+		result := EvaluateExtended(ast, props)
+		if result != tt.expected {
+			t.Errorf("EvaluateExtended(%q) = %v, expected %v", tt.query, result, tt.expected)
+		}
+	}
+}
+
+func TestEvaluateExtended_Unclassified(t *testing.T) {
+	// Test unclassified event
+	unclassified := &ExtendedEventProperties{
+		EventProperties: EventProperties{
+			Title: "Unclassified Meeting",
+		},
+		ProjectID:    nil,
+		IsClassified: false,
+	}
+
+	ast, _ := Parse("project:unclassified")
+	if !EvaluateExtended(ast, unclassified) {
+		t.Error("Expected unclassified event to match project:unclassified")
+	}
+
+	// Test classified event
+	projectID := "123"
+	projectName := "Test Project"
+	classified := &ExtendedEventProperties{
+		EventProperties: EventProperties{
+			Title: "Classified Meeting",
+		},
+		ProjectID:    &projectID,
+		ProjectName:  &projectName,
+		IsClassified: true,
+	}
+
+	if EvaluateExtended(ast, classified) {
+		t.Error("Expected classified event NOT to match project:unclassified")
+	}
+}
+
+func TestEvaluateExtended_ConfidenceLevels(t *testing.T) {
+	tests := []struct {
+		confidence *float64
+		query      string
+		expected   bool
+	}{
+		{ptr(0.9), "confidence:high", true},
+		{ptr(0.8), "confidence:high", true},
+		{ptr(0.79), "confidence:high", false},
+		{ptr(0.7), "confidence:medium", true},
+		{ptr(0.5), "confidence:medium", true},
+		{ptr(0.49), "confidence:medium", false},
+		{ptr(0.49), "confidence:low", true},
+		{ptr(0.0), "confidence:low", true},
+		{nil, "confidence:low", true}, // nil confidence = low
+		{nil, "confidence:high", false},
+	}
+
+	for _, tt := range tests {
+		props := &ExtendedEventProperties{
+			EventProperties: EventProperties{Title: "Test"},
+			Confidence:      tt.confidence,
+		}
+		ast, _ := Parse(tt.query)
+		result := EvaluateExtended(ast, props)
+		confStr := "nil"
+		if tt.confidence != nil {
+			confStr = fmt.Sprintf("%.2f", *tt.confidence)
+		}
+		if result != tt.expected {
+			t.Errorf("EvaluateExtended(%q) with confidence=%s = %v, expected %v", tt.query, confStr, result, tt.expected)
+		}
+	}
+}
+
+func ptr(f float64) *float64 {
+	return &f
 }

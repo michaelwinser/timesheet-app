@@ -35,6 +35,9 @@
 	let visibleProjectIds = $state<Set<string>>(new Set());
 	let showHiddenSection = $state(false);
 
+	// Track date ranges that have been synced on-demand
+	let syncedDateRanges = $state<Set<string>>(new Set());
+
 	// Get date from URL or default to today
 	function getDateFromUrl(): Date {
 		if (typeof window !== 'undefined') {
@@ -717,6 +720,73 @@
 		return hoursSinceSync > 24;
 	}
 
+	// Check if a date range is outside the default sync window (-366 to +32 days)
+	function isOutsideDefaultSyncWindow(start: Date, end: Date): boolean {
+		const now = new Date();
+		const minDefault = new Date(now);
+		minDefault.setDate(minDefault.getDate() - 366);
+		const maxDefault = new Date(now);
+		maxDefault.setDate(maxDefault.getDate() + 32);
+
+		// If any part of the requested range is outside the default window, return true
+		return start < minDefault || end > maxDefault;
+	}
+
+	// Generate a key for tracking synced date ranges (week granularity)
+	function getDateRangeKey(start: Date, end: Date): string {
+		return `${formatDate(start)}:${formatDate(end)}`;
+	}
+
+	// Trigger on-demand sync for dates outside the default window
+	// Syncs a wider range (-60 to +30 days around the viewed date) for efficiency
+	async function onDemandSync(viewedStart: Date, viewedEnd: Date) {
+		// Expand the sync range to -60/+30 days around the viewed dates
+		// This reduces repeated syncs when users navigate through historical data
+		const syncStart = new Date(viewedStart);
+		syncStart.setDate(syncStart.getDate() - 60);
+		const syncEnd = new Date(viewedEnd);
+		syncEnd.setDate(syncEnd.getDate() + 30);
+
+		const rangeKey = getDateRangeKey(syncStart, syncEnd);
+
+		// Skip if we've already synced this range
+		if (syncedDateRanges.has(rangeKey)) {
+			return;
+		}
+
+		try {
+			const connections = await api.listCalendarConnections();
+			if (connections.length === 0) {
+				return;
+			}
+
+			syncing = true;
+			// Sync all connections with the expanded date range
+			await Promise.all(
+				connections.map((conn) =>
+					api.syncCalendar(conn.id, {
+						start_date: formatDate(syncStart),
+						end_date: formatDate(syncEnd)
+					})
+				)
+			);
+
+			// Mark this range as synced
+			syncedDateRanges = new Set([...syncedDateRanges, rangeKey]);
+
+			// Reload events for the viewed range (not the full sync range)
+			const eventsData = await api.listCalendarEvents({
+				start_date: formatDate(viewedStart),
+				end_date: formatDate(viewedEnd)
+			});
+			calendarEvents = eventsData;
+		} catch (e) {
+			console.error('On-demand sync failed:', e);
+		} finally {
+			syncing = false;
+		}
+	}
+
 	// Auto-sync stale connections in the background
 	async function autoSyncStaleConnections() {
 		try {
@@ -785,9 +855,14 @@
 	// Reload when date range changes
 	$effect(() => {
 		// Track the date range
-		startDate;
-		endDate;
+		const start = startDate;
+		const end = endDate;
 		loadData();
+
+		// Trigger on-demand sync if viewing dates outside the default window
+		if (isOutsideDefaultSyncWindow(start, end)) {
+			onDemandSync(start, end);
+		}
 	});
 </script>
 

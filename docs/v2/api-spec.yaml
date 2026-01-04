@@ -640,6 +640,20 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: start_date
+          in: query
+          required: false
+          description: Start date for on-demand sync (defaults to 90 days ago)
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          description: End date for on-demand sync (defaults to 30 days from now)
+          schema:
+            type: string
+            format: date
       responses:
         '200':
           description: Sync completed
@@ -1180,6 +1194,10 @@ components:
           type: string
           maxLength: 10
           example: "ACM"
+        client:
+          type: string
+          description: Client name for classification filtering
+          example: "Acme Corp"
         color:
           type: string
           pattern: '^#[0-9A-Fa-f]{6}$'
@@ -1228,6 +1246,8 @@ components:
         short_code:
           type: string
           maxLength: 10
+        client:
+          type: string
         color:
           type: string
           pattern: '^#[0-9A-Fa-f]{6}$'
@@ -1263,6 +1283,8 @@ components:
         short_code:
           type: string
           maxLength: 10
+        client:
+          type: string
         color:
           type: string
           pattern: '^#[0-9A-Fa-f]{6}$'

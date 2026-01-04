@@ -16,6 +16,7 @@
 	// Form state
 	let name = $state('');
 	let shortCode = $state('');
+	let client = $state('');
 	let color = $state('');
 	let isBillable = $state(true);
 	let isArchived = $state(false);
@@ -57,6 +58,7 @@
 			// Initialize form state
 			name = project.name;
 			shortCode = project.short_code || '';
+			client = project.client || '';
 			color = project.color;
 			isBillable = project.is_billable;
 			isArchived = project.is_archived;
@@ -81,6 +83,7 @@
 			project = await api.updateProject(projectId, {
 				name,
 				short_code: shortCode || undefined,
+				client: client || undefined,
 				color,
 				is_billable: isBillable,
 				is_archived: isArchived,
@@ -293,6 +296,13 @@
 						label="Short code"
 						bind:value={shortCode}
 						placeholder="e.g., ACM"
+					/>
+
+					<Input
+						type="text"
+						label="Client"
+						bind:value={client}
+						placeholder="e.g., Acme Corp"
 					/>
 
 					<div>

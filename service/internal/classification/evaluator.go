@@ -252,3 +252,90 @@ func ExtractDomains(attendees []string) []string {
 
 	return domains
 }
+
+// ExtendedEventProperties includes event properties plus classification metadata
+// for filtering by project, client, and confidence level
+type ExtendedEventProperties struct {
+	EventProperties
+	ProjectID    *string
+	ProjectName  *string
+	ClientName   *string
+	Confidence   *float64
+	IsClassified bool
+}
+
+// EvaluateExtended evaluates a query against extended event properties
+// This supports all standard conditions plus: project:, client:, confidence:
+func EvaluateExtended(node QueryNode, props *ExtendedEventProperties) bool {
+	switch n := node.(type) {
+	case *ConditionNode:
+		result := evaluateExtendedCondition(n, props)
+		if n.Negated {
+			return !result
+		}
+		return result
+
+	case *AndNode:
+		for _, child := range n.Children {
+			if !EvaluateExtended(child, props) {
+				return false
+			}
+		}
+		return true
+
+	case *OrNode:
+		for _, child := range n.Children {
+			if EvaluateExtended(child, props) {
+				return true
+			}
+		}
+		return false
+
+	default:
+		return false
+	}
+}
+
+func evaluateExtendedCondition(cond *ConditionNode, props *ExtendedEventProperties) bool {
+	switch cond.Property {
+	case "project":
+		// Special case: project:unclassified
+		if strings.EqualFold(cond.Value, "unclassified") {
+			return props.ProjectID == nil || !props.IsClassified
+		}
+		// Match against project name
+		if props.ProjectName == nil {
+			return false
+		}
+		return containsIgnoreCase(*props.ProjectName, cond.Value)
+
+	case "client":
+		// Match against client name
+		if props.ClientName == nil {
+			return false
+		}
+		return containsIgnoreCase(*props.ClientName, cond.Value)
+
+	case "confidence":
+		// confidence:high, confidence:medium, confidence:low
+		if props.Confidence == nil {
+			// No confidence = low
+			return strings.EqualFold(cond.Value, "low")
+		}
+		conf := *props.Confidence
+		switch strings.ToLower(cond.Value) {
+		case "high":
+			return conf >= ConfidenceCeiling // >= 0.8
+		case "medium":
+			return conf >= ConfidenceFloor && conf < ConfidenceCeiling // 0.5 <= conf < 0.8
+		case "low":
+			return conf < ConfidenceFloor // < 0.5
+		default:
+			return false
+		}
+
+	default:
+		// Delegate to standard condition evaluation
+		return evaluateCondition(cond, &props.EventProperties)
+	}
+}

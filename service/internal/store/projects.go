@@ -22,6 +22,7 @@ type Project struct {
 	UserID                 uuid.UUID
 	Name                   string
 	ShortCode              *string
+	Client                 *string
 	Color                  string
 	IsBillable             bool
 	IsArchived             bool
@@ -78,13 +79,13 @@ func (s *ProjectStore) Create(ctx context.Context, userID uuid.UUID, name string
 func (s *ProjectStore) GetByID(ctx context.Context, userID, projectID uuid.UUID) (*Project, error) {
 	project := &Project{}
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, name, short_code, color, is_billable, is_archived,
+		SELECT id, user_id, name, short_code, client, color, is_billable, is_archived,
 		       is_hidden_by_default, does_not_accumulate_hours,
 		       fingerprint_domains, fingerprint_emails, fingerprint_keywords,
 		       created_at, updated_at
 		FROM projects WHERE id = $1 AND user_id = $2
 	`, projectID, userID).Scan(
-		&project.ID, &project.UserID, &project.Name, &project.ShortCode, &project.Color,
+		&project.ID, &project.UserID, &project.Name, &project.ShortCode, &project.Client, &project.Color,
 		&project.IsBillable, &project.IsArchived, &project.IsHiddenByDefault,
 		&project.DoesNotAccumulateHours,
 		&project.FingerprintDomains, &project.FingerprintEmails, &project.FingerprintKeywords,
@@ -103,7 +104,7 @@ func (s *ProjectStore) GetByID(ctx context.Context, userID, projectID uuid.UUID)
 // List retrieves all projects for a user
 func (s *ProjectStore) List(ctx context.Context, userID uuid.UUID, includeArchived bool) ([]*Project, error) {
 	query := `
-		SELECT id, user_id, name, short_code, color, is_billable, is_archived,
+		SELECT id, user_id, name, short_code, client, color, is_billable, is_archived,
 		       is_hidden_by_default, does_not_accumulate_hours,
 		       fingerprint_domains, fingerprint_emails, fingerprint_keywords,
 		       created_at, updated_at
@@ -124,7 +125,7 @@ func (s *ProjectStore) List(ctx context.Context, userID uuid.UUID, includeArchiv
 	for rows.Next() {
 		p := &Project{}
 		err := rows.Scan(
-			&p.ID, &p.UserID, &p.Name, &p.ShortCode, &p.Color,
+			&p.ID, &p.UserID, &p.Name, &p.ShortCode, &p.Client, &p.Color,
 			&p.IsBillable, &p.IsArchived, &p.IsHiddenByDefault,
 			&p.DoesNotAccumulateHours,
 			&p.FingerprintDomains, &p.FingerprintEmails, &p.FingerprintKeywords,
@@ -157,11 +158,11 @@ func (s *ProjectStore) Update(ctx context.Context, userID, projectID uuid.UUID, 
 		argNum++
 	}
 
-	query := "UPDATE projects SET " + setClauses + " WHERE id = $1 AND user_id = $2 RETURNING id, user_id, name, short_code, color, is_billable, is_archived, is_hidden_by_default, does_not_accumulate_hours, fingerprint_domains, fingerprint_emails, fingerprint_keywords, created_at, updated_at"
+	query := "UPDATE projects SET " + setClauses + " WHERE id = $1 AND user_id = $2 RETURNING id, user_id, name, short_code, client, color, is_billable, is_archived, is_hidden_by_default, does_not_accumulate_hours, fingerprint_domains, fingerprint_emails, fingerprint_keywords, created_at, updated_at"
 
 	project := &Project{}
 	err := s.pool.QueryRow(ctx, query, args...).Scan(
-		&project.ID, &project.UserID, &project.Name, &project.ShortCode, &project.Color,
+		&project.ID, &project.UserID, &project.Name, &project.ShortCode, &project.Client, &project.Color,
 		&project.IsBillable, &project.IsArchived, &project.IsHiddenByDefault,
 		&project.DoesNotAccumulateHours,
 		&project.FingerprintDomains, &project.FingerprintEmails, &project.FingerprintKeywords,

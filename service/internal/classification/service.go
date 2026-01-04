@@ -110,23 +110,14 @@ func (s *Service) EvaluateAttendance(ctx context.Context, userID uuid.UUID, even
 
 // PreviewRule evaluates a query against events and returns matching events with conflict info
 func (s *Service) PreviewRule(ctx context.Context, userID uuid.UUID, query string, targetProjectID *uuid.UUID, startDate, endDate *time.Time) (*RulePreview, error) {
-	// Get events in the date range
-	events, err := s.eventStore.List(ctx, userID, startDate, endDate, nil, nil)
+	// Parse query first to validate syntax
+	ast, err := Parse(query)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert events to items
-	items := make([]Item, 0, len(events))
-	eventMap := make(map[string]*store.CalendarEvent)
-	for _, event := range events {
-		item := eventToItem(event)
-		items = append(items, item)
-		eventMap[item.ID] = event
-	}
-
-	// Use pure library to find matches
-	matchingIDs, err := PreviewRules(query, items)
+	// Get events in the date range
+	events, err := s.eventStore.List(ctx, userID, startDate, endDate, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -136,9 +127,11 @@ func (s *Service) PreviewRule(ctx context.Context, userID uuid.UUID, query strin
 		Conflicts: make([]*Conflict, 0),
 	}
 
-	for _, id := range matchingIDs {
-		event := eventMap[id]
-		if event == nil {
+	// Evaluate each event using extended properties (supports project:, client:, confidence:)
+	for _, event := range events {
+		extProps := eventToExtendedProperties(event)
+
+		if !EvaluateExtended(ast, extProps) {
 			continue
 		}
 
@@ -174,6 +167,42 @@ func (s *Service) PreviewRule(ctx context.Context, userID uuid.UUID, query strin
 	preview.Stats.AlreadyCorrect = preview.Stats.TotalMatches - preview.Stats.WouldChange
 
 	return preview, nil
+}
+
+// eventToExtendedProperties converts a CalendarEvent to ExtendedEventProperties
+func eventToExtendedProperties(event *store.CalendarEvent) *ExtendedEventProperties {
+	props := &ExtendedEventProperties{
+		EventProperties: EventProperties{
+			Title:       event.Title,
+			Attendees:   event.Attendees,
+			StartTime:   event.StartTime,
+			EndTime:     event.EndTime,
+			IsRecurring: event.IsRecurring,
+		},
+		Confidence:   event.ClassificationConfidence,
+		IsClassified: event.ClassificationStatus == store.StatusClassified,
+	}
+
+	if event.Description != nil {
+		props.Description = *event.Description
+	}
+	if event.ResponseStatus != nil {
+		props.ResponseStatus = *event.ResponseStatus
+	}
+	if event.Transparency != nil {
+		props.Transparency = *event.Transparency
+	}
+
+	if event.ProjectID != nil {
+		id := event.ProjectID.String()
+		props.ProjectID = &id
+	}
+	if event.Project != nil {
+		props.ProjectName = &event.Project.Name
+		props.ClientName = event.Project.Client
+	}
+
+	return props
 }
 
 // RulePreview contains the preview results for a rule

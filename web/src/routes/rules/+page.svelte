@@ -415,7 +415,7 @@
 					type="text"
 					value={searchQuery}
 					oninput={handleSearchInput}
-					placeholder="Search events: domain:acme.com title:sync"
+					placeholder="Search: project:unclassified confidence:low client:acme"
 					class="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
 				/>
 				{#if searchQuery}
@@ -431,7 +431,7 @@
 				{/if}
 			</div>
 			<p class="mt-1 text-xs text-gray-500">
-				Examples: title:standup, domain:client.com, attendees:alice@, response:declined
+				Examples: project:unclassified, client:acme, confidence:high|medium|low, title:standup, domain:client.com
 			</p>
 
 			{#if searchError}

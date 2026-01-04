@@ -144,6 +144,26 @@ func (s *CalendarEventStore) MarkOrphanedExceptByCalendar(ctx context.Context, c
 	return result.RowsAffected(), nil
 }
 
+// MarkOrphanedInRangeExceptByCalendar marks events as orphaned if not in the given external IDs,
+// but only for events within the specified date range. Events outside the range are not affected.
+func (s *CalendarEventStore) MarkOrphanedInRangeExceptByCalendar(ctx context.Context, calendarID uuid.UUID, externalIDs []string, minDate, maxDate time.Time) (int64, error) {
+	result, err := s.pool.Exec(ctx, `
+		UPDATE calendar_events
+		SET is_orphaned = true, updated_at = $5
+		WHERE calendar_id = $1
+		AND external_id != ALL($2)
+		AND is_orphaned = false
+		AND start_time >= $3
+		AND start_time < $4
+	`, calendarID, externalIDs, minDate, maxDate, time.Now().UTC())
+
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected(), nil
+}
+
 // MarkOrphanedByExternalID marks a specific event as orphaned by its external ID (legacy, uses connection_id)
 func (s *CalendarEventStore) MarkOrphanedByExternalID(ctx context.Context, connectionID uuid.UUID, externalID string) error {
 	_, err := s.pool.Exec(ctx, `
@@ -195,7 +215,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.classification_status,
 		       ce.classification_source, ce.classification_confidence, ce.needs_review,
 		       ce.project_id, ce.created_at, ce.updated_at,
-		       p.id, p.user_id, p.name, p.short_code, p.color, p.is_billable, p.is_archived,
+		       p.id, p.user_id, p.name, p.short_code, p.client, p.color, p.is_billable, p.is_archived,
 		       p.is_hidden_by_default, p.does_not_accumulate_hours, p.created_at, p.updated_at,
 		       c.external_id, c.name, c.color
 		FROM calendar_events ce
@@ -242,7 +262,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		e := &CalendarEvent{}
 		var attendeesJSON []byte
 		var pID, pUserID *uuid.UUID
-		var pName, pShortCode, pColor *string
+		var pName, pShortCode, pClient, pColor *string
 		var pIsBillable, pIsArchived, pIsHidden, pNoAccum *bool
 		var pCreatedAt, pUpdatedAt *time.Time
 
@@ -252,7 +272,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.ClassificationStatus,
 			&e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
-			&pID, &pUserID, &pName, &pShortCode, &pColor, &pIsBillable, &pIsArchived,
+			&pID, &pUserID, &pName, &pShortCode, &pClient, &pColor, &pIsBillable, &pIsArchived,
 			&pIsHidden, &pNoAccum, &pCreatedAt, &pUpdatedAt,
 			&e.CalendarExternalID, &e.CalendarName, &e.CalendarColor,
 		)
@@ -268,6 +288,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 				UserID:                 *pUserID,
 				Name:                   *pName,
 				ShortCode:              pShortCode,
+				Client:                 pClient,
 				Color:                  *pColor,
 				IsBillable:             *pIsBillable,
 				IsArchived:             *pIsArchived,

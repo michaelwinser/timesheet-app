@@ -337,4 +337,21 @@ var migrations = []migration{
 			ADD COLUMN IF NOT EXISTS fingerprint_keywords TEXT[] DEFAULT '{}';
 		`,
 	},
+	{
+		version: 10,
+		sql: `
+			-- Add client field to projects for classification filtering
+			ALTER TABLE projects
+			ADD COLUMN IF NOT EXISTS client TEXT;
+		`,
+	},
+	{
+		version: 11,
+		sql: `
+			-- Track the synced date window per calendar for smarter sync and orphaning
+			ALTER TABLE calendars
+			ADD COLUMN IF NOT EXISTS min_synced_date DATE,
+			ADD COLUMN IF NOT EXISTS max_synced_date DATE;
+		`,
+	},
 }
