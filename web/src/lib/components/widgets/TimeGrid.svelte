@@ -6,13 +6,14 @@
 		events: CalendarEvent[];
 		projects: Project[];
 		date: Date;
+		scrollTrigger?: number;
 		onclassify?: (eventId: string, projectId: string) => void;
 		onskip?: (eventId: string) => void;
 		onhover?: (event: CalendarEvent | null, element: HTMLElement | null) => void;
 		showTimeLegend?: boolean;
 	}
 
-	let { events, projects, date, onclassify, onskip, onhover, showTimeLegend = true }: Props = $props();
+	let { events, projects, date, scrollTrigger = 0, onclassify, onskip, onhover, showTimeLegend = true }: Props = $props();
 
 	const activeProjects = $derived(projects.filter(p => !p.is_archived));
 
@@ -48,11 +49,10 @@
 		scrollContainer.scrollTop = scrollTop;
 	}
 
-	// Scroll to first event when events or date change
+	// Scroll to first event only when scrollTrigger changes (not on event classification)
 	$effect(() => {
-		// Track dependencies that should trigger a scroll
-		const _events = timedEvents;
-		const _date = date;
+		// Only track scrollTrigger - not events, to avoid scroll on classification
+		const _trigger = scrollTrigger;
 
 		if (scrollContainer) {
 			// Use requestAnimationFrame to ensure DOM is ready

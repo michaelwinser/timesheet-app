@@ -272,6 +272,9 @@
 	// Scroll container reference for unified week grid
 	let weekScrollContainer: HTMLDivElement;
 
+	// Track when we should scroll (incremented on navigation/view changes, not on event updates)
+	let scrollTrigger = $state(0);
+
 	// Calculate first event hour across all visible days for auto-scroll
 	function getFirstEventHour(events: Record<string, CalendarEvent[]>, days: Date[]): number {
 		let minHour = 8; // Default to 8 AM if no events
@@ -296,18 +299,12 @@
 		weekScrollContainer.scrollTop = scrollTop;
 	}
 
-	// Auto-scroll when events, dates, or view modes change
+	// Auto-scroll only when scrollTrigger changes (navigation/view changes)
 	$effect(() => {
-		// Track all dependencies that should trigger a scroll
-		const _events = eventsByDate;
-		const _days = visibleDays;
-		const _scope = scopeMode;
-		const _display = displayMode;
-		const _date = currentDate;
+		// Only track the scroll trigger, not event data
+		const _trigger = scrollTrigger;
 
-		// Use tick to ensure DOM is updated before scrolling
 		if (weekScrollContainer && scopeMode !== 'day' && displayMode === 'calendar') {
-			// Small delay to ensure container is rendered
 			requestAnimationFrame(() => scrollToFirstEvent());
 		}
 	});
@@ -471,6 +468,9 @@
 			projects = projectsData;
 			entries = entriesData;
 			calendarEvents = eventsData;
+
+			// Trigger scroll after data loads (for initial load and date range changes)
+			scrollTrigger++;
 		} catch (e) {
 			console.error('Failed to load data:', e);
 		} finally {
@@ -587,6 +587,7 @@
 		d.setDate(d.getDate() - (scopeMode === 'day' ? 1 : 7));
 		currentDate = d;
 		updateUrl(d, scopeMode, displayMode);
+		scrollTrigger++;
 	}
 
 	function navigateNext() {
@@ -594,22 +595,26 @@
 		d.setDate(d.getDate() + (scopeMode === 'day' ? 1 : 7));
 		currentDate = d;
 		updateUrl(d, scopeMode, displayMode);
+		scrollTrigger++;
 	}
 
 	function goToToday() {
 		const today = getToday();
 		currentDate = today;
 		updateUrl(today, scopeMode, displayMode);
+		scrollTrigger++;
 	}
 
 	function setScopeMode(mode: ScopeMode) {
 		scopeMode = mode;
 		updateUrl(currentDate, mode, displayMode);
+		scrollTrigger++;
 	}
 
 	function setDisplayMode(mode: DisplayMode) {
 		displayMode = mode;
 		updateUrl(currentDate, scopeMode, mode);
+		scrollTrigger++;
 	}
 
 	// Keyboard shortcuts
@@ -938,6 +943,7 @@
 							events={dayEvents}
 							{projects}
 							date={currentDate}
+							{scrollTrigger}
 							onclassify={(eventId, projectId) => handleClassify(eventId, projectId)}
 							onskip={(eventId) => handleSkip(eventId)}
 							onhover={handleEventHover}

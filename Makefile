@@ -2,7 +2,7 @@
 #
 # All commands use Docker for consistency.
 
-.PHONY: help up down logs ps build clean db-reset psql generate test
+.PHONY: help up down logs ps build clean db-reset db-clear-entries psql generate test
 
 # Default target
 help:
@@ -20,6 +20,7 @@ help:
 	@echo "Database:"
 	@echo "  make db-up       Start PostgreSQL only"
 	@echo "  make db-reset    Reset database (WARNING: deletes data)"
+	@echo "  make db-clear-entries  Delete all time entries"
 	@echo "  make db-clear-classifications  Reset all events to pending"
 	@echo "  make psql        Connect to PostgreSQL shell"
 	@echo ""
@@ -84,6 +85,11 @@ db-reset:
 	@echo "Database reset. Starting API to run migrations..."
 	docker compose start api
 	@echo "Done! Database has been reset."
+
+db-clear-entries:
+	@echo "Deleting all time entries..."
+	docker compose exec postgres psql -U timesheet -d timesheet_v2 -c "DELETE FROM time_entries;"
+	@echo "Done! All time entries deleted."
 
 db-clear-classifications:
 	@echo "Clearing all event classifications..."
