@@ -24,7 +24,10 @@ import type {
 	ApplyRulesRequest,
 	ApplyRulesResponse,
 	BulkClassifyRequest,
-	BulkClassifyResponse
+	BulkClassifyResponse,
+	ApiKey,
+	ApiKeyCreate,
+	ApiKeyWithSecret
 } from './types';
 
 const API_BASE = '/api';
@@ -219,6 +222,19 @@ class ApiClient {
 
 	async bulkClassifyEvents(data: BulkClassifyRequest): Promise<BulkClassifyResponse> {
 		return this.request('POST', '/calendar-events/bulk-classify', data);
+	}
+
+	// API Keys
+	async listApiKeys(): Promise<ApiKey[]> {
+		return this.request('GET', '/api-keys');
+	}
+
+	async createApiKey(data: ApiKeyCreate): Promise<ApiKeyWithSecret> {
+		return this.request('POST', '/api-keys', data);
+	}
+
+	async deleteApiKey(id: string): Promise<void> {
+		return this.request('DELETE', `/api-keys/${id}`);
 	}
 }
 

@@ -1115,15 +1115,174 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  # API Keys endpoints
+  /api/api-keys:
+    get:
+      operationId: listApiKeys
+      tags: [auth]
+      summary: List user's API keys
+      description: Returns all API keys for the authenticated user (without the actual key values)
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ApiKey'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createApiKey
+      tags: [auth]
+      summary: Create a new API key
+      description: |
+        Creates a new API key for programmatic access. The key value is only
+        returned once in the response - store it securely as it cannot be retrieved again.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApiKeyCreate'
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyWithSecret'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: API key name already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/api-keys/{id}:
+    delete:
+      operationId: deleteApiKey
+      tags: [auth]
+      summary: Revoke an API key
+      description: Permanently deletes an API key. Any requests using this key will fail immediately.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: API key deleted
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: API key not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: JWT token obtained from login or signup
+      description: JWT token obtained from login/signup, or API key (format ts_xxx)
 
   schemas:
+    # API Key schemas
+    ApiKey:
+      type: object
+      required: [id, user_id, name, key_prefix, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: User-provided name for this key
+          example: "Claude Code"
+        key_prefix:
+          type: string
+          description: First few characters of the key for identification
+          example: "ts_a1b2c3d4"
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    ApiKeyCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: A memorable name for this key
+          example: "Claude Code"
+
+    ApiKeyWithSecret:
+      type: object
+      required: [id, user_id, name, key_prefix, key, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        key_prefix:
+          type: string
+        key:
+          type: string
+          description: |
+            The full API key. This is only returned once at creation time.
+            Store it securely - it cannot be retrieved again.
+          example: "ts_a1b2c3d4e5f6g7h8i9j0..."
+        created_at:
+          type: string
+          format: date-time
+
     # Auth schemas
     SignupRequest:
       type: object

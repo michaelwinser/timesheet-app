@@ -54,6 +54,39 @@ const (
 	ListCalendarEventsParamsClassificationStatusSkipped    ListCalendarEventsParamsClassificationStatus = "skipped"
 )
 
+// ApiKey defines model for ApiKey.
+type ApiKey struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// KeyPrefix First few characters of the key for identification
+	KeyPrefix  string     `json:"key_prefix"`
+	LastUsedAt *time.Time `json:"last_used_at"`
+
+	// Name User-provided name for this key
+	Name   string             `json:"name"`
+	UserId openapi_types.UUID `json:"user_id"`
+}
+
+// ApiKeyCreate defines model for ApiKeyCreate.
+type ApiKeyCreate struct {
+	// Name A memorable name for this key
+	Name string `json:"name"`
+}
+
+// ApiKeyWithSecret defines model for ApiKeyWithSecret.
+type ApiKeyWithSecret struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+
+	// Key The full API key. This is only returned once at creation time.
+	// Store it securely - it cannot be retrieved again.
+	Key       string             `json:"key"`
+	KeyPrefix string             `json:"key_prefix"`
+	Name      string             `json:"name"`
+	UserId    openapi_types.UUID `json:"user_id"`
+}
+
 // ApplyRulesRequest defines model for ApplyRulesRequest.
 type ApplyRulesRequest struct {
 	// DryRun If true, return what would be classified without making changes
@@ -506,6 +539,9 @@ type ListTimeEntriesParams struct {
 	ProjectId *openapi_types.UUID `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
 
+// CreateApiKeyJSONRequestBody defines body for CreateApiKey for application/json ContentType.
+type CreateApiKeyJSONRequestBody = ApiKeyCreate
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -547,6 +583,15 @@ type UpdateTimeEntryJSONRequestBody = TimeEntryUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// List user's API keys
+	// (GET /api/api-keys)
+	ListApiKeys(w http.ResponseWriter, r *http.Request)
+	// Create a new API key
+	// (POST /api/api-keys)
+	CreateApiKey(w http.ResponseWriter, r *http.Request)
+	// Revoke an API key
+	// (DELETE /api/api-keys/{id})
+	DeleteApiKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// Get Google OAuth authorization URL
 	// (GET /api/auth/google/authorize)
 	GoogleAuthorize(w http.ResponseWriter, r *http.Request)
@@ -645,6 +690,24 @@ type ServerInterface interface {
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
+
+// List user's API keys
+// (GET /api/api-keys)
+func (_ Unimplemented) ListApiKeys(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a new API key
+// (POST /api/api-keys)
+func (_ Unimplemented) CreateApiKey(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Revoke an API key
+// (DELETE /api/api-keys/{id})
+func (_ Unimplemented) DeleteApiKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
 
 // Get Google OAuth authorization URL
 // (GET /api/auth/google/authorize)
@@ -840,6 +903,77 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListApiKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListApiKeys(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListApiKeys(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateApiKey operation middleware
+func (siw *ServerInterfaceWrapper) CreateApiKey(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateApiKey(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteApiKey operation middleware
+func (siw *ServerInterfaceWrapper) DeleteApiKey(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteApiKey(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // GoogleAuthorize operation middleware
 func (siw *ServerInterfaceWrapper) GoogleAuthorize(w http.ResponseWriter, r *http.Request) {
@@ -1863,6 +1997,15 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/api-keys", wrapper.ListApiKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/api-keys", wrapper.CreateApiKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/api-keys/{id}", wrapper.DeleteApiKey)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/auth/google/authorize", wrapper.GoogleAuthorize)
 	})
 	r.Group(func(r chi.Router) {
@@ -1957,6 +2100,109 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 
 	return r
+}
+
+type ListApiKeysRequestObject struct {
+}
+
+type ListApiKeysResponseObject interface {
+	VisitListApiKeysResponse(w http.ResponseWriter) error
+}
+
+type ListApiKeys200JSONResponse []ApiKey
+
+func (response ListApiKeys200JSONResponse) VisitListApiKeysResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListApiKeys401JSONResponse Error
+
+func (response ListApiKeys401JSONResponse) VisitListApiKeysResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateApiKeyRequestObject struct {
+	Body *CreateApiKeyJSONRequestBody
+}
+
+type CreateApiKeyResponseObject interface {
+	VisitCreateApiKeyResponse(w http.ResponseWriter) error
+}
+
+type CreateApiKey201JSONResponse ApiKeyWithSecret
+
+func (response CreateApiKey201JSONResponse) VisitCreateApiKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateApiKey400JSONResponse Error
+
+func (response CreateApiKey400JSONResponse) VisitCreateApiKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateApiKey401JSONResponse Error
+
+func (response CreateApiKey401JSONResponse) VisitCreateApiKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateApiKey409JSONResponse Error
+
+func (response CreateApiKey409JSONResponse) VisitCreateApiKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteApiKeyRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteApiKeyResponseObject interface {
+	VisitDeleteApiKeyResponse(w http.ResponseWriter) error
+}
+
+type DeleteApiKey204Response struct {
+}
+
+func (response DeleteApiKey204Response) VisitDeleteApiKeyResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteApiKey401JSONResponse Error
+
+func (response DeleteApiKey401JSONResponse) VisitDeleteApiKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteApiKey404JSONResponse Error
+
+func (response DeleteApiKey404JSONResponse) VisitDeleteApiKeyResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
 }
 
 type GoogleAuthorizeRequestObject struct {
@@ -3034,6 +3280,15 @@ func (response UpdateTimeEntry409JSONResponse) VisitUpdateTimeEntryResponse(w ht
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// List user's API keys
+	// (GET /api/api-keys)
+	ListApiKeys(ctx context.Context, request ListApiKeysRequestObject) (ListApiKeysResponseObject, error)
+	// Create a new API key
+	// (POST /api/api-keys)
+	CreateApiKey(ctx context.Context, request CreateApiKeyRequestObject) (CreateApiKeyResponseObject, error)
+	// Revoke an API key
+	// (DELETE /api/api-keys/{id})
+	DeleteApiKey(ctx context.Context, request DeleteApiKeyRequestObject) (DeleteApiKeyResponseObject, error)
 	// Get Google OAuth authorization URL
 	// (GET /api/auth/google/authorize)
 	GoogleAuthorize(ctx context.Context, request GoogleAuthorizeRequestObject) (GoogleAuthorizeResponseObject, error)
@@ -3156,6 +3411,87 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListApiKeys operation middleware
+func (sh *strictHandler) ListApiKeys(w http.ResponseWriter, r *http.Request) {
+	var request ListApiKeysRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListApiKeys(ctx, request.(ListApiKeysRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListApiKeys")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListApiKeysResponseObject); ok {
+		if err := validResponse.VisitListApiKeysResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateApiKey operation middleware
+func (sh *strictHandler) CreateApiKey(w http.ResponseWriter, r *http.Request) {
+	var request CreateApiKeyRequestObject
+
+	var body CreateApiKeyJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateApiKey(ctx, request.(CreateApiKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateApiKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateApiKeyResponseObject); ok {
+		if err := validResponse.VisitCreateApiKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteApiKey operation middleware
+func (sh *strictHandler) DeleteApiKey(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteApiKeyRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteApiKey(ctx, request.(DeleteApiKeyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteApiKey")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteApiKeyResponseObject); ok {
+		if err := validResponse.VisitDeleteApiKeyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // GoogleAuthorize operation middleware

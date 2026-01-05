@@ -14,6 +14,7 @@ type Server struct {
 	*TimeEntryHandler
 	*CalendarHandler
 	*RulesHandler
+	*APIKeyHandler
 }
 
 // NewServer creates a new server handler
@@ -25,6 +26,7 @@ func NewServer(
 	calendars *store.CalendarStore,
 	calendarEvents *store.CalendarEventStore,
 	classificationRules *store.ClassificationRuleStore,
+	apiKeys *store.APIKeyStore,
 	jwt *JWTService,
 	googleSvc *google.CalendarService,
 	classificationSvc *classification.Service,
@@ -35,6 +37,7 @@ func NewServer(
 		TimeEntryHandler: NewTimeEntryHandler(entries, projects),
 		CalendarHandler:  NewCalendarHandler(calendarConns, calendars, calendarEvents, entries, projects, googleSvc, classificationSvc),
 		RulesHandler:     NewRulesHandler(classificationRules, projects, classificationSvc),
+		APIKeyHandler:    NewAPIKeyHandler(apiKeys),
 	}
 }
 

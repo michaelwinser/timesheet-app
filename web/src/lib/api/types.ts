@@ -258,3 +258,21 @@ export interface BulkClassifyResponse {
 	skipped_count: number;
 	time_entries_created?: number;
 }
+
+// API Keys
+export interface ApiKey {
+	id: string;
+	user_id: string;
+	name: string;
+	key_prefix: string;
+	last_used_at?: string | null;
+	created_at: string;
+}
+
+export interface ApiKeyCreate {
+	name: string;
+}
+
+export interface ApiKeyWithSecret extends ApiKey {
+	key: string;
+}

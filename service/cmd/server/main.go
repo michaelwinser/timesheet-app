@@ -34,6 +34,9 @@ func main() {
 	googleClientSecret := getEnv("GOOGLE_CLIENT_SECRET", "")
 	googleRedirectURL := getEnv("GOOGLE_REDIRECT_URL", "http://localhost:8080/api/auth/google/callback")
 
+	// MCP OAuth config
+	baseURL := getEnv("BASE_URL", fmt.Sprintf("http://localhost:%s", port))
+
 	ctx := context.Background()
 
 	// Initialize database
@@ -80,6 +83,8 @@ func main() {
 	calendarStore := store.NewCalendarStore(db.Pool)
 	calendarEventStore := store.NewCalendarEventStore(db.Pool)
 	classificationRuleStore := store.NewClassificationRuleStore(db.Pool)
+	apiKeyStore := store.NewAPIKeyStore(db.Pool)
+	mcpOAuthStore := store.NewMCPOAuthStore(db.Pool)
 
 	// Initialize services
 	jwtService := handler.NewJWTService(jwtSecret, jwtExpiration)
@@ -89,7 +94,7 @@ func main() {
 	serverHandler := handler.NewServer(
 		userStore, projectStore, timeEntryStore,
 		calendarConnectionStore, calendarStore, calendarEventStore,
-		classificationRuleStore,
+		classificationRuleStore, apiKeyStore,
 		jwtService, googleService,
 		classificationService,
 	)
@@ -101,7 +106,7 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
-	r.Use(handler.AuthMiddleware(jwtService))
+	r.Use(handler.AuthMiddleware(jwtService, apiKeyStore))
 
 	// CORS for development
 	r.Use(func(next http.Handler) http.Handler {
@@ -154,6 +159,23 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
+
+	// MCP OAuth endpoints
+	mcpOAuthHandler := handler.NewMCPOAuthHandler(mcpOAuthStore, userStore, jwtService, baseURL)
+	r.Get("/.well-known/oauth-authorization-server", mcpOAuthHandler.OAuthMetadata)
+	r.Get("/.well-known/oauth-protected-resource", mcpOAuthHandler.ResourceMetadata)
+	r.Get("/mcp/authorize", mcpOAuthHandler.Authorize)
+	r.Post("/mcp/authorize", mcpOAuthHandler.AuthorizeWithToken)
+	r.Post("/mcp/login", mcpOAuthHandler.Login)
+	r.Post("/mcp/token", mcpOAuthHandler.Token)
+
+	// MCP endpoint (Model Context Protocol for AI integrations)
+	mcpHandler := handler.NewMCPHandler(
+		projectStore, timeEntryStore, calendarEventStore,
+		apiKeyStore, mcpOAuthStore, jwtService, baseURL,
+	)
+	r.Handle("/mcp", mcpHandler)
+	r.Handle("/mcp/*", mcpHandler)
 
 	// Mount API routes
 	strictHandler := api.NewStrictHandler(serverHandler, nil)
