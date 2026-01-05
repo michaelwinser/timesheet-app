@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/michaelw/timesheet-app/service/internal/store"
 )
@@ -36,6 +37,7 @@ func (h *MCPOAuthHandler) OAuthMetadata(w http.ResponseWriter, r *http.Request) 
 		"issuer":                                h.baseURL,
 		"authorization_endpoint":               h.baseURL + "/mcp/authorize",
 		"token_endpoint":                       h.baseURL + "/mcp/token",
+		"registration_endpoint":                h.baseURL + "/mcp/register",
 		"response_types_supported":             []string{"code"},
 		"grant_types_supported":                []string{"authorization_code"},
 		"code_challenge_methods_supported":     []string{"S256"},
@@ -48,12 +50,55 @@ func (h *MCPOAuthHandler) OAuthMetadata(w http.ResponseWriter, r *http.Request) 
 	json.NewEncoder(w).Encode(metadata)
 }
 
+// Register handles dynamic client registration (RFC 7591)
+// POST /mcp/register
+func (h *MCPOAuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RedirectURIs            []string `json:"redirect_uris"`
+		ClientName              string   `json:"client_name"`
+		TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_client_metadata",
+			"error_description": "Failed to parse request body",
+		})
+		return
+	}
+
+	if len(req.RedirectURIs) == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{
+			"error":             "invalid_client_metadata",
+			"error_description": "redirect_uris is required",
+		})
+		return
+	}
+
+	// Generate a simple client ID (for public clients using PKCE, no secret needed)
+	clientID := fmt.Sprintf("mcp_%d", time.Now().UnixNano())
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]any{
+		"client_id":                  clientID,
+		"client_id_issued_at":        time.Now().Unix(),
+		"redirect_uris":              req.RedirectURIs,
+		"client_name":                req.ClientName,
+		"token_endpoint_auth_method": "none",
+	})
+}
+
 // ResourceMetadata returns OAuth 2.0 Protected Resource Metadata
 // GET /.well-known/oauth-protected-resource or via WWW-Authenticate header
 func (h *MCPOAuthHandler) ResourceMetadata(w http.ResponseWriter, r *http.Request) {
 	metadata := map[string]any{
-		"resource":              h.baseURL + "/mcp",
-		"authorization_servers": []string{h.baseURL},
+		"resource":                 h.baseURL,
+		"authorization_servers":   []string{h.baseURL},
 		"bearer_methods_supported": []string{"header"},
 	}
 

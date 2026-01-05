@@ -164,8 +164,12 @@ func main() {
 	mcpOAuthHandler := handler.NewMCPOAuthHandler(mcpOAuthStore, userStore, jwtService, baseURL)
 	r.Get("/.well-known/oauth-authorization-server", mcpOAuthHandler.OAuthMetadata)
 	r.Get("/.well-known/oauth-protected-resource", mcpOAuthHandler.ResourceMetadata)
+	// Claude Code appends the resource path to well-known URLs
+	r.Get("/.well-known/oauth-authorization-server/*", mcpOAuthHandler.OAuthMetadata)
+	r.Get("/.well-known/oauth-protected-resource/*", mcpOAuthHandler.ResourceMetadata)
 	r.Get("/mcp/authorize", mcpOAuthHandler.Authorize)
 	r.Post("/mcp/authorize", mcpOAuthHandler.AuthorizeWithToken)
+	r.Post("/mcp/register", mcpOAuthHandler.Register)
 	r.Post("/mcp/login", mcpOAuthHandler.Login)
 	r.Post("/mcp/token", mcpOAuthHandler.Token)
 

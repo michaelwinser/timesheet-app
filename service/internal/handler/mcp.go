@@ -1216,15 +1216,29 @@ func (h *MCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Try to get user from context (set by auth middleware for JWT/API keys)
 	userID, ok := UserIDFromContext(r.Context())
 
-	// If not authenticated via middleware, check for MCP OAuth token
+	// If not authenticated via middleware, check for Bearer token
 	if !ok {
 		authHeader := r.Header.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer mcp_") {
+		if strings.HasPrefix(authHeader, "Bearer ") {
 			token := strings.TrimPrefix(authHeader, "Bearer ")
-			if h.mcpOAuth != nil {
-				if uid, err := h.mcpOAuth.ValidateToken(r.Context(), token); err == nil {
-					userID = uid
-					ok = true
+
+			// Check for MCP OAuth token (mcp_ prefix)
+			if strings.HasPrefix(token, "mcp_") {
+				if h.mcpOAuth != nil {
+					if uid, err := h.mcpOAuth.ValidateToken(r.Context(), token); err == nil {
+						userID = uid
+						ok = true
+					}
+				}
+			}
+
+			// Check for API key (ts_ prefix)
+			if !ok && strings.HasPrefix(token, "ts_") {
+				if h.apiKeys != nil {
+					if uid, err := h.apiKeys.ValidateAndGetUserID(r.Context(), token); err == nil {
+						userID = uid
+						ok = true
+					}
 				}
 			}
 		}

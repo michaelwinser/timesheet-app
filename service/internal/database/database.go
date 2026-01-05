@@ -373,4 +373,39 @@ var migrations = []migration{
 			CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
 		`,
 	},
+	{
+		version: 13,
+		sql: `
+			-- MCP OAuth sessions for OAuth 2.1 flow
+			CREATE TABLE IF NOT EXISTS mcp_oauth_sessions (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				state TEXT NOT NULL UNIQUE,
+				code_challenge TEXT NOT NULL,
+				code_challenge_method TEXT NOT NULL,
+				redirect_uri TEXT NOT NULL,
+				auth_code TEXT,
+				auth_code_expires_at TIMESTAMPTZ,
+				user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				expires_at TIMESTAMPTZ NOT NULL
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_mcp_oauth_sessions_state ON mcp_oauth_sessions(state);
+			CREATE INDEX IF NOT EXISTS idx_mcp_oauth_sessions_auth_code ON mcp_oauth_sessions(auth_code) WHERE auth_code IS NOT NULL;
+
+			-- MCP access tokens issued via OAuth flow
+			CREATE TABLE IF NOT EXISTS mcp_access_tokens (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				token_hash VARCHAR(64) NOT NULL,
+				token_prefix VARCHAR(12) NOT NULL,
+				expires_at TIMESTAMPTZ NOT NULL,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				last_used_at TIMESTAMPTZ
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_mcp_access_tokens_token_hash ON mcp_access_tokens(token_hash);
+			CREATE INDEX IF NOT EXISTS idx_mcp_access_tokens_user_id ON mcp_access_tokens(user_id);
+		`,
+	},
 }
