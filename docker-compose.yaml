@@ -7,6 +7,7 @@
 #
 # Access:
 #   http://localhost:8080  - Web UI + API
+#   http://localhost:3001  - MCP Server (HTTP mode)
 
 services:
   postgres:
@@ -45,6 +46,23 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL:-http://localhost:8080/api/auth/google/callback}
+    restart: unless-stopped
+
+  mcp:
+    build:
+      context: ./mcp-service
+      dockerfile: Dockerfile
+    container_name: timesheet-mcp
+    depends_on:
+      - api
+    ports:
+      - "3001:3001"
+    environment:
+      TIMESHEET_API_URL: http://api:8080
+      TIMESHEET_API_KEY: ${MCP_API_KEY:-}
+      MCP_TRANSPORT: http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "3001"
     restart: unless-stopped
 
 volumes:

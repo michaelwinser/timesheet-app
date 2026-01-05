@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/michaelw/timesheet-app/service/internal/store"
 )
 
 // UserIDFromContext extracts the user ID from the context
@@ -14,8 +15,8 @@ func UserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	return userID, ok
 }
 
-// AuthMiddleware validates JWT tokens and adds user ID to context
-func AuthMiddleware(jwt *JWTService) func(http.Handler) http.Handler {
+// AuthMiddleware validates JWT tokens or API keys and adds user ID to context
+func AuthMiddleware(jwt *JWTService, apiKeys *store.APIKeyStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Extract token from Authorization header
@@ -32,8 +33,18 @@ func AuthMiddleware(jwt *JWTService) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Validate token
-			userID, err := jwt.ValidateToken(parts[1])
+			token := parts[1]
+			var userID uuid.UUID
+			var err error
+
+			// Check if it's an API key (starts with "ts_")
+			if strings.HasPrefix(token, "ts_") && apiKeys != nil {
+				userID, err = apiKeys.ValidateAndGetUserID(r.Context(), token)
+			} else {
+				// Try JWT validation
+				userID, err = jwt.ValidateToken(token)
+			}
+
 			if err != nil {
 				next.ServeHTTP(w, r)
 				return
