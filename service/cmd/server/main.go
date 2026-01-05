@@ -172,7 +172,8 @@ func main() {
 	// MCP endpoint (Model Context Protocol for AI integrations)
 	mcpHandler := handler.NewMCPHandler(
 		projectStore, timeEntryStore, calendarEventStore,
-		apiKeyStore, mcpOAuthStore, jwtService, baseURL,
+		classificationRuleStore, apiKeyStore, mcpOAuthStore,
+		classificationService, jwtService, baseURL,
 	)
 	r.Handle("/mcp", mcpHandler)
 	r.Handle("/mcp/*", mcpHandler)

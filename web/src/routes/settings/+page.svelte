@@ -499,12 +499,6 @@
 					</Button>
 				</div>
 			</div>
-
-			{#snippet footer()}
-				<Button variant="primary" onclick={closeCreateKeyModal}>
-					Done
-				</Button>
-			{/snippet}
 		{:else}
 			<div class="space-y-4">
 				<div>
@@ -523,8 +517,14 @@
 					</p>
 				</div>
 			</div>
+		{/if}
 
-			{#snippet footer()}
+		{#snippet footer()}
+			{#if newlyCreatedKey}
+				<Button variant="primary" onclick={closeCreateKeyModal}>
+					Done
+				</Button>
+			{:else}
 				<Button variant="secondary" onclick={closeCreateKeyModal}>
 					Cancel
 				</Button>
@@ -536,8 +536,8 @@
 				>
 					Create Key
 				</Button>
-			{/snippet}
-		{/if}
+			{/if}
+		{/snippet}
 	</Modal>
 
 	<!-- Revoke API Key modal -->
