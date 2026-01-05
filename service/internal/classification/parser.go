@@ -244,7 +244,12 @@ func (p *Parser) parseCondition(negated bool) (QueryNode, error) {
 
 	colonTok := p.peek()
 	if colonTok.typ != tokenColon {
-		return nil, &ParseError{Message: "expected ':'", Position: colonTok.pos}
+		// No colon - treat as text search (unqualified term)
+		return &ConditionNode{
+			Property: "text",
+			Value:    propTok.value,
+			Negated:  negated,
+		}, nil
 	}
 	p.advance()
 

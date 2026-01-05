@@ -16,6 +16,7 @@ type EventProperties struct {
 	ResponseStatus string // accepted, declined, needsAction, tentative
 	Transparency   string // opaque, transparent
 	IsRecurring    bool
+	CalendarName   string // Name of the source calendar
 }
 
 // Evaluate evaluates a query against event properties
@@ -122,6 +123,25 @@ func evaluateCondition(cond *ConditionNode, props *EventProperties) bool {
 		wantAllDay := strings.EqualFold(cond.Value, "yes") || strings.EqualFold(cond.Value, "true")
 		isAllDay := isAllDayEvent(props.StartTime, props.EndTime)
 		return isAllDay == wantAllDay
+
+	case "calendar":
+		// Match against calendar name
+		return containsIgnoreCase(props.CalendarName, cond.Value)
+
+	case "text":
+		// Text search across title, description, and attendees
+		if containsIgnoreCase(props.Title, cond.Value) {
+			return true
+		}
+		if containsIgnoreCase(props.Description, cond.Value) {
+			return true
+		}
+		for _, attendee := range props.Attendees {
+			if containsIgnoreCase(attendee, cond.Value) {
+				return true
+			}
+		}
+		return false
 
 	default:
 		// Unknown property, no match

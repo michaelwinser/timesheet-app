@@ -362,7 +362,8 @@ func TestPreviewRules_InvalidQuery(t *testing.T) {
 		},
 	}
 
-	_, err := PreviewRules("invalid query without colon", items)
+	// Unclosed quote is invalid
+	_, err := PreviewRules(`title:"unclosed`, items)
 	if err == nil {
 		t.Error("expected error for invalid query")
 	}
@@ -596,4 +597,113 @@ func TestEvaluateExtended_ConfidenceLevels(t *testing.T) {
 
 func ptr(f float64) *float64 {
 	return &f
+}
+
+func TestEvaluate_CalendarName(t *testing.T) {
+	props := &EventProperties{
+		Title:        "Weekly Standup",
+		CalendarName: "Work Calendar",
+	}
+
+	tests := []struct {
+		query    string
+		expected bool
+	}{
+		{"calendar:work", true},
+		{`calendar:"Work Calendar"`, true},
+		{"calendar:personal", false},
+		{"-calendar:personal", true},
+		{"-calendar:work", false},
+	}
+
+	for _, tt := range tests {
+		ast, err := Parse(tt.query)
+		if err != nil {
+			t.Errorf("Parse(%q) error: %v", tt.query, err)
+			continue
+		}
+		result := Evaluate(ast, props)
+		if result != tt.expected {
+			t.Errorf("Evaluate(%q) = %v, expected %v", tt.query, result, tt.expected)
+		}
+	}
+}
+
+func TestEvaluate_TextSearch(t *testing.T) {
+	props := &EventProperties{
+		Title:       "Weekly Team Standup",
+		Description: "Discuss project progress and blockers",
+		Attendees:   []string{"alice@example.com", "bob@acme.com"},
+	}
+
+	tests := []struct {
+		query    string
+		expected bool
+	}{
+		// Explicit text: prefix searches across title, description, and attendees
+		{"text:standup", true},       // matches title
+		{"text:progress", true},      // matches description
+		{"text:alice", true},         // matches attendee
+		{"text:acme", true},          // matches attendee domain
+		{"text:unknown", false},      // no match
+		{"-text:unknown", true},      // negated, no match = true
+		{"-text:standup", false},     // negated, match = false
+		// Unqualified terms implicitly use text search
+		{"standup", true},
+		{"progress", true},
+		{"alice", true},
+		{"unknown", false},
+		{"-unknown", true},
+		{"-standup", false},
+		// Combined with other conditions
+		{"standup title:weekly", true},
+		{"standup calendar:work", false}, // calendar is empty
+		{"standup OR progress", true},
+		{"standup unknown", false}, // AND: both must match
+	}
+
+	for _, tt := range tests {
+		ast, err := Parse(tt.query)
+		if err != nil {
+			t.Errorf("Parse(%q) error: %v", tt.query, err)
+			continue
+		}
+		result := Evaluate(ast, props)
+		if result != tt.expected {
+			t.Errorf("Evaluate(%q) = %v, expected %v", tt.query, result, tt.expected)
+		}
+	}
+}
+
+func TestEvaluateExtended_Calendar(t *testing.T) {
+	props := &ExtendedEventProperties{
+		EventProperties: EventProperties{
+			Title:        "Daily Standup",
+			CalendarName: "Engineering",
+		},
+		IsClassified: false,
+	}
+
+	tests := []struct {
+		query    string
+		expected bool
+	}{
+		{"calendar:engineering", true},
+		{"calendar:Engineering", true},
+		{"calendar:personal", false},
+		{"calendar:engineering title:standup", true},
+		{"calendar:personal OR title:standup", true},
+	}
+
+	for _, tt := range tests {
+		ast, err := Parse(tt.query)
+		if err != nil {
+			t.Errorf("Parse(%q) error: %v", tt.query, err)
+			continue
+		}
+		result := EvaluateExtended(ast, props)
+		if result != tt.expected {
+			t.Errorf("EvaluateExtended(%q) = %v, expected %v", tt.query, result, tt.expected)
+		}
+	}
 }

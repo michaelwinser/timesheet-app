@@ -415,7 +415,7 @@
 					type="text"
 					value={searchQuery}
 					oninput={handleSearchInput}
-					placeholder="Search: project:unclassified confidence:low client:acme"
+					placeholder="Search events: standup, title:sync, calendar:work..."
 					class="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
 				/>
 				{#if searchQuery}
@@ -430,9 +430,72 @@
 					</button>
 				{/if}
 			</div>
-			<p class="mt-1 text-xs text-gray-500">
-				Examples: project:unclassified, client:acme, confidence:high|medium|low, title:standup, domain:client.com
-			</p>
+			<details class="mt-2 text-xs text-gray-500">
+				<summary class="cursor-pointer hover:text-gray-700">Search syntax help</summary>
+				<div class="mt-2 p-3 bg-gray-50 rounded-lg space-y-3">
+					<div>
+						<div class="font-medium text-gray-700 mb-1">Text Search</div>
+						<div class="font-mono text-gray-600 space-y-0.5">
+							<div><span class="text-primary-600">standup</span> — search title, description, attendees</div>
+							<div><span class="text-primary-600">text:meeting</span> — explicit text search</div>
+						</div>
+					</div>
+					<div>
+						<div class="font-medium text-gray-700 mb-1">Event Properties</div>
+						<div class="font-mono text-gray-600 space-y-0.5">
+							<div><span class="text-primary-600">title:standup</span> — event title contains "standup"</div>
+							<div><span class="text-primary-600">description:agenda</span> — description contains "agenda"</div>
+							<div><span class="text-primary-600">calendar:work</span> — from calendar named "work"</div>
+							<div><span class="text-primary-600">attendees:alice</span> — attendee email contains "alice"</div>
+							<div><span class="text-primary-600">domain:acme.com</span> — attendee from domain</div>
+							<div><span class="text-primary-600">email:bob@acme.com</span> — exact attendee email</div>
+						</div>
+					</div>
+					<div>
+						<div class="font-medium text-gray-700 mb-1">Event Status</div>
+						<div class="font-mono text-gray-600 space-y-0.5">
+							<div><span class="text-primary-600">response:accepted</span> — accepted, declined, needsAction, tentative</div>
+							<div><span class="text-primary-600">recurring:yes</span> — recurring events only</div>
+							<div><span class="text-primary-600">transparency:transparent</span> — "free" events</div>
+							<div><span class="text-primary-600">has-attendees:no</span> — events without attendees</div>
+							<div><span class="text-primary-600">is-all-day:yes</span> — all-day events only</div>
+						</div>
+					</div>
+					<div>
+						<div class="font-medium text-gray-700 mb-1">Time Filters</div>
+						<div class="font-mono text-gray-600 space-y-0.5">
+							<div><span class="text-primary-600">day-of-week:mon</span> — mon, tue, wed, thu, fri, sat, sun</div>
+							<div><span class="text-primary-600">time-of-day:&gt;17:00</span> — events starting after 5pm</div>
+							<div><span class="text-primary-600">time-of-day:&lt;09:00</span> — events starting before 9am</div>
+						</div>
+					</div>
+					<div>
+						<div class="font-medium text-gray-700 mb-1">Classification Status</div>
+						<div class="font-mono text-gray-600 space-y-0.5">
+							<div><span class="text-primary-600">project:unclassified</span> — not yet classified</div>
+							<div><span class="text-primary-600">project:acme</span> — assigned to project containing "acme"</div>
+							<div><span class="text-primary-600">client:corp</span> — project client contains "corp"</div>
+							<div><span class="text-primary-600">confidence:low</span> — low, medium, or high confidence</div>
+						</div>
+					</div>
+					<div>
+						<div class="font-medium text-gray-700 mb-1">Combining Conditions</div>
+						<div class="font-mono text-gray-600 space-y-0.5">
+							<div><span class="text-primary-600">standup domain:acme.com</span> — AND (both must match)</div>
+							<div><span class="text-primary-600">standup OR sync</span> — OR (either matches)</div>
+							<div><span class="text-primary-600">-response:declined</span> — NOT (exclude declined)</div>
+							<div><span class="text-primary-600">"out of office"</span> — quoted multi-word phrase</div>
+						</div>
+					</div>
+					<div>
+						<div class="font-medium text-gray-700 mb-1">Complex Example</div>
+						<div class="font-mono text-gray-600">
+							<span class="text-primary-600">(standup OR sync) domain:acme.com -response:declined</span>
+						</div>
+						<div class="text-gray-500 mt-0.5">Events with "standup" or "sync" from acme.com, excluding declined</div>
+					</div>
+				</div>
+			</details>
 
 			{#if searchError}
 				<div class="mt-3 text-sm text-red-600">
@@ -583,7 +646,7 @@
 					class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
 				/>
 				<p class="mt-1 text-xs text-gray-500">
-					Examples: title:standup, domain:client.com, attendees:alice@, response:declined
+					e.g. <code class="bg-gray-100 px-1 rounded">standup domain:acme.com -response:declined</code>
 				</p>
 			</div>
 

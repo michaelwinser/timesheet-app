@@ -192,6 +192,9 @@ func eventToExtendedProperties(event *store.CalendarEvent) *ExtendedEventPropert
 	if event.Transparency != nil {
 		props.Transparency = *event.Transparency
 	}
+	if event.CalendarName != nil {
+		props.CalendarName = *event.CalendarName
+	}
 
 	if event.ProjectID != nil {
 		id := event.ProjectID.String()
@@ -419,6 +422,10 @@ func eventToItem(event *store.CalendarEvent) Item {
 
 	if event.Attendees != nil {
 		attrs["attendees"] = event.Attendees
+	}
+
+	if event.CalendarName != nil {
+		attrs["calendar_name"] = *event.CalendarName
 	}
 
 	return Item{
