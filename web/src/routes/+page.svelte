@@ -172,16 +172,6 @@
 		}
 	});
 
-	// Weekend events (for warning when in week mode)
-	const weekendEvents = $derived.by(() => {
-		if (scopeMode !== 'week') return [];
-		return calendarEvents.filter(e => {
-			const eventDate = new Date(e.start_time);
-			const day = eventDate.getDay();
-			return day === 0 || day === 6; // Sunday or Saturday
-		});
-	});
-
 	// Group entries by date (filtered by visible projects)
 	const entriesByDate = $derived.by(() => {
 		const byDate: Record<string, TimeEntry[]> = {};
@@ -210,6 +200,17 @@
 			return false;
 		})
 	);
+
+	// Weekend events (for warning when in week mode)
+	// Uses filteredCalendarEvents so count matches what would be displayed in full-week view
+	const weekendEvents = $derived.by(() => {
+		if (scopeMode !== 'week') return [];
+		return filteredCalendarEvents.filter(e => {
+			const eventDate = new Date(e.start_time);
+			const day = eventDate.getDay();
+			return day === 0 || day === 6; // Sunday or Saturday
+		});
+	});
 
 	// Helper to format hour label
 	function formatHourLabel(hour: number): string {
