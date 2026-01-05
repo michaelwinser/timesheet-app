@@ -153,10 +153,7 @@
 		<section class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6">
 			<h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Appearance</h2>
 			<div class="flex items-center justify-between">
-				<div>
-					<p class="text-sm font-medium text-gray-900 dark:text-white">Theme</p>
-					<p class="text-sm text-gray-500 dark:text-gray-400">Choose between light and dark mode</p>
-				</div>
+				<p class="text-sm font-medium text-gray-900 dark:text-white">Dark Mode</p>
 				<button
 					type="button"
 					onclick={() => theme.toggle()}

@@ -375,11 +375,11 @@
 	}
 
 	function getStatusBackground(status: string, needsReview: boolean = false): string {
-		if (status === 'classified' && needsReview) return 'bg-amber-50';
+		if (status === 'classified' && needsReview) return 'bg-amber-50 dark:bg-amber-900/30';
 		switch (status) {
-			case 'classified': return 'bg-green-50';
-			case 'skipped': return 'bg-gray-100';
-			default: return 'bg-white';
+			case 'classified': return 'bg-green-50 dark:bg-green-900/30';
+			case 'skipped': return 'bg-gray-100 dark:bg-gray-800';
+			default: return 'bg-white dark:bg-gray-800';
 		}
 	}
 
@@ -1013,7 +1013,7 @@
 					<!-- Single day - full width time grid -->
 					{@const dateStr = formatDate(currentDate)}
 					{@const dayEvents = eventsByDate[dateStr] || []}
-					<div class="bg-gray-50 rounded-lg p-4">
+					<div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
 						<TimeGrid
 							events={dayEvents}
 							{projects}
@@ -1039,7 +1039,7 @@
 								{@const dateStr = formatDate(day)}
 								{@const isToday = formatDate(new Date()) === dateStr}
 								<div class="text-center">
-									<h3 class="font-medium text-sm py-1 {isToday ? 'text-primary-600' : 'text-gray-700'}">
+									<h3 class="font-medium text-sm py-1 {isToday ? 'text-primary-600 dark:text-primary-400' : 'text-gray-700 dark:text-gray-300'}">
 										{formatShortDay(day)}
 									</h3>
 								</div>
@@ -1050,8 +1050,8 @@
 					<!-- All-day events row (below headers) -->
 					{#if allDayEventsForWeek.length > 0}
 						{@const activeProjectsList = projects.filter(p => !p.is_archived)}
-						<div class="mb-2 border-b border-gray-200 pb-2 flex">
-							<div class="w-12 flex-shrink-0 text-xs text-gray-400 text-right pr-2 pt-0.5">All day</div>
+						<div class="mb-2 border-b border-gray-200 dark:border-gray-700 pb-2 flex">
+							<div class="w-12 flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 text-right pr-2 pt-0.5">All day</div>
 							<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
 								{#each visibleDays as day}
 									{@const dateStr = formatDate(day)}
@@ -1109,7 +1109,7 @@
 
 					<!-- Unified scroll container -->
 					<div
-						class="overflow-y-auto overflow-x-hidden bg-gray-50 rounded-lg"
+						class="overflow-y-auto overflow-x-hidden bg-gray-50 dark:bg-gray-900 rounded-lg"
 						style="height: {viewportHours * hourHeight}px"
 						bind:this={weekScrollContainer}
 					>
@@ -1117,7 +1117,7 @@
 							<!-- Time legend -->
 							<div class="w-12 flex-shrink-0 text-right pr-2 relative">
 								{#each hours as hour, i}
-									<div class="absolute text-xs text-gray-400" style="top: {i * hourHeight}px">
+									<div class="absolute text-xs text-gray-400 dark:text-gray-500" style="top: {i * hourHeight}px">
 										{hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
 									</div>
 								{/each}
@@ -1128,7 +1128,7 @@
 								<!-- Hour lines (spanning all columns) -->
 								{#each hours as hour, i}
 									<div
-										class="absolute w-full border-t border-gray-200 pointer-events-none"
+										class="absolute w-full border-t border-gray-200 dark:border-gray-700 pointer-events-none"
 										style="top: {i * hourHeight}px; left: 0; right: 0;"
 									></div>
 								{/each}
@@ -1141,7 +1141,7 @@
 									{@const eventsWithCols = getEventsWithColumns(dayEvents)}
 									{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 
-									<div class="relative border-l border-gray-200 {isToday ? 'bg-primary-50/30' : ''}">
+									<div class="relative border-l border-gray-200 dark:border-gray-700 {isToday ? 'bg-primary-50/30 dark:bg-primary-900/20' : ''}">
 										{#each eventsWithCols as { event, column, totalColumns } (event.id)}
 											{@const style = getEventStyle(event)}
 											{@const width = 100 / totalColumns}
@@ -1154,7 +1154,7 @@
 
 											<!-- svelte-ignore a11y_no_static_element_interactions -->
 											<div
-												class="absolute rounded-md border overflow-hidden text-xs {getStatusBackground(event.classification_status, needsReview)} hover:shadow-md transition-shadow cursor-pointer"
+												class="absolute rounded-md border border-gray-200 dark:border-gray-600 overflow-hidden text-xs {getStatusBackground(event.classification_status, needsReview)} hover:shadow-md transition-shadow cursor-pointer"
 												style="
 													top: {style.top}px;
 													height: {style.height}px;
@@ -1168,7 +1168,7 @@
 												<div class="p-1 h-full flex flex-col">
 													<!-- Title row -->
 													<div class="flex items-start justify-between gap-1 min-w-0">
-														<span class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</span>
+														<span class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}">{event.title}</span>
 														<!-- Project dot: only for classified events -->
 														{#if isClassified && event.project}
 															<span
@@ -1224,13 +1224,13 @@
 					{@const allDayEvents = getAllDayEventsForDay(dayEvents)}
 					{@const hourGroups = getEventsByHourForDay(dayEvents)}
 					{@const activeProjectsList = projects.filter(p => !p.is_archived)}
-					<div class="bg-gray-50 rounded-lg p-4 max-h-[32rem] overflow-y-auto">
+					<div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 max-h-[32rem] overflow-y-auto">
 						{#if allDayEvents.length > 0 || hourGroups.length > 0}
 							<div class="space-y-3">
 								<!-- All-day events section -->
 								{#if allDayEvents.length > 0}
 									<div>
-										<div class="text-xs font-medium text-gray-500 mb-1">All day</div>
+										<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">All day</div>
 										<div class="space-y-2">
 											{#each allDayEvents as event (event.id)}
 												{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
@@ -1240,7 +1240,7 @@
 												{@const needsReview = event.needs_review === true}
 												<!-- svelte-ignore a11y_no_static_element_interactions -->
 												<div
-													class="rounded-md border p-2 text-xs cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
+													class="rounded-md border border-gray-200 dark:border-gray-600 p-2 text-xs cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
 													style="border-left: 3px solid {calendarColor};"
 													class:opacity-50={classifyingId === event.id}
 													class:pointer-events-none={classifyingId === event.id}
@@ -1250,8 +1250,8 @@
 													<div class="flex flex-col gap-1">
 														<div class="flex items-start justify-between gap-1">
 															<div class="flex-1 min-w-0">
-																<div class="font-medium truncate {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</div>
-																<div class="{isSkipped ? 'text-gray-400' : 'text-gray-500'} mt-0.5">All day</div>
+																<div class="font-medium truncate {isSkipped ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}">{event.title}</div>
+																<div class="{isSkipped ? 'text-gray-400' : 'text-gray-500 dark:text-gray-400'} mt-0.5">All day</div>
 															</div>
 															{#if isClassified && event.project}
 																<span
@@ -1295,7 +1295,7 @@
 								<!-- Timed events by hour -->
 								{#each hourGroups as group}
 									<div>
-										<div class="text-xs font-medium text-gray-500 mb-1">{group.label}</div>
+										<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{group.label}</div>
 										<div class="space-y-2">
 											{#each group.events as event (event.id)}
 												<div class={classifyingId === event.id ? 'opacity-50 pointer-events-none' : ''}>
@@ -1327,8 +1327,8 @@
 								{@const isToday = formatDate(new Date()) === dateStr}
 								{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 
-								<div class="bg-gray-50 rounded-lg p-2 max-h-[32rem] overflow-y-auto {isToday ? 'ring-2 ring-primary-500' : ''}">
-									<h3 class="font-medium text-sm text-center mb-2 pb-1 border-b {isToday ? 'text-primary-600' : 'text-gray-700'}">
+								<div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-2 max-h-[32rem] overflow-y-auto {isToday ? 'ring-2 ring-primary-500' : ''}">
+									<h3 class="font-medium text-sm text-center mb-2 pb-1 border-b border-gray-200 dark:border-gray-700 {isToday ? 'text-primary-600 dark:text-primary-400' : 'text-gray-700 dark:text-gray-300'}">
 										{formatShortDay(day)}
 									</h3>
 									{#if allDayEvents.length > 0 || hourGroups.length > 0}
@@ -1336,7 +1336,7 @@
 											<!-- All-day events -->
 											{#if allDayEvents.length > 0}
 												<div>
-													<div class="text-xs font-medium text-gray-400 mb-1">All day</div>
+													<div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">All day</div>
 													<div class="space-y-1">
 														{#each allDayEvents as event (event.id)}
 															{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
@@ -1346,14 +1346,14 @@
 															{@const needsReview = event.needs_review === true}
 															<!-- svelte-ignore a11y_no_static_element_interactions -->
 															<div
-																class="text-xs p-1.5 rounded border cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
+																class="text-xs p-1.5 rounded border border-gray-200 dark:border-gray-600 cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
 																style="border-left: 3px solid {calendarColor};"
 																onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
 																onmouseleave={() => handleEventHover(null, null)}
 															>
 																<div class="flex flex-col gap-1">
 																	<div class="flex items-start justify-between gap-1">
-																		<div class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</div>
+																		<div class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}">{event.title}</div>
 																		{#if isClassified && event.project}
 																			<span
 																				class="w-3 h-3 rounded-full flex-shrink-0"
@@ -1396,7 +1396,7 @@
 											<!-- Timed events by hour -->
 											{#each hourGroups as group}
 												<div>
-													<div class="text-xs font-medium text-gray-400 mb-1">{group.label}</div>
+													<div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">{group.label}</div>
 													<div class="space-y-1">
 														{#each group.events as event (event.id)}
 															<!-- Compact event card for list columns -->
@@ -1407,7 +1407,7 @@
 															{@const needsReview = event.needs_review === true}
 															<!-- svelte-ignore a11y_no_static_element_interactions -->
 															<div
-																class="text-xs p-1.5 rounded border cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
+																class="text-xs p-1.5 rounded border border-gray-200 dark:border-gray-600 cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
 																style="border-left: 3px solid {calendarColor};"
 																onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
 																onmouseleave={() => handleEventHover(null, null)}
@@ -1416,8 +1416,8 @@
 																	<!-- Top row: title and project dot -->
 																	<div class="flex items-start justify-between gap-1">
 																		<div class="flex-1 min-w-0">
-																			<div class="font-medium truncate {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</div>
-																			<div class="{isSkipped ? 'text-gray-400' : 'text-gray-500'} mt-0.5">
+																			<div class="font-medium truncate {isSkipped ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}">{event.title}</div>
+																			<div class="{isSkipped ? 'text-gray-400' : 'text-gray-500 dark:text-gray-400'} mt-0.5">
 																				{new Date(event.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - {new Date(event.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
 																			</div>
 																		</div>
