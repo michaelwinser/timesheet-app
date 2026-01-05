@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "timesheet": {
+      "command": "python",
+      "args": ["mcp-service/server.py"],
+      "env": {
+        "TIMESHEET_API_URL": "${TIMESHEET_API_URL}",
+        "TIMESHEET_API_KEY": "${TIMESHEET_API_KEY}"
+      }
+    }
+  }
+}
