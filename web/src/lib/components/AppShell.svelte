@@ -22,14 +22,14 @@
 	}
 </script>
 
-<div class="min-h-screen bg-gray-50">
+<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
 	<!-- Top nav -->
-	<nav class="bg-white border-b">
+	<nav class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 			<div class="flex justify-between h-16">
 				<div class="flex">
 					<div class="flex-shrink-0 flex items-center">
-						<span class="text-xl font-bold text-primary-600">Timesheet</span>
+						<span class="text-xl font-bold text-primary-600 dark:text-primary-400">Timesheet</span>
 					</div>
 					<div class="hidden sm:ml-8 sm:flex sm:space-x-4">
 						{#each navItems as item}
@@ -37,8 +37,8 @@
 								href={item.href}
 								class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md
 									{$page.url.pathname === item.href
-										? 'text-primary-600 bg-primary-50'
-										: 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'}"
+										? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/50'
+										: 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700'}"
 							>
 								{item.label}
 							</a>
@@ -48,10 +48,10 @@
 
 				<div class="flex items-center gap-4">
 					{#if $auth.user}
-						<span class="text-sm text-gray-600">{$auth.user.name}</span>
+						<span class="text-sm text-gray-600 dark:text-gray-300">{$auth.user.name}</span>
 						<button
 							type="button"
-							class="text-sm text-gray-500 hover:text-gray-700"
+							class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
 							onclick={handleLogout}
 						>
 							Logout
@@ -63,15 +63,15 @@
 	</nav>
 
 	<!-- Mobile nav -->
-	<nav class="sm:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-40">
+	<nav class="sm:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-40">
 		<div class="flex justify-around py-2">
 			{#each navItems as item}
 				<a
 					href={item.href}
 					class="flex flex-col items-center px-3 py-2 text-xs
 						{$page.url.pathname === item.href
-							? 'text-primary-600'
-							: 'text-gray-500'}"
+							? 'text-primary-600 dark:text-primary-400'
+							: 'text-gray-500 dark:text-gray-400'}"
 				>
 					{#if item.icon === 'calendar'}
 						<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

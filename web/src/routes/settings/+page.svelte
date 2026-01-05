@@ -3,7 +3,7 @@
 	import AppShell from '$lib/components/AppShell.svelte';
 	import { Button, Modal } from '$lib/components/primitives';
 	import { api } from '$lib/api/client';
-	import { auth } from '$lib/stores';
+	import { auth, theme } from '$lib/stores';
 	import type { CalendarConnection, Calendar } from '$lib/api/types';
 
 	let connections = $state<CalendarConnection[]>([]);
@@ -147,40 +147,63 @@
 
 <AppShell>
 	<div class="max-w-2xl mx-auto">
-		<h1 class="text-2xl font-bold text-gray-900 mb-8">Settings</h1>
+		<h1 class="text-2xl font-bold text-gray-900 dark:text-white mb-8">Settings</h1>
+
+		<!-- Appearance section -->
+		<section class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6">
+			<h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Appearance</h2>
+			<div class="flex items-center justify-between">
+				<div>
+					<p class="text-sm font-medium text-gray-900 dark:text-white">Theme</p>
+					<p class="text-sm text-gray-500 dark:text-gray-400">Choose between light and dark mode</p>
+				</div>
+				<button
+					type="button"
+					onclick={() => theme.toggle()}
+					class="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800
+						{$theme === 'dark' ? 'bg-primary-600' : 'bg-gray-200'}"
+				>
+					<span class="sr-only">Toggle theme</span>
+					<span
+						class="inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+							{$theme === 'dark' ? 'translate-x-6' : 'translate-x-1'}"
+					></span>
+				</button>
+			</div>
+		</section>
 
 		<!-- Profile section -->
-		<section class="bg-white border rounded-lg p-6 mb-6">
-			<h2 class="text-lg font-semibold text-gray-900 mb-4">Profile</h2>
+		<section class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6 mb-6">
+			<h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Profile</h2>
 
 			{#if $auth.user}
 				<div class="space-y-2">
 					<p class="text-sm">
-						<span class="text-gray-500">Name:</span>
-						<span class="ml-2 text-gray-900">{$auth.user.name}</span>
+						<span class="text-gray-500 dark:text-gray-400">Name:</span>
+						<span class="ml-2 text-gray-900 dark:text-white">{$auth.user.name}</span>
 					</p>
 					<p class="text-sm">
-						<span class="text-gray-500">Email:</span>
-						<span class="ml-2 text-gray-900">{$auth.user.email}</span>
+						<span class="text-gray-500 dark:text-gray-400">Email:</span>
+						<span class="ml-2 text-gray-900 dark:text-white">{$auth.user.email}</span>
 					</p>
 				</div>
 			{/if}
 		</section>
 
 		<!-- Calendar connections section -->
-		<section class="bg-white border rounded-lg p-6">
+		<section class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
 			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-lg font-semibold text-gray-900">Calendar Connections</h2>
+				<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Calendar Connections</h2>
 			</div>
 
 			{#if error}
-				<div class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+				<div class="mb-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">
 					{error}
 				</div>
 			{/if}
 
 			{#if successMessage}
-				<div class="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">
+				<div class="mb-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded text-sm">
 					{successMessage}
 				</div>
 			{/if}
@@ -193,7 +216,7 @@
 				{#if connections.length > 0}
 					<div class="space-y-4 mb-6">
 						{#each connections as connection (connection.id)}
-							<div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+							<div class="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
 								<div class="flex items-center gap-3">
 									{#if connection.provider === 'google'}
 										<svg class="w-6 h-6" viewBox="0 0 24 24">
@@ -204,8 +227,8 @@
 										</svg>
 									{/if}
 									<div>
-										<div class="font-medium text-gray-900 capitalize">{connection.provider} Calendar</div>
-										<div class="text-sm text-gray-500">
+										<div class="font-medium text-gray-900 dark:text-white capitalize">{connection.provider} Calendar</div>
+										<div class="text-sm text-gray-500 dark:text-gray-400">
 											Last synced: {formatDate(connection.last_synced_at)}
 										</div>
 									</div>
@@ -238,7 +261,7 @@
 						{/each}
 					</div>
 				{:else}
-					<p class="text-gray-500 mb-6">No calendars connected.</p>
+					<p class="text-gray-500 dark:text-gray-400 mb-6">No calendars connected.</p>
 				{/if}
 
 				<Button variant="secondary" onclick={handleConnectGoogle}>
@@ -256,7 +279,7 @@
 
 	<!-- Disconnect confirmation modal -->
 	<Modal bind:open={showDisconnectModal} title="Disconnect Calendar">
-		<p class="text-gray-600">
+		<p class="text-gray-600 dark:text-gray-300">
 			Are you sure you want to disconnect this calendar? Synced events will remain but no new events will be imported.
 		</p>
 
@@ -277,28 +300,28 @@
 				<div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600"></div>
 			</div>
 		{:else if calendars.length === 0}
-			<p class="text-gray-500 py-4">No calendars found.</p>
+			<p class="text-gray-500 dark:text-gray-400 py-4">No calendars found.</p>
 		{:else}
 			<div class="space-y-2 max-h-80 overflow-y-auto">
 				{#each calendars as calendar (calendar.id)}
 					<label
-						class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 cursor-pointer"
+						class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
 					>
 						<input
 							type="checkbox"
 							checked={selectedCalendarIds.has(calendar.id)}
 							onchange={() => toggleCalendar(calendar.id)}
-							class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+							class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 dark:bg-gray-700"
 						/>
 						<div
 							class="w-3 h-3 rounded-full flex-shrink-0"
 							style="background-color: {calendar.color || '#9CA3AF'}"
 						></div>
 						<div class="flex-1 min-w-0">
-							<div class="font-medium text-gray-900 truncate">
+							<div class="font-medium text-gray-900 dark:text-white truncate">
 								{calendar.name}
 								{#if calendar.is_primary}
-									<span class="ml-1 text-xs text-gray-500">(primary)</span>
+									<span class="ml-1 text-xs text-gray-500 dark:text-gray-400">(primary)</span>
 								{/if}
 							</div>
 						</div>

@@ -32,7 +32,7 @@
 
 <div class="w-full">
 	{#if label}
-		<label for={inputId} class="block text-sm font-medium text-gray-700 mb-1">
+		<label for={inputId} class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
 			{label}
 			{#if required}<span class="text-red-500">*</span>{/if}
 		</label>
@@ -47,9 +47,11 @@
 		{required}
 		{oninput}
 		{onchange}
-		class="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm
-			{error ? 'border-red-500' : 'border-gray-300'}
-			{disabled ? 'bg-gray-100 cursor-not-allowed' : ''}"
+		class="block w-full rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm
+			bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100
+			placeholder-gray-400 dark:placeholder-gray-500
+			{error ? 'border-red-500' : 'border-gray-300 dark:border-gray-600'}
+			{disabled ? 'bg-gray-100 dark:bg-gray-800 cursor-not-allowed' : ''}"
 		class:border-red-500={error}
 		style="padding: 0.5rem 0.75rem; border-width: 1px;"
 	/>

@@ -48,9 +48,9 @@
 <svelte:window onclick={closeMenu} />
 
 <div
-	class="border rounded-lg p-4 transition-colors {rule.is_enabled
-		? 'bg-white hover:bg-gray-50'
-		: 'bg-gray-50 opacity-60'}"
+	class="border border-gray-200 dark:border-gray-700 rounded-lg p-4 transition-colors {rule.is_enabled
+		? 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750'
+		: 'bg-gray-50 dark:bg-gray-800/50 opacity-60'}"
 >
 	<div class="flex items-start justify-between gap-3">
 		<div class="flex-1 min-w-0">
@@ -59,14 +59,14 @@
 				<div
 					class="w-2 h-2 rounded-full flex-shrink-0 {rule.is_enabled
 						? 'bg-green-500'
-						: 'bg-gray-300'}"
+						: 'bg-gray-300 dark:bg-gray-600'}"
 				></div>
 
 				<!-- Query -->
-				<code class="text-sm font-mono text-gray-900 truncate">{rule.query}</code>
+				<code class="text-sm font-mono text-gray-900 dark:text-gray-100 truncate">{rule.query}</code>
 			</div>
 
-			<div class="flex items-center gap-3 text-sm text-gray-500">
+			<div class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400">
 				<!-- Target -->
 				{#if isAttendanceRule}
 					<span class="inline-flex items-center gap-1">
@@ -87,7 +87,7 @@
 				<span>
 					Weight: {rule.weight}
 					{#if isPriority}
-						<span class="ml-1 px-1.5 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded"
+						<span class="ml-1 px-1.5 py-0.5 text-xs bg-yellow-100 dark:bg-yellow-900/50 text-yellow-800 dark:text-yellow-200 rounded"
 							>priority</span
 						>
 					{/if}
@@ -95,7 +95,7 @@
 
 				<!-- Disabled badge -->
 				{#if !rule.is_enabled}
-					<span class="px-1.5 py-0.5 text-xs bg-gray-200 text-gray-600 rounded">disabled</span>
+					<span class="px-1.5 py-0.5 text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded">disabled</span>
 				{/if}
 			</div>
 		</div>
@@ -104,7 +104,7 @@
 		<div class="relative flex-shrink-0">
 			<button
 				type="button"
-				class="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+				class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
 				onclick={handleMenuClick}
 			>
 				<svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -116,34 +116,34 @@
 
 			{#if showMenu}
 				<div
-					class="absolute right-0 top-8 w-36 bg-white border rounded-lg shadow-lg py-1 z-10"
+					class="absolute right-0 top-8 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 z-10"
 					onclick={(e) => e.stopPropagation()}
 				>
 					<button
 						type="button"
-						class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+						class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
 						onclick={() => handleAction(onedit)}
 					>
 						Edit
 					</button>
 					<button
 						type="button"
-						class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+						class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
 						onclick={() => handleAction(onpreview)}
 					>
 						Preview
 					</button>
-					<div class="border-t my-1"></div>
+					<div class="border-t border-gray-200 dark:border-gray-700 my-1"></div>
 					<button
 						type="button"
-						class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+						class="w-full px-4 py-2 text-left text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
 						onclick={() => handleAction(ontoggle)}
 					>
 						{rule.is_enabled ? 'Disable' : 'Enable'}
 					</button>
 					<button
 						type="button"
-						class="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+						class="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30"
 						onclick={() => handleAction(ondelete)}
 					>
 						Delete

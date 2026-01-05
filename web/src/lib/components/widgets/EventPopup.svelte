@@ -110,7 +110,7 @@
 	<!-- Popup container -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 w-80 max-h-[320px] overflow-hidden"
+		class="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 w-80 max-h-[320px] overflow-hidden"
 		style="top: {popupPosition.top}px; left: {popupPosition.left}px;"
 		onmouseenter={onmouseenter}
 		onmouseleave={onmouseleave}
@@ -120,23 +120,23 @@
 			class="px-4 py-3"
 			style="border-left: 4px solid {event.calendar_color || '#9CA3AF'};"
 		>
-			<h3 class="font-semibold text-gray-900 line-clamp-2">{event.title}</h3>
-			<div class="flex items-center gap-2 mt-1 text-sm text-gray-600">
+			<h3 class="font-semibold text-gray-900 dark:text-white line-clamp-2">{event.title}</h3>
+			<div class="flex items-center gap-2 mt-1 text-sm text-gray-600 dark:text-gray-300">
 				<span>{formatDate(event.start_time)}</span>
-				<span class="text-gray-400">·</span>
+				<span class="text-gray-400 dark:text-gray-500">·</span>
 				<span>{formatTimeRange(event.start_time, event.end_time)}</span>
-				<span class="text-gray-400">·</span>
+				<span class="text-gray-400 dark:text-gray-500">·</span>
 				<span class="font-medium">{getDuration(event.start_time, event.end_time)}</span>
 			</div>
 		</div>
 
 		<!-- Classification actions (second row) -->
-		<div class="px-4 py-2 border-t border-b bg-gray-50">
+		<div class="px-4 py-2 border-t border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
 			<div class="flex flex-wrap gap-2 items-center">
 				{#each activeProjects as project}
 					<button
 						type="button"
-						class="w-6 h-6 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow flex items-center justify-center"
+						class="w-6 h-6 rounded-full hover:ring-2 hover:ring-offset-1 dark:ring-offset-gray-800 ring-gray-400 transition-shadow flex items-center justify-center"
 						class:ring-2={event.project_id === project.id}
 						class:ring-offset-1={event.project_id === project.id}
 						style="background-color: {project.color}"
@@ -146,8 +146,9 @@
 				{/each}
 				<button
 					type="button"
-					class="w-6 h-6 rounded-full border-2 border-dashed border-gray-300 text-gray-400 hover:border-gray-500 hover:text-gray-600 flex items-center justify-center text-xs"
+					class="w-6 h-6 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-600 dark:hover:border-gray-400 dark:hover:text-gray-300 flex items-center justify-center text-xs"
 					class:bg-gray-200={event.classification_status === 'skipped'}
+					class:dark:bg-gray-700={event.classification_status === 'skipped'}
 					title="Skip - did not attend"
 					onclick={() => onskip?.()}
 				>
@@ -161,8 +162,8 @@
 			<!-- Description -->
 			{#if event.description}
 				<div>
-					<span class="text-xs text-gray-500 uppercase tracking-wide block mb-1">Description</span>
-					<div class="text-sm text-gray-700 line-clamp-3 prose prose-sm max-w-none">
+					<span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">Description</span>
+					<div class="text-sm text-gray-700 dark:text-gray-300 line-clamp-3 prose prose-sm dark:prose-invert max-w-none">
 						{@html sanitizeHtml(event.description)}
 					</div>
 				</div>
@@ -171,17 +172,17 @@
 			<!-- Attendees -->
 			{#if event.attendees && event.attendees.length > 0}
 				<div>
-					<span class="text-xs text-gray-500 uppercase tracking-wide block mb-1">
+					<span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">
 						Attendees ({event.attendees.length})
 					</span>
-					<p class="text-sm text-gray-700 line-clamp-2">
+					<p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
 						{event.attendees.slice(0, 5).join(', ')}{event.attendees.length > 5 ? `, +${event.attendees.length - 5} more` : ''}
 					</p>
 				</div>
 			{/if}
 
 			<!-- Calendar source and Google Calendar link -->
-			<div class="flex items-center justify-between text-xs text-gray-500">
+			<div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
 				{#if event.calendar_name}
 					<div class="flex items-center gap-2">
 						<span
@@ -196,7 +197,7 @@
 						href="https://calendar.google.com/calendar/event?eid={btoa(event.external_id + ' ' + event.calendar_id)}"
 						target="_blank"
 						rel="noopener noreferrer"
-						class="text-blue-600 hover:text-blue-800 hover:underline"
+						class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline"
 					>
 						Open in Google Calendar
 					</a>

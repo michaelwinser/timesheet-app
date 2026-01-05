@@ -41,19 +41,19 @@
 	>
 		<div class="flex min-h-full items-center justify-center p-4">
 			<div
-				class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+				class="fixed inset-0 bg-gray-500 dark:bg-gray-900 bg-opacity-75 dark:bg-opacity-80 transition-opacity"
 				onclick={handleBackdropClick}
 			></div>
 
-			<div class="relative bg-white rounded-lg shadow-xl max-w-lg w-full">
+			<div class="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-lg w-full">
 				{#if title}
-					<div class="flex items-center justify-between px-6 py-4 border-b">
-						<h3 class="text-lg font-semibold text-gray-900" id="modal-title">
+					<div class="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+						<h3 class="text-lg font-semibold text-gray-900 dark:text-white" id="modal-title">
 							{title}
 						</h3>
 						<button
 							type="button"
-							class="text-gray-400 hover:text-gray-500"
+							class="text-gray-400 hover:text-gray-500 dark:hover:text-gray-300"
 							onclick={handleClose}
 						>
 							<span class="sr-only">Close</span>
@@ -64,12 +64,12 @@
 					</div>
 				{/if}
 
-				<div class="px-6 py-4">
+				<div class="px-6 py-4 text-gray-900 dark:text-gray-100">
 					{@render children()}
 				</div>
 
 				{#if footer}
-					<div class="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3 rounded-b-lg">
+					<div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 flex justify-end gap-3 rounded-b-lg">
 						{@render footer()}
 					</div>
 				{/if}

@@ -246,7 +246,7 @@
 <AppShell>
 	<div class="max-w-2xl mx-auto">
 		<div class="mb-6">
-			<a href="/projects" class="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1">
+			<a href="/projects" class="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 flex items-center gap-1">
 				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 				</svg>
@@ -264,13 +264,13 @@
 				<Button variant="secondary" onclick={loadProject}>Try again</Button>
 			</div>
 		{:else if project}
-			<div class="bg-white border rounded-lg p-6">
+			<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-6">
 				<div class="flex items-center justify-between mb-6">
 					<div class="flex items-center gap-3">
 						{#if previewProject}
 							<ProjectChip project={previewProject} size="md" />
 						{/if}
-						<h1 class="text-xl font-semibold text-gray-900">{project.name}</h1>
+						<h1 class="text-xl font-semibold text-gray-900 dark:text-white">{project.name}</h1>
 					</div>
 					<Button variant="danger" size="sm" onclick={() => (showDeleteModal = true)}>
 						Delete
@@ -278,7 +278,7 @@
 				</div>
 
 				{#if error}
-					<div class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+					<div class="mb-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded">
 						{error}
 					</div>
 				{/if}
@@ -306,14 +306,14 @@
 					/>
 
 					<div>
-						<label class="block text-sm font-medium text-gray-700 mb-1">Color</label>
+						<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
 						<div class="flex items-center gap-3">
 							<input
 								type="color"
 								bind:value={color}
-								class="h-10 w-20 rounded border cursor-pointer"
+								class="h-10 w-20 rounded border border-gray-300 dark:border-gray-600 cursor-pointer"
 							/>
-							<span class="text-sm text-gray-500">{color}</span>
+							<span class="text-sm text-gray-500 dark:text-gray-400">{color}</span>
 						</div>
 					</div>
 
@@ -323,9 +323,9 @@
 								type="checkbox"
 								id="billable"
 								bind:checked={isBillable}
-								class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+								class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 dark:bg-gray-700"
 							/>
-							<label for="billable" class="text-sm text-gray-700">Billable project</label>
+							<label for="billable" class="text-sm text-gray-700 dark:text-gray-300">Billable project</label>
 						</div>
 
 						<div class="flex items-center gap-2">
@@ -333,9 +333,9 @@
 								type="checkbox"
 								id="archived"
 								bind:checked={isArchived}
-								class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+								class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 dark:bg-gray-700"
 							/>
-							<label for="archived" class="text-sm text-gray-700">Archived</label>
+							<label for="archived" class="text-sm text-gray-700 dark:text-gray-300">Archived</label>
 						</div>
 
 						<div class="flex items-center gap-2">
@@ -343,9 +343,9 @@
 								type="checkbox"
 								id="hidden"
 								bind:checked={isHiddenByDefault}
-								class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+								class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 dark:bg-gray-700"
 							/>
-							<label for="hidden" class="text-sm text-gray-700">Hidden by default</label>
+							<label for="hidden" class="text-sm text-gray-700 dark:text-gray-300">Hidden by default</label>
 						</div>
 
 						<div class="flex items-center gap-2">
@@ -353,32 +353,32 @@
 								type="checkbox"
 								id="noAccumulate"
 								bind:checked={doesNotAccumulateHours}
-								class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+								class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 dark:bg-gray-700"
 							/>
-							<label for="noAccumulate" class="text-sm text-gray-700">
+							<label for="noAccumulate" class="text-sm text-gray-700 dark:text-gray-300">
 								Does not accumulate hours
-								<span class="text-gray-400">(e.g., lunch, PTO)</span>
+								<span class="text-gray-400 dark:text-gray-500">(e.g., lunch, PTO)</span>
 							</label>
 						</div>
 					</div>
 
 					<!-- Fingerprints Section -->
-					<div class="border-t pt-6">
-						<h3 class="text-sm font-medium text-gray-900 mb-4">
+					<div class="border-t border-gray-200 dark:border-gray-700 pt-6">
+						<h3 class="text-sm font-medium text-gray-900 dark:text-white mb-4">
 							Classification Fingerprints
-							<span class="font-normal text-gray-500 ml-1">(for auto-classification)</span>
+							<span class="font-normal text-gray-500 dark:text-gray-400 ml-1">(for auto-classification)</span>
 						</h3>
 
 						<!-- Domains -->
 						<div class="mb-4">
-							<label class="block text-sm font-medium text-gray-700 mb-1">Domains</label>
-							<p class="text-xs text-gray-500 mb-2">Match attendee email domains. Paste comma-separated values or email lists.</p>
+							<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Domains</label>
+							<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Match attendee email domains. Paste comma-separated values or email lists.</p>
 							<div class="flex gap-2 mb-2">
 								<input
 									type="text"
 									bind:value={newDomain}
 									placeholder="acme.com, contoso.com or paste attendee list"
-									class="flex-1 rounded-md border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
+									class="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
 									onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addDomain())}
 								/>
 								<Button type="button" variant="secondary" size="sm" onclick={addDomain}>Add</Button>
@@ -386,9 +386,9 @@
 							{#if fingerprintDomains.length > 0}
 								<div class="flex flex-wrap gap-1">
 									{#each fingerprintDomains as domain}
-										<span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+										<span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded">
 											{domain}
-											<button type="button" class="text-gray-400 hover:text-gray-600" onclick={() => removeDomain(domain)}>×</button>
+											<button type="button" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick={() => removeDomain(domain)}>×</button>
 										</span>
 									{/each}
 								</div>
@@ -397,14 +397,14 @@
 
 						<!-- Emails -->
 						<div class="mb-4">
-							<label class="block text-sm font-medium text-gray-700 mb-1">Email Addresses</label>
-							<p class="text-xs text-gray-500 mb-2">Match specific attendee emails. Paste from meeting invites.</p>
+							<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email Addresses</label>
+							<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Match specific attendee emails. Paste from meeting invites.</p>
 							<div class="flex gap-2 mb-2">
 								<input
 									type="text"
 									bind:value={newEmail}
 									placeholder="Name <email@example.com>, other@example.com"
-									class="flex-1 rounded-md border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
+									class="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
 									onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addEmail())}
 								/>
 								<Button type="button" variant="secondary" size="sm" onclick={addEmail}>Add</Button>
@@ -412,9 +412,9 @@
 							{#if fingerprintEmails.length > 0}
 								<div class="flex flex-wrap gap-1">
 									{#each fingerprintEmails as email}
-										<span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+										<span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded">
 											{email}
-											<button type="button" class="text-gray-400 hover:text-gray-600" onclick={() => removeEmail(email)}>×</button>
+											<button type="button" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick={() => removeEmail(email)}>×</button>
 										</span>
 									{/each}
 								</div>
@@ -423,14 +423,14 @@
 
 						<!-- Keywords -->
 						<div class="mb-4">
-							<label class="block text-sm font-medium text-gray-700 mb-1">Keywords</label>
-							<p class="text-xs text-gray-500 mb-2">Match words in event titles or descriptions. Comma-separated.</p>
+							<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Keywords</label>
+							<p class="text-xs text-gray-500 dark:text-gray-400 mb-2">Match words in event titles or descriptions. Comma-separated.</p>
 							<div class="flex gap-2 mb-2">
 								<input
 									type="text"
 									bind:value={newKeyword}
 									placeholder="Weekly Sync, Standup, Planning"
-									class="flex-1 rounded-md border-gray-300 shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
+									class="flex-1 rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm text-sm focus:border-primary-500 focus:ring-primary-500"
 									onkeydown={(e) => e.key === 'Enter' && (e.preventDefault(), addKeyword())}
 								/>
 								<Button type="button" variant="secondary" size="sm" onclick={addKeyword}>Add</Button>
@@ -438,9 +438,9 @@
 							{#if fingerprintKeywords.length > 0}
 								<div class="flex flex-wrap gap-1">
 									{#each fingerprintKeywords as keyword}
-										<span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
+										<span class="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs rounded">
 											{keyword}
-											<button type="button" class="text-gray-400 hover:text-gray-600" onclick={() => removeKeyword(keyword)}>×</button>
+											<button type="button" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" onclick={() => removeKeyword(keyword)}>×</button>
 										</span>
 									{/each}
 								</div>
@@ -460,10 +460,10 @@
 
 	<!-- Delete confirmation modal -->
 	<Modal bind:open={showDeleteModal} title="Delete Project">
-		<p class="text-gray-600">
-			Are you sure you want to delete <strong>{project?.name}</strong>? This cannot be undone.
+		<p class="text-gray-600 dark:text-gray-300">
+			Are you sure you want to delete <strong class="dark:text-white">{project?.name}</strong>? This cannot be undone.
 		</p>
-		<p class="mt-2 text-sm text-gray-500">
+		<p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
 			If this project has time entries or invoices, you won't be able to delete it.
 		</p>
 

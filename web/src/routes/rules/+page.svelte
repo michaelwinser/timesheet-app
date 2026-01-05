@@ -376,7 +376,7 @@
 <AppShell>
 	<div class="max-w-3xl mx-auto">
 		<div class="flex items-center justify-between mb-6">
-			<h1 class="text-2xl font-bold text-gray-900">Classification Hub</h1>
+			<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Classification Hub</h1>
 			<div class="flex items-center gap-3">
 				{#if rules.length > 0}
 					<Button variant="secondary" loading={applying} onclick={handleApplyRules}>
@@ -388,19 +388,19 @@
 		</div>
 
 		{#if successMessage}
-			<div class="mb-4 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">
+			<div class="mb-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-300 px-4 py-3 rounded text-sm">
 				{successMessage}
 			</div>
 		{/if}
 
 		{#if error}
-			<div class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+			<div class="mb-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">
 				{error}
 			</div>
 		{/if}
 
 		<!-- Search Section -->
-		<div class="bg-white border rounded-lg p-4 mb-6">
+		<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 mb-6">
 			<div class="relative">
 				<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
 					{#if searchLoading}
@@ -416,7 +416,7 @@
 					value={searchQuery}
 					oninput={handleSearchInput}
 					placeholder="Search events: standup, title:sync, calendar:work..."
-					class="w-full pl-10 pr-10 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
+					class="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
 				/>
 				{#if searchQuery}
 					<button
@@ -430,9 +430,9 @@
 					</button>
 				{/if}
 			</div>
-			<details class="mt-2 text-xs text-gray-500">
-				<summary class="cursor-pointer hover:text-gray-700">Search syntax help</summary>
-				<div class="mt-2 p-3 bg-gray-50 rounded-lg space-y-3">
+			<details class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+				<summary class="cursor-pointer hover:text-gray-700 dark:hover:text-gray-300">Search syntax help</summary>
+				<div class="mt-2 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-3">
 					<div>
 						<div class="font-medium text-gray-700 mb-1">Text Search</div>
 						<div class="font-mono text-gray-600 space-y-0.5">
@@ -505,15 +505,15 @@
 
 			<!-- Search Results -->
 			{#if searchResults}
-				<div class="mt-4 border-t pt-4">
+				<div class="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
 					<div class="flex items-center justify-between mb-3">
-						<span class="text-sm font-medium text-gray-700">
+						<span class="text-sm font-medium text-gray-700 dark:text-gray-300">
 							{searchResults.stats.total_matches} events match
 						</span>
 						<button
 							type="button"
 							onclick={handleSaveAsRule}
-							class="text-sm text-primary-600 hover:text-primary-700 font-medium"
+							class="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium"
 						>
 							Save as Rule
 						</button>
@@ -523,26 +523,26 @@
 						<!-- Event list -->
 						<div class="max-h-64 overflow-y-auto space-y-1 mb-4">
 							{#each searchResults.matches.slice(0, 10) as match}
-								<div class="text-sm py-2 px-3 bg-gray-50 rounded flex items-center justify-between">
-									<span class="truncate flex-1">{match.title}</span>
-									<span class="text-gray-500 text-xs flex-shrink-0 ml-2">
+								<div class="text-sm py-2 px-3 bg-gray-50 dark:bg-gray-700/50 rounded flex items-center justify-between">
+									<span class="truncate flex-1 text-gray-900 dark:text-white">{match.title}</span>
+									<span class="text-gray-500 dark:text-gray-400 text-xs flex-shrink-0 ml-2">
 										{formatDate(match.start_time)}
 									</span>
 								</div>
 							{/each}
 							{#if searchResults.matches.length > 10}
-								<div class="text-sm text-gray-500 text-center py-2">
+								<div class="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
 									+{searchResults.matches.length - 10} more events
 								</div>
 							{/if}
 						</div>
 
 						<!-- Bulk actions -->
-						<div class="flex items-center gap-3 pt-3 border-t">
-							<span class="text-sm text-gray-600">Classify all as:</span>
+						<div class="flex items-center gap-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+							<span class="text-sm text-gray-600 dark:text-gray-400">Classify all as:</span>
 							<select
 								bind:value={selectedProjectId}
-								class="flex-1 px-3 py-1.5 border rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+								class="flex-1 px-3 py-1.5 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
 							>
 								<option value={null}>Select project...</option>
 								{#each projects.filter((p) => !p.is_archived) as project}
@@ -591,8 +591,8 @@
 			</div>
 		{:else if rules.length === 0 && !searchQuery}
 			<!-- Empty state -->
-			<div class="bg-white border rounded-lg p-8 text-center">
-				<div class="text-gray-400 mb-4">
+			<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-8 text-center">
+				<div class="text-gray-400 dark:text-gray-500 mb-4">
 					<svg class="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path
 							stroke-linecap="round"
@@ -602,15 +602,15 @@
 						/>
 					</svg>
 				</div>
-				<h3 class="text-lg font-medium text-gray-900 mb-2">No classification rules yet</h3>
-				<p class="text-gray-500 mb-6">
+				<h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No classification rules yet</h3>
+				<p class="text-gray-500 dark:text-gray-400 mb-6">
 					Use the search bar above to find events and classify them, or create rules to automatically classify future events.
 				</p>
 				<Button variant="primary" onclick={openNewRule}>Create Your First Rule</Button>
 			</div>
 		{:else if rules.length > 0}
 			<div class="mb-3 flex items-center justify-between">
-				<h2 class="text-lg font-medium text-gray-900">Saved Rules</h2>
+				<h2 class="text-lg font-medium text-gray-900 dark:text-white">Saved Rules</h2>
 			</div>
 			<!-- Rules list -->
 			<div class="space-y-3">
@@ -631,26 +631,26 @@
 	<Modal bind:open={showEditor} title={editingRule ? 'Edit Rule' : 'New Rule'}>
 		<div class="space-y-4">
 			{#if editorError}
-				<div class="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+				<div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-3 py-2 rounded text-sm">
 					{editorError}
 				</div>
 			{/if}
 
 			<div>
-				<label for="query" class="block text-sm font-medium text-gray-700 mb-1">Query</label>
+				<label for="query" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Query</label>
 				<input
 					id="query"
 					type="text"
 					bind:value={editorQuery}
 					placeholder="domain:acme.com title:sync"
-					class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
+					class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
 				/>
-				<p class="mt-1 text-xs text-gray-500">
-					e.g. <code class="bg-gray-100 px-1 rounded">standup domain:acme.com -response:declined</code>
+				<p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+					e.g. <code class="bg-gray-100 dark:bg-gray-700 px-1 rounded">standup domain:acme.com -response:declined</code>
 				</p>
 			</div>
 
-			<div class="border-t pt-4">
+			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
 				<div class="flex items-center gap-4 mb-3">
 					<label class="flex items-center gap-2 cursor-pointer">
 						<input
@@ -660,7 +660,7 @@
 							onchange={() => (editorIsAttendance = false)}
 							class="h-4 w-4 text-primary-600 focus:ring-primary-500"
 						/>
-						<span class="text-sm text-gray-700">Assign to project</span>
+						<span class="text-sm text-gray-700 dark:text-gray-300">Assign to project</span>
 					</label>
 					<label class="flex items-center gap-2 cursor-pointer">
 						<input
@@ -670,19 +670,19 @@
 							onchange={() => (editorIsAttendance = true)}
 							class="h-4 w-4 text-primary-600 focus:ring-primary-500"
 						/>
-						<span class="text-sm text-gray-700">Did not attend</span>
+						<span class="text-sm text-gray-700 dark:text-gray-300">Did not attend</span>
 					</label>
 				</div>
 
 				{#if !editorIsAttendance}
 					<div>
-						<label for="project" class="block text-sm font-medium text-gray-700 mb-1"
+						<label for="project" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
 							>Project</label
 						>
 						<select
 							id="project"
 							bind:value={editorProjectId}
-							class="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+							class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
 						>
 							<option value={null}>Select project...</option>
 							{#each projects.filter((p) => !p.is_archived) as project}
@@ -695,14 +695,14 @@
 				{/if}
 			</div>
 
-			<div class="border-t pt-4">
+			<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
 				<label class="flex items-center gap-2 cursor-pointer">
 					<input
 						type="checkbox"
 						bind:checked={editorIsPriority}
-						class="h-4 w-4 rounded text-primary-600 focus:ring-primary-500"
+						class="h-4 w-4 rounded text-primary-600 focus:ring-primary-500 dark:bg-gray-700 border-gray-300 dark:border-gray-600"
 					/>
-					<span class="text-sm text-gray-700">Priority rule (counts twice in scoring)</span>
+					<span class="text-sm text-gray-700 dark:text-gray-300">Priority rule (counts twice in scoring)</span>
 				</label>
 			</div>
 		</div>
@@ -723,9 +723,9 @@
 			</div>
 		{:else if previewResult}
 			<div class="space-y-4">
-				<div class="bg-gray-50 rounded-lg p-3">
-					<div class="text-sm text-gray-500 mb-1">Query</div>
-					<code class="text-sm font-mono">{previewQuery}</code>
+				<div class="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+					<div class="text-sm text-gray-500 dark:text-gray-400 mb-1">Query</div>
+					<code class="text-sm font-mono text-gray-900 dark:text-white">{previewQuery}</code>
 				</div>
 
 				<!-- Stats -->
@@ -806,12 +806,12 @@
 
 	<!-- Delete Confirmation Modal -->
 	<Modal bind:open={showDeleteConfirm} title="Delete Rule">
-		<p class="text-gray-600">
+		<p class="text-gray-600 dark:text-gray-300">
 			Are you sure you want to delete this rule? This action cannot be undone.
 		</p>
 		{#if deletingRule}
-			<div class="mt-3 p-3 bg-gray-50 rounded">
-				<code class="text-sm font-mono">{deletingRule.query}</code>
+			<div class="mt-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded">
+				<code class="text-sm font-mono text-gray-900 dark:text-white">{deletingRule.query}</code>
 			</div>
 		{/if}
 

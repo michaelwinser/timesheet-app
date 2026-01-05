@@ -175,14 +175,14 @@
 
 	// Get background color based on classification status
 	function getStatusBackground(status: string, needsReview: boolean = false): string {
-		if (status === 'classified' && needsReview) return 'bg-amber-50';
+		if (status === 'classified' && needsReview) return 'bg-amber-50 dark:bg-amber-900/30';
 		switch (status) {
 			case 'classified':
-				return 'bg-green-50';
+				return 'bg-green-50 dark:bg-green-900/30';
 			case 'skipped':
-				return 'bg-gray-100';
+				return 'bg-gray-100 dark:bg-gray-800';
 			default:
-				return 'bg-white';
+				return 'bg-white dark:bg-gray-800';
 		}
 	}
 
@@ -202,9 +202,9 @@
 
 <!-- All-day events section -->
 {#if allDayEvents.length > 0}
-	<div class="mb-2 border-b border-gray-200 pb-2">
+	<div class="mb-2 border-b border-gray-200 dark:border-gray-700 pb-2">
 		<div class="flex items-center gap-1 flex-wrap">
-			<span class="text-xs text-gray-400 w-12 text-right pr-2 flex-shrink-0">All day</span>
+			<span class="text-xs text-gray-400 dark:text-gray-500 w-12 text-right pr-2 flex-shrink-0">All day</span>
 			{#each allDayEvents as event (event.id)}
 				{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
 				{@const isPending = event.classification_status === 'pending'}
@@ -264,7 +264,7 @@
 		{#if showTimeLegend}
 			<div class="w-12 flex-shrink-0 text-right pr-2">
 				{#each hours as hour}
-					<div class="text-xs text-gray-400" style="height: {hourHeight}px">
+					<div class="text-xs text-gray-400 dark:text-gray-500" style="height: {hourHeight}px">
 						{hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`}
 					</div>
 				{/each}
@@ -272,11 +272,11 @@
 		{/if}
 
 		<!-- Events grid -->
-		<div class="flex-1 relative {showTimeLegend ? 'border-l border-gray-200' : ''}" style="height: {gridHeight}px">
+		<div class="flex-1 relative {showTimeLegend ? 'border-l border-gray-200 dark:border-gray-700' : ''}" style="height: {gridHeight}px">
 			<!-- Hour lines -->
 			{#each hours as hour, i}
 				<div
-					class="absolute w-full border-t border-gray-100"
+					class="absolute w-full border-t border-gray-100 dark:border-gray-800"
 					style="top: {i * hourHeight}px"
 				></div>
 			{/each}
@@ -294,7 +294,7 @@
 			{@const eventHeight = parseFloat(style.height)}
 
 			<div
-				class="absolute rounded-md border overflow-hidden text-xs {getStatusBackground(event.classification_status, needsReview)} hover:shadow-md transition-shadow cursor-pointer"
+				class="absolute rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs {getStatusBackground(event.classification_status, needsReview)} hover:shadow-md transition-shadow cursor-pointer"
 				style="
 					top: {style.top};
 					height: {style.height};
@@ -309,7 +309,7 @@
 				<div class="p-1.5 h-full flex flex-col">
 					<!-- Title row with project dot for classified -->
 					<div class="flex items-start justify-between gap-1 min-w-0">
-						<span class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900'}">{event.title}</span>
+						<span class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}">{event.title}</span>
 						{#if isClassified && event.project}
 							<span
 								class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5"

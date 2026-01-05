@@ -94,7 +94,7 @@
 <AppShell>
 	<div class="max-w-3xl mx-auto">
 		<div class="flex items-center justify-between mb-6">
-			<h1 class="text-2xl font-bold text-gray-900">Projects</h1>
+			<h1 class="text-2xl font-bold text-gray-900 dark:text-white">Projects</h1>
 			<Button onclick={openCreateModal}>
 				<svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
@@ -110,11 +110,11 @@
 		{:else}
 			<div class="space-y-6">
 				{#if activeProjects.length === 0}
-					<div class="text-center py-12 text-gray-500">
+					<div class="text-center py-12 text-gray-500 dark:text-gray-400">
 						<p>No projects yet.</p>
 						<button
 							type="button"
-							class="text-primary-600 hover:text-primary-700 mt-2"
+							class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 mt-2"
 							onclick={openCreateModal}
 						>
 							Create your first project
@@ -123,7 +123,7 @@
 				{:else}
 					{#each projectsByClient() as [clientName, clientProjects] (clientName)}
 						<div>
-							<h2 class="text-sm font-medium text-gray-500 mb-2 flex items-center gap-2">
+							<h2 class="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
 								{#if clientName}
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 										<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -135,7 +135,7 @@
 									</svg>
 									No Client
 								{/if}
-								<span class="text-gray-400">({clientProjects.length})</span>
+								<span class="text-gray-400 dark:text-gray-500">({clientProjects.length})</span>
 							</h2>
 							<div class="space-y-2">
 								{#each clientProjects as project (project.id)}
@@ -147,10 +147,10 @@
 				{/if}
 
 				{#if archivedProjects.length > 0}
-					<div class="pt-2 border-t">
+					<div class="pt-2 border-t border-gray-200 dark:border-gray-700">
 						<button
 							type="button"
-							class="flex items-center gap-2 text-sm text-gray-500 hover:text-gray-700"
+							class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
 							onclick={() => (showArchived = !showArchived)}
 						>
 							<svg
@@ -203,14 +203,14 @@
 			/>
 
 			<div>
-				<label class="block text-sm font-medium text-gray-700 mb-1">Color</label>
+				<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
 				<div class="flex items-center gap-3">
 					<input
 						type="color"
 						bind:value={createColor}
-						class="h-10 w-20 rounded border cursor-pointer"
+						class="h-10 w-20 rounded border border-gray-300 dark:border-gray-600 cursor-pointer"
 					/>
-					<span class="text-sm text-gray-500">{createColor}</span>
+					<span class="text-sm text-gray-500 dark:text-gray-400">{createColor}</span>
 				</div>
 			</div>
 
@@ -219,9 +219,9 @@
 					type="checkbox"
 					id="billable"
 					bind:checked={createBillable}
-					class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+					class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 dark:bg-gray-700"
 				/>
-				<label for="billable" class="text-sm text-gray-700">Billable project</label>
+				<label for="billable" class="text-sm text-gray-700 dark:text-gray-300">Billable project</label>
 			</div>
 
 			<div class="flex justify-end gap-3 pt-4">
