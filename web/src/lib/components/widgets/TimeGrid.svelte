@@ -346,7 +346,7 @@
 				class="absolute rounded-md overflow-hidden text-xs {statusClasses} hover:shadow-md transition-shadow cursor-pointer"
 				style="
 					top: {style.top};
-					height: {style.height};
+					height: calc({style.height} - 1px);
 					left: {posStyle.left};
 					width: calc({posStyle.width} - 4px);
 					margin-left: 2px;

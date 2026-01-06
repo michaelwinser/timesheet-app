@@ -160,6 +160,22 @@
 		return date.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
 	}
 
+	// Format day header as "5 Mon" (number first, then short day name)
+	function formatDayHeaderCompact(date: Date): { num: number; day: string } {
+		return {
+			num: date.getDate(),
+			day: date.toLocaleDateString('en-US', { weekday: 'short' })
+		};
+	}
+
+	// Calculate hours and project count for a specific day
+	function getDayStats(dateStr: string): { hours: number; projectCount: number } {
+		const dayEntries = entriesByDate[dateStr] || [];
+		const hours = dayEntries.reduce((sum, e) => sum + e.hours, 0);
+		const projectIds = new Set(dayEntries.map(e => e.project_id));
+		return { hours, projectCount: projectIds.size };
+	}
+
 	function formatTimeRange(start: string, end: string): string {
 		const startDate = new Date(start);
 		const endDate = new Date(end);
@@ -462,7 +478,7 @@
 				totals[entry.project_id].hours += entry.hours;
 			}
 		}
-		return Object.values(totals).sort((a, b) => b.hours - a.hours);
+		return Object.values(totals).sort((a, b) => a.project.name.localeCompare(b.project.name));
 	});
 
 	// Totals for archived entries (shown in warning)
@@ -926,15 +942,52 @@
 </svelte:head>
 
 <AppShell wide>
-	<!-- Navigation (Global) -->
-	<div class="flex items-center justify-between mb-6">
+	<!-- Consolidated Header -->
+	<div class="flex items-center justify-between mb-4">
+		<!-- Left: Scope mode toggle -->
+		<div class="flex bg-gray-100 dark:bg-zinc-700 rounded-lg p-0.5">
+			<button
+				type="button"
+				class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'day' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
+				onclick={() => setScopeMode('day')}
+				title="Day (D)"
+			>
+				Day
+			</button>
+			<button
+				type="button"
+				class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'week' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
+				onclick={() => setScopeMode('week')}
+				title="Week Mon-Fri (W)"
+			>
+				Week
+			</button>
+			<button
+				type="button"
+				class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'full-week' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
+				onclick={() => setScopeMode('full-week')}
+				title="Full Week Mon-Sun (F)"
+			>
+				Full
+			</button>
+		</div>
+
+		<!-- Center: Date navigation -->
 		<div class="flex items-center gap-2">
-			<Button variant="ghost" onclick={navigatePrevious} title="Previous (K)">
-				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+			<Button variant="ghost" size="sm" onclick={navigatePrevious} title="Previous (K)">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
 				</svg>
 			</Button>
-			<h1 class="text-lg font-semibold text-gray-900 dark:text-white">
+			<Button variant="secondary" size="sm" onclick={goToToday} title="Today (T)">
+				Today
+			</Button>
+			<Button variant="ghost" size="sm" onclick={navigateNext} title="Next (J)">
+				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+				</svg>
+			</Button>
+			<h1 class="text-base font-semibold text-gray-900 dark:text-white ml-2">
 				{#if scopeMode === 'day'}
 					{formatFullDayLabel(currentDate)}
 				{:else if scopeMode === 'week'}
@@ -945,45 +998,11 @@
 					{endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
 				{/if}
 			</h1>
-			<Button variant="ghost" onclick={navigateNext} title="Next (J)">
-				<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-				</svg>
-			</Button>
-		</div>
-		<div class="flex items-center gap-3">
-			<!-- Scope mode toggle -->
-			<div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
-				<button
-					type="button"
-					class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'day' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-					onclick={() => setScopeMode('day')}
-					title="Day (D)"
-				>
-					Day
-				</button>
-				<button
-					type="button"
-					class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'week' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-					onclick={() => setScopeMode('week')}
-					title="Week Mon-Fri (W)"
-				>
-					Week
-				</button>
-				<button
-					type="button"
-					class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'full-week' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-					onclick={() => setScopeMode('full-week')}
-					title="Full Week Mon-Sun (F)"
-				>
-					Full
-				</button>
-			</div>
 			<!-- Weekend warning -->
 			{#if weekendEvents.length > 0}
 				<button
 					type="button"
-					class="flex items-center gap-1 px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded-md hover:bg-amber-200 transition-colors"
+					class="flex items-center gap-1 px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded-md hover:bg-amber-200 transition-colors ml-2"
 					onclick={() => setScopeMode('full-week')}
 					title="Click to show full week"
 				>
@@ -993,9 +1012,32 @@
 					{weekendEvents.length} weekend
 				</button>
 			{/if}
-			<Button variant="secondary" size="sm" onclick={goToToday} title="Today (T)">
-				Today
-			</Button>
+		</div>
+
+		<!-- Right: View toggle -->
+		<div class="flex items-center gap-2">
+			<div class="flex bg-gray-100 dark:bg-zinc-700 rounded-lg p-0.5">
+				<button
+					type="button"
+					class="p-1.5 rounded-md transition-colors {displayMode === 'calendar' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
+					onclick={() => setDisplayMode('calendar')}
+					title="Calendar view (C)"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+					</svg>
+				</button>
+				<button
+					type="button"
+					class="p-1.5 rounded-md transition-colors {displayMode === 'list' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
+					onclick={() => setDisplayMode('list')}
+					title="List view (L or A)"
+				>
+					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+					</svg>
+				</button>
+			</div>
 		</div>
 	</div>
 
@@ -1010,65 +1052,43 @@
 		</div>
 	{/if}
 
-	<!-- Calendar Events Panel -->
-	<div class="mb-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-		<div class="flex items-center justify-between mb-3">
-			<div class="flex items-center gap-2">
-				<svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-				</svg>
-				<h2 class="font-semibold text-gray-900 dark:text-white">
-					Calendar Events
-					{#if pendingEvents.length > 0}
-						<span class="ml-2 px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full">
-							{pendingEvents.length} to classify
-						</span>
-					{/if}
-					{#if reviewEvents.length > 0}
-						<span class="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded-full">
-							{reviewEvents.length} to review
-						</span>
-					{/if}
-				</h2>
+	<!-- Project Summary Bar -->
+	{@const unclassifiedHours = calendarEvents
+		.filter(e => e.classification_status === 'pending')
+		.reduce((sum, e) => {
+			const start = new Date(e.start_time);
+			const end = new Date(e.end_time);
+			return sum + (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+		}, 0)}
+	<div class="mb-4 flex items-center gap-3 px-3 py-2 bg-gray-100 dark:bg-zinc-800 rounded-lg overflow-x-auto">
+		{#each projectTotals as { project, hours }}
+			<div class="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-zinc-700 rounded-full text-sm whitespace-nowrap">
+				<span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: {project.color}"></span>
+				<span class="text-gray-700 dark:text-gray-300">{project.name}</span>
+				<span class="text-gray-500 dark:text-gray-400">({hours}h)</span>
 			</div>
-			<div class="flex items-center gap-2">
-				<!-- Display mode toggle -->
-				<div class="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
-					<button
-						type="button"
-						class="px-2 py-1 text-xs rounded-md transition-colors {displayMode === 'calendar' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-						onclick={() => setDisplayMode('calendar')}
-						title="Calendar view (C)"
-					>
-						Calendar
-					</button>
-					<button
-						type="button"
-						class="px-2 py-1 text-xs rounded-md transition-colors {displayMode === 'list' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-						onclick={() => setDisplayMode('list')}
-						title="List view (L or A)"
-					>
-						List
-					</button>
-				</div>
-				<button
-					type="button"
-					class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-sm"
-					onclick={() => showClassificationPanel = !showClassificationPanel}
-				>
-					{showClassificationPanel ? 'Hide' : 'Show'}
-				</button>
+		{/each}
+		{#if unclassifiedHours > 0}
+			<div class="flex items-center gap-1.5 px-2 py-1 border border-dashed border-gray-300 dark:border-zinc-600 rounded-full text-sm whitespace-nowrap">
+				<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-gray-400 dark:bg-gray-500 opacity-50"></span>
+				<span class="text-gray-500 dark:text-gray-400">Unclassified</span>
+				<span class="text-gray-500 dark:text-gray-400">({Math.round(unclassifiedHours * 10) / 10}h)</span>
 			</div>
-		</div>
+		{/if}
+		<span class="ml-auto text-sm font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">
+			{totalHours + Math.round(unclassifiedHours * 10) / 10}h total
+		</span>
+	</div>
 
-		{#if showClassificationPanel}
+	<!-- Calendar Panel -->
+	<div class="mb-6 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg p-4">
 			{#if displayMode === 'calendar'}
 				<!-- Time Grid View -->
 				{#if scopeMode === 'day'}
 					<!-- Single day - full width time grid -->
 					{@const dateStr = formatDate(currentDate)}
 					{@const dayEvents = eventsByDate[dateStr] || []}
-					<div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+					<div class="bg-gray-50 dark:bg-zinc-900 rounded-lg p-4">
 						<TimeGrid
 							events={dayEvents}
 							{projects}
@@ -1089,14 +1109,24 @@
 					<!-- Day headers (outside scroll, above all-day events) -->
 					<div class="flex mb-1">
 						<div class="w-12 flex-shrink-0"></div>
-						<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
+						<div class="flex-1 grid" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
 							{#each visibleDays as day}
 								{@const dateStr = formatDate(day)}
 								{@const isToday = formatDate(new Date()) === dateStr}
-								<div class="text-center">
-									<h3 class="font-medium text-sm py-1 {isToday ? 'text-primary-600 dark:text-primary-400' : 'text-gray-700 dark:text-gray-300'}">
-										{formatShortDay(day)}
-									</h3>
+								{@const header = formatDayHeaderCompact(day)}
+								{@const stats = getDayStats(dateStr)}
+								<div class="text-center py-1 px-1 {isToday ? 'bg-zinc-100 dark:bg-zinc-800 border-b-2 border-primary-500' : 'border-b border-transparent'}">
+									<div class="flex items-baseline justify-center gap-1">
+										<span class="text-lg font-semibold {isToday ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'}">{header.num}</span>
+										<span class="text-xs uppercase {isToday ? 'text-gray-600 dark:text-gray-400' : 'text-gray-500 dark:text-gray-500'}">{header.day}</span>
+									</div>
+									<div class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+										{#if stats.hours > 0}
+											{stats.hours}h · {stats.projectCount} project{stats.projectCount !== 1 ? 's' : ''}
+										{:else}
+											—
+										{/if}
+									</div>
 								</div>
 							{/each}
 						</div>
@@ -1105,7 +1135,7 @@
 					<!-- All-day events row (below headers) -->
 					{#if allDayEventsForWeek.length > 0}
 						{@const activeProjectsList = projects.filter(p => !p.is_archived)}
-						<div class="mb-2 border-b border-gray-200 dark:border-gray-700 pb-2 flex">
+						<div class="mb-2 border-b border-gray-200 dark:border-zinc-700 pb-2 flex">
 							<div class="w-12 flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 text-right pr-2 pt-0.5">All day</div>
 							<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
 								{#each visibleDays as day}
@@ -1173,7 +1203,7 @@
 
 					<!-- Unified scroll container -->
 					<div
-						class="overflow-y-auto overflow-x-hidden bg-gray-50 dark:bg-gray-900 rounded-lg"
+						class="overflow-y-auto overflow-x-hidden bg-gray-50 dark:bg-zinc-900 rounded-lg"
 						style="height: {viewportHours * hourHeight}px"
 						bind:this={weekScrollContainer}
 					>
@@ -1192,7 +1222,7 @@
 								<!-- Hour lines (spanning all columns) -->
 								{#each hours as hour, i}
 									<div
-										class="absolute w-full border-t border-gray-200 dark:border-gray-700 pointer-events-none"
+										class="absolute w-full border-t border-gray-200 dark:border-zinc-700 pointer-events-none"
 										style="top: {i * hourHeight}px; left: 0; right: 0;"
 									></div>
 								{/each}
@@ -1205,7 +1235,7 @@
 									{@const eventsWithCols = getEventsWithColumns(dayEvents)}
 									{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 
-									<div class="relative border-l border-gray-200 dark:border-gray-700 {isToday ? 'bg-primary-50/30 dark:bg-primary-900/20' : ''}">
+									<div class="relative border-l border-gray-200 dark:border-zinc-700 {isToday ? 'bg-zinc-100/50 dark:bg-zinc-800/50' : ''}">
 										{#each eventsWithCols as { event, column, totalColumns } (event.id)}
 											{@const style = getEventStyle(event)}
 											{@const width = 100 / totalColumns}
@@ -1225,7 +1255,7 @@
 												class="absolute rounded-md overflow-hidden text-xs {statusClasses} hover:shadow-md transition-shadow cursor-pointer"
 												style="
 													top: {style.top}px;
-													height: {style.height}px;
+													height: calc({style.height}px - 1px);
 													left: calc({left}% + 2px);
 													width: calc({width}% - 4px);
 													{statusStyle}
@@ -1295,14 +1325,14 @@
 					{@const allDayEvents = getAllDayEventsForDay(dayEvents)}
 					{@const hourGroups = getEventsByHourForDay(dayEvents)}
 					{@const activeProjectsList = projects.filter(p => !p.is_archived)}
-					<div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 max-h-[32rem] overflow-y-auto">
+					<div class="bg-gray-50 dark:bg-zinc-900 rounded-lg p-4 max-h-[32rem] overflow-y-auto">
 						{#if allDayEvents.length > 0 || hourGroups.length > 0}
 							<div class="space-y-3">
 								<!-- All-day events section -->
 								{#if allDayEvents.length > 0}
 									<div>
 										<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">All day</div>
-										<div class="space-y-2">
+										<div class="space-y-px">
 											{#each allDayEvents as event (event.id)}
 												{@const isPending = event.classification_status === 'pending'}
 												{@const isClassified = event.classification_status === 'classified'}
@@ -1377,7 +1407,7 @@
 								{#each hourGroups as group}
 									<div>
 										<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{group.label}</div>
-										<div class="space-y-2">
+										<div class="space-y-px">
 											{#each group.events as event (event.id)}
 												<div class={classifyingId === event.id ? 'opacity-50 pointer-events-none' : ''}>
 													<CalendarEventCard
@@ -1408,17 +1438,29 @@
 								{@const isToday = formatDate(new Date()) === dateStr}
 								{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 
-								<div class="bg-gray-50 dark:bg-gray-900 rounded-lg p-2 max-h-[32rem] overflow-y-auto {isToday ? 'ring-2 ring-primary-500' : ''}">
-									<h3 class="font-medium text-sm text-center mb-2 pb-1 border-b border-gray-200 dark:border-gray-700 {isToday ? 'text-primary-600 dark:text-primary-400' : 'text-gray-700 dark:text-gray-300'}">
-										{formatShortDay(day)}
-									</h3>
+								{@const header = formatDayHeaderCompact(day)}
+								{@const stats = getDayStats(dateStr)}
+								<div class="bg-gray-50 dark:bg-zinc-900 rounded-lg p-2 max-h-[32rem] overflow-y-auto {isToday ? 'ring-2 ring-primary-500' : ''}">
+									<div class="text-center mb-2 pb-1 {isToday ? 'border-b-2 border-primary-500' : 'border-b border-gray-200 dark:border-zinc-700'}">
+										<div class="flex items-baseline justify-center gap-1">
+											<span class="text-lg font-semibold {isToday ? 'text-gray-900 dark:text-white' : 'text-gray-700 dark:text-gray-300'}">{header.num}</span>
+											<span class="text-xs uppercase {isToday ? 'text-gray-600 dark:text-gray-400' : 'text-gray-500 dark:text-gray-500'}">{header.day}</span>
+										</div>
+										<div class="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+											{#if stats.hours > 0}
+												{stats.hours}h · {stats.projectCount} project{stats.projectCount !== 1 ? 's' : ''}
+											{:else}
+												—
+											{/if}
+										</div>
+									</div>
 									{#if allDayEvents.length > 0 || hourGroups.length > 0}
 										<div class="space-y-2">
 											<!-- All-day events -->
 											{#if allDayEvents.length > 0}
 												<div>
 													<div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">All day</div>
-													<div class="space-y-1">
+													<div class="space-y-px">
 														{#each allDayEvents as event (event.id)}
 															{@const isPending = event.classification_status === 'pending'}
 															{@const isClassified = event.classification_status === 'classified'}
@@ -1485,7 +1527,7 @@
 											{#each hourGroups as group}
 												<div>
 													<div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">{group.label}</div>
-													<div class="space-y-1">
+													<div class="space-y-px">
 														{#each group.events as event (event.id)}
 															<!-- Compact event card for list columns -->
 															{@const isPending = event.classification_status === 'pending'}
@@ -1570,7 +1612,6 @@
 					</div>
 				{/if}
 			{/if}
-		{/if}
 	</div>
 
 	<div class="flex flex-col lg:flex-row gap-6">
@@ -1589,10 +1630,10 @@
 						{@const dayTotal = dayEntries.reduce((sum, e) => sum + e.hours, 0)}
 						{@const isToday = formatDate(new Date()) === dateStr}
 
-						<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 {isToday ? 'ring-2 ring-primary-500' : ''}">
+						<div class="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg p-4 {isToday ? 'ring-2 ring-primary-500' : ''}">
 							<div class="flex items-center justify-between mb-3">
 								<div class="flex items-center gap-3">
-									<span class="font-medium {isToday ? 'text-primary-600 dark:text-primary-400' : 'text-gray-900 dark:text-white'}">
+									<span class="font-medium text-gray-900 dark:text-white">
 										{scopeMode === 'day' ? 'Time Entries' : formatDayLabel(day)}
 									</span>
 									{#if dayTotal > 0}
@@ -1630,10 +1671,10 @@
 
 		<!-- Sidebar with project totals -->
 		<div class="lg:w-72">
-			<div class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 sticky top-4">
+			<div class="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg p-4 sticky top-4">
 				<h2 class="font-semibold text-gray-900 dark:text-white mb-4">{scopeMode === 'day' ? 'Day' : 'Week'} Summary</h2>
 
-				<div class="mb-4 pb-4 border-b border-gray-200 dark:border-gray-700">
+				<div class="mb-4 pb-4 border-b border-gray-200 dark:border-zinc-700">
 					<div class="text-3xl font-bold text-gray-900 dark:text-white">{totalHours}h</div>
 					<div class="text-sm text-gray-500 dark:text-gray-400">Total hours</div>
 				</div>
@@ -1651,7 +1692,7 @@
 											type="checkbox"
 											checked={visibleProjectIds.has(project.id)}
 											onchange={() => toggleProjectVisibility(project.id)}
-											class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 dark:bg-gray-700"
+											class="h-4 w-4 rounded border-gray-300 dark:border-zinc-600 text-primary-600 focus:ring-primary-500 dark:bg-zinc-700"
 										/>
 										<span
 											class="w-3 h-3 rounded-full flex-shrink-0"
@@ -1670,7 +1711,7 @@
 
 				<!-- Hidden Projects (collapsed by default) -->
 				{#if hiddenProjects.length > 0}
-					<div class="mb-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+					<div class="mb-4 border-t border-gray-200 dark:border-zinc-700 pt-4">
 						<button
 							type="button"
 							class="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 hover:text-gray-700 dark:hover:text-gray-300"
@@ -1696,7 +1737,7 @@
 												type="checkbox"
 												checked={visibleProjectIds.has(project.id)}
 												onchange={() => toggleProjectVisibility(project.id)}
-												class="h-4 w-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500 dark:bg-gray-700"
+												class="h-4 w-4 rounded border-gray-300 dark:border-zinc-600 text-primary-600 focus:ring-primary-500 dark:bg-zinc-700"
 											/>
 											<span
 												class="w-3 h-3 rounded-full flex-shrink-0"
@@ -1716,7 +1757,7 @@
 
 				<!-- Archived Projects (warning if entries exist) -->
 				{#if archivedTotals.length > 0}
-					<div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+					<div class="border-t border-gray-200 dark:border-zinc-700 pt-4">
 						<div class="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-500 uppercase tracking-wide mb-2">
 							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -1767,7 +1808,7 @@
 				<label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Project</label>
 				<select
 					bind:value={addProjectId}
-					class="block w-full rounded-md border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
+					class="block w-full rounded-md border-gray-300 dark:border-zinc-600 dark:bg-zinc-700 dark:text-white shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm"
 					style="padding: 0.5rem 0.75rem; border-width: 1px;"
 				>
 					{#each projects.filter((p) => !p.is_archived) as project}

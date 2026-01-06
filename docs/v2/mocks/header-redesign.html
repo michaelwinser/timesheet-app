@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Header Redesign Mock - Calendar UI</title>
+  <style>
+    :root {
+      /* Dark background - pure black/gray (not blue) */
+      --bg-page: #0a0a0a;
+      --bg-primary: #141414;
+      --bg-secondary: #1c1c1c;
+      --bg-tertiary: #262626;
+
+      /* Text */
+      --text-primary: #f0f0f0;
+      --text-secondary: #a0a0a0;
+      --text-muted: #666666;
+
+      /* Borders */
+      --border-color: #2a2a2a;
+      --border-light: #333333;
+
+      /* Accent */
+      --accent-primary: #3b82f6;
+      --accent-yellow: #f0c000;
+
+      /* Project colors */
+      --project-teal: #00a8a8;
+      --project-gold: #d4a000;
+      --project-blue: #3b82f6;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-primary);
+      background: var(--bg-page);
+      padding: 20px;
+    }
+
+    .mock-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+    }
+
+    /* Section styling */
+    .section {
+      background: var(--bg-primary);
+      border-radius: 12px;
+      margin-bottom: 40px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+
+    .section-header {
+      background: var(--bg-secondary);
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .section-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .section-label {
+      display: inline-block;
+      padding: 4px 10px;
+      background: #3b82f633;
+      color: #60a5fa;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .section-body {
+      padding: 24px;
+    }
+
+    .note {
+      background: var(--bg-tertiary);
+      border-left: 3px solid var(--accent-primary);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 20px;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .note strong {
+      color: var(--text-primary);
+    }
+
+    .note ul {
+      margin-top: 8px;
+      margin-left: 20px;
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 20px;
+    }
+
+    .comparison-panel h3 {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* App Shell */
+    .app-shell {
+      background: var(--bg-page);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+
+    /* Navigation */
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .nav-brand {
+      font-weight: 600;
+      font-size: 16px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .nav-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .nav-link.active {
+      color: var(--text-primary);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      transition: all 0.15s;
+    }
+
+    .btn:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .btn-icon {
+      padding: 6px 8px;
+      min-width: 32px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 1px;
+      background: var(--border-color);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .btn-group .btn {
+      border-radius: 0;
+      border: none;
+    }
+
+    .btn-group .btn.active {
+      background: var(--bg-tertiary);
+      color: var(--accent-primary);
+    }
+
+    /* ========================================
+       CURRENT HEADER (Before)
+       ======================================== */
+    .header-current {
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .header-current-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .header-current-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 20px;
+    }
+
+    .calendar-events-title {
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .badge-blue {
+      background: #3b82f633;
+      color: #60a5fa;
+    }
+
+    .badge-amber {
+      background: #f59e0b33;
+      color: #fbbf24;
+    }
+
+    /* ========================================
+       NEW HEADER (After)
+       ======================================== */
+    .header-new {
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 12px 20px;
+    }
+
+    .header-new-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-center {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .date-nav {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .date-title {
+      font-size: 16px;
+      font-weight: 600;
+      min-width: 200px;
+      text-align: center;
+    }
+
+    .scope-toggle {
+      display: flex;
+      gap: 1px;
+      background: var(--border-color);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .scope-toggle .btn {
+      border-radius: 0;
+      border: none;
+      padding: 6px 14px;
+    }
+
+    .view-toggle {
+      display: flex;
+      gap: 1px;
+      background: var(--border-color);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .view-toggle .btn {
+      border-radius: 0;
+      border: none;
+      padding: 6px 10px;
+    }
+
+    /* Calendar Grid (simplified) */
+    .calendar-preview {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1px;
+      background: var(--border-color);
+      min-height: 200px;
+    }
+
+    .day-col {
+      background: var(--bg-page);
+      padding: 8px;
+    }
+
+    .day-header-cell {
+      text-align: center;
+      padding: 8px;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .day-name {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .day-num {
+      font-size: 18px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    .day-num.today {
+      color: var(--text-primary);
+    }
+
+    .day-header-cell.today {
+      background: var(--bg-tertiary);
+      border-bottom: 2px solid var(--accent-primary);
+    }
+
+    /* Project Summary Bar */
+    .project-summary {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 10px 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .project-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 14px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--bg-tertiary);
+    }
+
+    .project-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .project-hours {
+      color: var(--text-secondary);
+      font-weight: 400;
+    }
+
+    /* Mini bar under project name */
+    .project-chip-with-bar {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 3px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--bg-tertiary);
+    }
+
+    .project-chip-content {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .mini-bar {
+      height: 3px;
+      border-radius: 2px;
+      min-width: 20px;
+    }
+
+    /* Stacked bar chart */
+    .stacked-bar-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stacked-bar {
+      display: flex;
+      height: 8px;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .stacked-segment {
+      height: 100%;
+    }
+
+    .stacked-legend {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .event-pill {
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      /* Note: margin-bottom removed - using gap on parent container instead */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Strike-through for removed elements */
+    .removed {
+      text-decoration: line-through;
+      opacity: 0.5;
+    }
+
+    /* Highlight for new/moved elements */
+    .highlight {
+      outline: 2px dashed #10b981;
+      outline-offset: 2px;
+    }
+
+    .highlight-label {
+      position: absolute;
+      top: -20px;
+      left: 0;
+      font-size: 10px;
+      color: #10b981;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .annotated {
+      position: relative;
+    }
+
+    .annotation {
+      position: absolute;
+      font-size: 10px;
+      color: #f59e0b;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="mock-container">
+
+    <h1>Header Redesign Mock</h1>
+    <p class="subtitle">Proposed changes to the Calendar UI header</p>
+
+    <!-- CHANGE 1: Background Colors -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Change 1: Dark Mode Background Colors</h2>
+        <span class="section-label">Colors</span>
+      </div>
+      <div class="section-body">
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          Switch from dark blue shades to pure black/gray for a cleaner look.
+        </p>
+
+        <div class="comparison">
+          <div class="comparison-panel">
+            <h3>Current (Blue-ish)</h3>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <div style="width: 60px; height: 40px; background: #0f172a; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px;">#0f172a</div>
+              <div style="width: 60px; height: 40px; background: #1e293b; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px;">#1e293b</div>
+              <div style="width: 60px; height: 40px; background: #334155; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px;">#334155</div>
+            </div>
+            <p style="font-size: 11px; color: var(--text-muted);">Tailwind slate colors have blue undertones</p>
+          </div>
+
+          <div class="comparison-panel">
+            <h3>Proposed (Pure Gray)</h3>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+              <div style="width: 60px; height: 40px; background: #0a0a0a; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px;">#0a0a0a</div>
+              <div style="width: 60px; height: 40px; background: #141414; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px;">#141414</div>
+              <div style="width: 60px; height: 40px; background: #1c1c1c; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px;">#1c1c1c</div>
+            </div>
+            <p style="font-size: 11px; color: var(--text-muted);">Neutral gray/zinc - matches v1 app and mocks</p>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Implementation:</strong> Update Tailwind config to use zinc instead of slate for dark mode backgrounds.
+        </div>
+      </div>
+    </div>
+
+    <!-- CHANGE 2-4: Header Layout -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Changes 2-4: Header Layout Redesign</h2>
+        <span class="section-label">Layout</span>
+      </div>
+      <div class="section-body">
+
+        <!-- BEFORE -->
+        <div class="comparison-panel" style="margin-bottom: 32px;">
+          <h3>Current Layout (Before)</h3>
+          <div class="app-shell">
+            <div class="nav-bar">
+              <span class="nav-brand">Timesheet</span>
+              <div class="nav-links">
+                <a href="#" class="nav-link active">Calendar</a>
+                <a href="#" class="nav-link">Projects</a>
+                <a href="#" class="nav-link">Rules</a>
+              </div>
+            </div>
+
+            <div class="header-current">
+              <!-- Top row -->
+              <div class="header-current-top">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <button class="btn btn-icon">←</button>
+                  <button class="btn btn-icon">→</button>
+                  <span style="font-size: 16px; font-weight: 600;">January 5 - January 9, 2026</span>
+                  <button class="btn">Today</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="btn-group">
+                    <button class="btn">Day</button>
+                    <button class="btn active">Week</button>
+                    <button class="btn">Full</button>
+                  </div>
+                </div>
+              </div>
+              <!-- Bottom row -->
+              <div class="header-current-bottom">
+                <div class="calendar-events-title">
+                  <span class="removed">Calendar Events</span>
+                  <span class="badge badge-blue removed">3 to classify</span>
+                  <span class="badge badge-amber removed">4 for review</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div class="btn-group">
+                    <button class="btn active">Calendar</button>
+                    <button class="btn">List</button>
+                  </div>
+                  <button class="btn removed">Hide</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="calendar-preview">
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Mon</div><div class="day-num">5</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Tue</div><div class="day-num today">6</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Wed</div><div class="day-num">7</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Thu</div><div class="day-num">8</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Fri</div><div class="day-num">9</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Sat</div><div class="day-num">10</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Sun</div><div class="day-num">11</div></div></div>
+            </div>
+          </div>
+          <p style="margin-top: 12px; font-size: 12px; color: var(--text-muted);">
+            <span style="text-decoration: line-through; opacity: 0.5;">Strikethrough</span> = elements to remove
+          </p>
+        </div>
+
+        <!-- AFTER -->
+        <div class="comparison-panel">
+          <h3>Proposed Layout (After)</h3>
+          <div class="app-shell">
+            <div class="nav-bar">
+              <span class="nav-brand">Timesheet</span>
+              <div class="nav-links">
+                <a href="#" class="nav-link active">Calendar</a>
+                <a href="#" class="nav-link">Projects</a>
+                <a href="#" class="nav-link">Rules</a>
+              </div>
+            </div>
+
+            <!-- New single-row header -->
+            <div class="header-new">
+              <div class="header-new-row">
+                <!-- Left: Scope toggle (Day/Week/Full) -->
+                <div class="header-left">
+                  <div class="scope-toggle highlight">
+                    <button class="btn">Day</button>
+                    <button class="btn active">Week</button>
+                    <button class="btn">Full</button>
+                  </div>
+                </div>
+
+                <!-- Center: Date navigation -->
+                <div class="header-center highlight">
+                  <div class="date-nav">
+                    <button class="btn btn-icon">←</button>
+                    <button class="btn">Today</button>
+                    <button class="btn btn-icon">→</button>
+                  </div>
+                  <span class="date-title">January 5 - January 9, 2026</span>
+                </div>
+
+                <!-- Right: View toggle (Calendar/List) -->
+                <div class="header-right">
+                  <div class="view-toggle highlight">
+                    <button class="btn active" title="Calendar view">📅</button>
+                    <button class="btn" title="List view">☰</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="calendar-preview">
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Mon</div><div class="day-num">5</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Tue</div><div class="day-num today">6</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Wed</div><div class="day-num">7</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Thu</div><div class="day-num">8</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Fri</div><div class="day-num">9</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Sat</div><div class="day-num">10</div></div></div>
+              <div class="day-col"><div class="day-header-cell"><div class="day-name">Sun</div><div class="day-num">11</div></div></div>
+            </div>
+          </div>
+          <p style="margin-top: 12px; font-size: 12px; color: #10b981;">
+            <span style="outline: 2px dashed #10b981; outline-offset: 2px; padding: 2px 6px;">Green dashed outline</span> = new/moved elements
+          </p>
+        </div>
+
+        <div class="note">
+          <strong>Summary of changes:</strong>
+          <ul>
+            <li><strong>2a:</strong> Date navigation centered over calendar</li>
+            <li><strong>2b:</strong> Today button moved between ← and → arrows</li>
+            <li><strong>3:</strong> "Calendar Events" header removed (obvious from context)</li>
+            <li><strong>4a:</strong> Day/Week/Full scope toggle moved to left side</li>
+            <li><strong>4b:</strong> Calendar/List view toggle moved to right side (same row)</li>
+            <li><strong>4c:</strong> Hide/Show button removed (for now)</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- FULL MOCK -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Full Mock: Proposed Design</h2>
+        <span class="section-label">Complete</span>
+      </div>
+      <div class="section-body">
+
+        <div class="app-shell">
+          <div class="nav-bar">
+            <span class="nav-brand">Timesheet</span>
+            <div class="nav-links">
+              <a href="#" class="nav-link active">Calendar</a>
+              <a href="#" class="nav-link">Projects</a>
+              <a href="#" class="nav-link">Rules</a>
+              <a href="#" class="nav-link">Invoices</a>
+            </div>
+          </div>
+
+          <!-- Clean single-row header -->
+          <div class="header-new">
+            <div class="header-new-row">
+              <div class="header-left">
+                <div class="scope-toggle">
+                  <button class="btn">Day</button>
+                  <button class="btn active">Week</button>
+                  <button class="btn">Full</button>
+                </div>
+              </div>
+
+              <div class="header-center">
+                <div class="date-nav">
+                  <button class="btn btn-icon">←</button>
+                  <button class="btn">Today</button>
+                  <button class="btn btn-icon">→</button>
+                </div>
+                <span class="date-title">January 5 - January 9, 2026</span>
+              </div>
+
+              <div class="header-right">
+                <div class="view-toggle">
+                  <button class="btn active" title="Calendar view">📅</button>
+                  <button class="btn" title="List view">☰</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Project Summary Bar -->
+          <div class="project-summary">
+            <div class="project-chip">
+              <span class="project-dot" style="background: var(--project-teal);"></span>
+              <span>Alpha Omega</span>
+              <span class="project-hours">(18.5h)</span>
+            </div>
+            <div class="project-chip">
+              <span class="project-dot" style="background: var(--project-gold);"></span>
+              <span>OpenSSF / SLSA</span>
+              <span class="project-hours">(3h)</span>
+            </div>
+            <div class="project-chip">
+              <span class="project-dot" style="background: var(--project-blue);"></span>
+              <span>Chainguard</span>
+              <span class="project-hours">(1.5h)</span>
+            </div>
+            <div class="project-chip" style="border: 1px dashed var(--border-light);">
+              <span class="project-dot" style="background: var(--text-muted); opacity: 0.5;"></span>
+              <span style="color: var(--text-muted);">Unclassified</span>
+              <span class="project-hours">(2h)</span>
+            </div>
+            <span style="margin-left: auto; color: var(--text-secondary); font-size: 13px; font-weight: 500;">25h total</span>
+          </div>
+
+          <div class="calendar-preview" style="min-height: 350px; border: none; gap: 0;">
+            <div class="day-col" style="border-right: 1px solid var(--border-color);">
+              <div class="day-header-cell" style="border-bottom: none; padding: 8px 6px;">
+                <div style="display: flex; align-items: baseline; justify-content: center; gap: 4px;">
+                  <span style="font-size: 18px; font-weight: 600;">5</span>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Mon</span>
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">4.5h · 2 projects</div>
+              </div>
+              <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px;">
+                <div class="event-pill" style="background: var(--project-gold);">SLSA Spec Meeting</div>
+                <div class="event-pill" style="background: var(--project-teal);">Security WG</div>
+              </div>
+            </div>
+            <div class="day-col" style="border-right: 1px solid var(--border-color);">
+              <div class="day-header-cell today" style="border-bottom: none; padding: 8px 6px;">
+                <div style="display: flex; align-items: baseline; justify-content: center; gap: 4px;">
+                  <span style="font-size: 18px; font-weight: 600;">6</span>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Tue</span>
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">6.0h · 1 project</div>
+              </div>
+              <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px;">
+                <div class="event-pill" style="background: var(--project-teal);">Mila / Michael</div>
+                <div class="event-pill" style="background: var(--project-teal);">Michael / Jarek</div>
+                <div class="event-pill" style="background: var(--project-teal);">Program Mgmt</div>
+                <div class="event-pill" style="background: var(--project-teal);">AO Operations</div>
+              </div>
+            </div>
+            <div class="day-col" style="border-right: 1px solid var(--border-color);">
+              <div class="day-header-cell" style="border-bottom: none; padding: 8px 6px;">
+                <div style="display: flex; align-items: baseline; justify-content: center; gap: 4px;">
+                  <span style="font-size: 18px; font-weight: 600;">7</span>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Wed</span>
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">4.0h · 1 project</div>
+              </div>
+              <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px;">
+                <div class="event-pill" style="background: var(--project-teal);">VEX Generation</div>
+                <div class="event-pill" style="background: var(--project-teal);">Alpha Omega Public</div>
+              </div>
+            </div>
+            <div class="day-col" style="border-right: 1px solid var(--border-color);">
+              <div class="day-header-cell" style="border-bottom: none; padding: 8px 6px;">
+                <div style="display: flex; align-items: baseline; justify-content: center; gap: 4px;">
+                  <span style="font-size: 18px; font-weight: 600;">8</span>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Thu</span>
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">1.0h · 1 project</div>
+              </div>
+              <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px;">
+                <div class="event-pill" style="background: var(--project-teal);">AO Office Hours</div>
+              </div>
+            </div>
+            <div class="day-col" style="border-right: 1px solid var(--border-color);">
+              <div class="day-header-cell" style="border-bottom: none; padding: 8px 6px;">
+                <div style="display: flex; align-items: baseline; justify-content: center; gap: 4px;">
+                  <span style="font-size: 18px; font-weight: 600;">9</span>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Fri</span>
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">2.0h · 1 project</div>
+              </div>
+              <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px;">
+                <div class="event-pill" style="background: var(--project-teal);">Michael Weekly</div>
+                <div class="event-pill" style="background: var(--bg-secondary); border: 1px solid var(--border-light);">Team Retro</div>
+              </div>
+            </div>
+            <div class="day-col" style="border-right: 1px solid var(--border-color);">
+              <div class="day-header-cell" style="border-bottom: none; padding: 8px 6px;">
+                <div style="display: flex; align-items: baseline; justify-content: center; gap: 4px;">
+                  <span style="font-size: 18px; font-weight: 600;">10</span>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Sat</span>
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">—</div>
+              </div>
+              <div style="padding: 6px;"></div>
+            </div>
+            <div class="day-col">
+              <div class="day-header-cell" style="border-bottom: none; padding: 8px 6px;">
+                <div style="display: flex; align-items: baseline; justify-content: center; gap: 4px;">
+                  <span style="font-size: 18px; font-weight: 600;">11</span>
+                  <span style="font-size: 11px; color: var(--text-muted); text-transform: uppercase;">Sun</span>
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">—</div>
+              </div>
+              <div style="padding: 6px;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="note" style="margin-top: 24px;">
+          <strong>Benefits of new layout:</strong>
+          <ul>
+            <li>Single row header - more vertical space for calendar</li>
+            <li>Cleaner, less cluttered appearance</li>
+            <li>Date navigation centered and prominent</li>
+            <li>Related controls grouped logically (scope left, view right)</li>
+            <li>Removed redundant "Calendar Events" label</li>
+            <li>Day headers compact: "5 Mon" on same line</li>
+            <li>Project summary bar replaces separate "unclassified" indicator</li>
+            <li>2px gap between events improves visual separation</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- PROJECT HOURS VARIATIONS -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Project Hours Display Variations</h2>
+        <span class="section-label">Options</span>
+      </div>
+      <div class="section-body">
+
+        <p style="color: var(--text-secondary); margin-bottom: 24px;">
+          Three options for displaying project hours in the summary bar:
+        </p>
+
+        <!-- Option A: Hours in parentheses -->
+        <div style="margin-bottom: 32px;">
+          <h3 style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Option A: Hours in Parentheses (shown above)</h3>
+          <div class="project-summary" style="border-radius: 6px;">
+            <span style="color: var(--text-muted); font-size: 12px;">This week:</span>
+            <div class="project-chip">
+              <span class="project-dot" style="background: var(--project-teal);"></span>
+              <span>Alpha Omega</span>
+              <span class="project-hours">(18.5h)</span>
+            </div>
+            <div class="project-chip">
+              <span class="project-dot" style="background: var(--project-gold);"></span>
+              <span>OpenSSF / SLSA</span>
+              <span class="project-hours">(3h)</span>
+            </div>
+            <div class="project-chip">
+              <span class="project-dot" style="background: var(--project-blue);"></span>
+              <span>Chainguard</span>
+              <span class="project-hours">(1.5h)</span>
+            </div>
+            <span style="margin-left: auto; color: var(--text-secondary); font-size: 13px; font-weight: 500;">23h total</span>
+          </div>
+          <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">Simple, compact, easy to scan.</p>
+        </div>
+
+        <!-- Option B: Mini bars under project name -->
+        <div style="margin-bottom: 32px;">
+          <h3 style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Option B: Mini Bar Charts</h3>
+          <div class="project-summary" style="border-radius: 6px;">
+            <span style="color: var(--text-muted); font-size: 12px;">This week:</span>
+            <div class="project-chip-with-bar">
+              <div class="project-chip-content">
+                <span class="project-dot" style="background: var(--project-teal);"></span>
+                <span>Alpha Omega</span>
+                <span class="project-hours">18.5h</span>
+              </div>
+              <div class="mini-bar" style="background: var(--project-teal); width: 80px;"></div>
+            </div>
+            <div class="project-chip-with-bar">
+              <div class="project-chip-content">
+                <span class="project-dot" style="background: var(--project-gold);"></span>
+                <span>OpenSSF / SLSA</span>
+                <span class="project-hours">3h</span>
+              </div>
+              <div class="mini-bar" style="background: var(--project-gold); width: 13px;"></div>
+            </div>
+            <div class="project-chip-with-bar">
+              <div class="project-chip-content">
+                <span class="project-dot" style="background: var(--project-blue);"></span>
+                <span>Chainguard</span>
+                <span class="project-hours">1.5h</span>
+              </div>
+              <div class="mini-bar" style="background: var(--project-blue); width: 6px;"></div>
+            </div>
+            <span style="margin-left: auto; color: var(--text-secondary); font-size: 13px; font-weight: 500;">23h total</span>
+          </div>
+          <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">Visual comparison of relative time spent. Takes more vertical space.</p>
+        </div>
+
+        <!-- Option C: Stacked bar chart -->
+        <div style="margin-bottom: 24px;">
+          <h3 style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Option C: Horizontal Stacked Bar</h3>
+          <div class="project-summary" style="border-radius: 6px; flex-direction: column; align-items: stretch; gap: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="color: var(--text-muted); font-size: 12px;">This week:</span>
+              <span style="color: var(--text-secondary); font-size: 13px; font-weight: 500;">23h total</span>
+            </div>
+            <div class="stacked-bar-container">
+              <div class="stacked-bar">
+                <div class="stacked-segment" style="background: var(--project-teal); width: 80%;"></div>
+                <div class="stacked-segment" style="background: var(--project-gold); width: 13%;"></div>
+                <div class="stacked-segment" style="background: var(--project-blue); width: 7%;"></div>
+              </div>
+              <div class="stacked-legend">
+                <div class="legend-item">
+                  <span class="project-dot" style="background: var(--project-teal);"></span>
+                  <span>Alpha Omega (18.5h)</span>
+                </div>
+                <div class="legend-item">
+                  <span class="project-dot" style="background: var(--project-gold);"></span>
+                  <span>OpenSSF / SLSA (3h)</span>
+                </div>
+                <div class="legend-item">
+                  <span class="project-dot" style="background: var(--project-blue);"></span>
+                  <span>Chainguard (1.5h)</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">Best visualization of proportions, but takes more space and may get crowded with many projects.</p>
+        </div>
+
+        <div class="note">
+          <strong>Recommendation:</strong> Start with Option A (hours in parentheses) for simplicity. Can revisit with mini bars or stacked bar if users want more visual comparison.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EVENT GAP DETAIL -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Event Gap in Time Grid</h2>
+        <span class="section-label">Detail</span>
+      </div>
+      <div class="section-body">
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          Add a small gap between stacked events for better visual separation:
+        </p>
+        <div class="comparison">
+          <div class="comparison-panel">
+            <h3>Current (No Gap)</h3>
+            <div style="width: 150px; background: var(--bg-page); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+              <div style="background: var(--project-teal); padding: 8px; border-radius: 4px; font-size: 11px; margin-bottom: 0;">Event A</div>
+              <div style="background: var(--project-teal); padding: 8px; border-radius: 4px; font-size: 11px; margin-bottom: 0;">Event B</div>
+              <div style="background: var(--project-teal); padding: 8px; border-radius: 4px; font-size: 11px;">Event C</div>
+            </div>
+          </div>
+          <div class="comparison-panel">
+            <h3>Proposed (2px Gap)</h3>
+            <div style="width: 150px; background: var(--bg-page); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 2px;">
+              <div style="background: var(--project-teal); padding: 8px; border-radius: 4px; font-size: 11px;">Event A</div>
+              <div style="background: var(--project-teal); padding: 8px; border-radius: 4px; font-size: 11px;">Event B</div>
+              <div style="background: var(--project-teal); padding: 8px; border-radius: 4px; font-size: 11px;">Event C</div>
+            </div>
+          </div>
+        </div>
+        <div class="note" style="margin-top: 16px;">
+          <strong>Implementation:</strong> In TimeGrid.svelte, add <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">gap: 2px</code> (or <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">gap-0.5</code> in Tailwind) to the event container flex column.
+        </div>
+      </div>
+    </div>
+
+    <!-- HOVER POPUP REDESIGN -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Hover Popup Redesign</h2>
+        <span class="section-label">Popup</span>
+      </div>
+      <div class="section-body">
+        <p style="color: var(--text-secondary); margin-bottom: 24px;">
+          Update the event hover popup with improved styling and layout. Skip button is a rounded square (not circle) to visually distinguish from project selector dots.
+        </p>
+
+        <!-- DARK MODE VARIATIONS -->
+        <h3 style="font-size: 14px; color: var(--text-primary); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">Dark Mode (420px wide - 50% larger)</h3>
+
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 40px;">
+          <!-- Dark: Shadow only -->
+          <div>
+            <h4 style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Option A: Shadow Only</h4>
+            <div style="background: var(--bg-page); padding: 24px; border-radius: 8px;">
+              <div style="background: var(--bg-secondary); border-radius: 10px; width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); overflow: hidden;">
+                <!-- Header -->
+                <div style="padding: 12px 16px; border-left: 4px solid var(--project-teal);">
+                  <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Security Working Group</div>
+                  <div style="font-size: 11px; color: var(--text-secondary);">Mon, Jan 6 · 10:00 - 11:00 AM · 1h</div>
+                </div>
+                <!-- Actions row -->
+                <div style="padding: 10px 16px; background: var(--bg-tertiary); border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; gap: 6px;">
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-teal); box-shadow: 0 0 0 2px var(--bg-tertiary), 0 0 0 4px var(--project-teal);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-gold);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-blue);"></div>
+                  </div>
+                  <div style="width: 24px; height: 24px; border-radius: 4px; border: 2px dashed var(--text-muted); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 10px;">✕</div>
+                </div>
+                <!-- Content -->
+                <div style="padding: 12px 16px; border-top: 1px solid var(--border-color);">
+                  <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Attendees (5)</div>
+                  <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">alice@alpha.io, bob@alpha.io, +3 more</div>
+                  <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--project-teal);"></span>
+                    <a href="#" style="color: var(--text-secondary); text-decoration: none; display: flex; align-items: center; gap: 4px;">
+                      Work Calendar
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">Shadow gets lost on dark backgrounds</p>
+          </div>
+
+          <!-- Dark: White border -->
+          <div>
+            <h4 style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Option B: White Border</h4>
+            <div style="background: var(--bg-page); padding: 24px; border-radius: 8px;">
+              <div style="background: var(--bg-secondary); border: 1px solid rgba(255,255,255,0.15); border-radius: 10px; width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); overflow: hidden;">
+                <!-- Header -->
+                <div style="padding: 12px 16px; border-left: 4px solid var(--project-teal);">
+                  <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Security Working Group</div>
+                  <div style="font-size: 11px; color: var(--text-secondary);">Mon, Jan 6 · 10:00 - 11:00 AM · 1h</div>
+                </div>
+                <!-- Actions row -->
+                <div style="padding: 10px 16px; background: var(--bg-tertiary); border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; gap: 6px;">
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-teal); box-shadow: 0 0 0 2px var(--bg-tertiary), 0 0 0 4px var(--project-teal);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-gold);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-blue);"></div>
+                  </div>
+                  <div style="width: 24px; height: 24px; border-radius: 4px; border: 2px dashed var(--text-muted); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 10px;">✕</div>
+                </div>
+                <!-- Content -->
+                <div style="padding: 12px 16px; border-top: 1px solid var(--border-color);">
+                  <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Attendees (5)</div>
+                  <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">alice@alpha.io, bob@alpha.io, +3 more</div>
+                  <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--project-teal);"></span>
+                    <a href="#" style="color: var(--text-secondary); text-decoration: none; display: flex; align-items: center; gap: 4px;">
+                      Work Calendar
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: #10b981; margin-top: 8px;">✓ Recommended - subtle but visible edge</p>
+          </div>
+
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 40px;">
+          <!-- Dark: Strong white border -->
+          <div>
+            <h4 style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Option C: Strong Border</h4>
+            <div style="background: var(--bg-page); padding: 24px; border-radius: 8px;">
+              <div style="background: var(--bg-secondary); border: 1px solid rgba(255,255,255,0.3); border-radius: 10px; width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.6); overflow: hidden;">
+                <!-- Header -->
+                <div style="padding: 12px 16px; border-left: 4px solid var(--project-teal);">
+                  <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">Security Working Group</div>
+                  <div style="font-size: 11px; color: var(--text-secondary);">Mon, Jan 6 · 10:00 - 11:00 AM · 1h</div>
+                </div>
+                <!-- Actions row -->
+                <div style="padding: 10px 16px; background: var(--bg-tertiary); border-top: 1px solid var(--border-color); display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; gap: 6px;">
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-teal); box-shadow: 0 0 0 2px var(--bg-tertiary), 0 0 0 4px var(--project-teal);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-gold);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-blue);"></div>
+                  </div>
+                  <div style="width: 24px; height: 24px; border-radius: 4px; border: 2px dashed var(--text-muted); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 10px;">✕</div>
+                </div>
+                <!-- Content -->
+                <div style="padding: 12px 16px; border-top: 1px solid var(--border-color);">
+                  <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Attendees (5)</div>
+                  <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">alice@alpha.io, bob@alpha.io, +3 more</div>
+                  <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--project-teal);"></span>
+                    <a href="#" style="color: var(--text-secondary); text-decoration: none; display: flex; align-items: center; gap: 4px;">
+                      Work Calendar
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">More visible, may be too strong</p>
+          </div>
+        </div>
+
+        <!-- LIGHT MODE VARIATIONS -->
+        <h3 style="font-size: 14px; color: var(--text-primary); margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">Light Mode (420px wide)</h3>
+
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 32px;">
+          <!-- Light: Shadow only -->
+          <div>
+            <h4 style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Option A: Shadow Only</h4>
+            <div style="background: #f5f5f5; padding: 24px; border-radius: 8px;">
+              <div style="background: #ffffff; border-radius: 10px; width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); overflow: hidden;">
+                <!-- Header -->
+                <div style="padding: 12px 16px; border-left: 4px solid var(--project-teal);">
+                  <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #111;">Security Working Group</div>
+                  <div style="font-size: 11px; color: #666;">Mon, Jan 6 · 10:00 - 11:00 AM · 1h</div>
+                </div>
+                <!-- Actions row -->
+                <div style="padding: 10px 16px; background: #f9f9f9; border-top: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; gap: 6px;">
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-teal); box-shadow: 0 0 0 2px #f9f9f9, 0 0 0 4px var(--project-teal);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-gold);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-blue);"></div>
+                  </div>
+                  <div style="width: 24px; height: 24px; border-radius: 4px; border: 2px dashed #999; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">✕</div>
+                </div>
+                <!-- Content -->
+                <div style="padding: 12px 16px; border-top: 1px solid #e5e5e5;">
+                  <div style="font-size: 10px; color: #999; text-transform: uppercase; margin-bottom: 4px;">Attendees (5)</div>
+                  <div style="font-size: 12px; color: #666; margin-bottom: 12px;">alice@alpha.io, bob@alpha.io, +3 more</div>
+                  <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--project-teal);"></span>
+                    <a href="#" style="color: #666; text-decoration: none; display: flex; align-items: center; gap: 4px;">
+                      Work Calendar
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: #10b981; margin-top: 8px;">✓ Shadow works well in light mode</p>
+          </div>
+
+          <!-- Light: Black border -->
+          <div>
+            <h4 style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Option B: Dark Border</h4>
+            <div style="background: #f5f5f5; padding: 24px; border-radius: 8px;">
+              <div style="background: #ffffff; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); overflow: hidden;">
+                <!-- Header -->
+                <div style="padding: 12px 16px; border-left: 4px solid var(--project-teal);">
+                  <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #111;">Security Working Group</div>
+                  <div style="font-size: 11px; color: #666;">Mon, Jan 6 · 10:00 - 11:00 AM · 1h</div>
+                </div>
+                <!-- Actions row -->
+                <div style="padding: 10px 16px; background: #f9f9f9; border-top: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; gap: 6px;">
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-teal); box-shadow: 0 0 0 2px #f9f9f9, 0 0 0 4px var(--project-teal);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-gold);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-blue);"></div>
+                  </div>
+                  <div style="width: 24px; height: 24px; border-radius: 4px; border: 2px dashed #999; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">✕</div>
+                </div>
+                <!-- Content -->
+                <div style="padding: 12px 16px; border-top: 1px solid #e5e5e5;">
+                  <div style="font-size: 10px; color: #999; text-transform: uppercase; margin-bottom: 4px;">Attendees (5)</div>
+                  <div style="font-size: 12px; color: #666; margin-bottom: 12px;">alice@alpha.io, bob@alpha.io, +3 more</div>
+                  <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--project-teal);"></span>
+                    <a href="#" style="color: #666; text-decoration: none; display: flex; align-items: center; gap: 4px;">
+                      Work Calendar
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">Subtle reinforcement</p>
+          </div>
+
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin-bottom: 32px;">
+          <!-- Light: Strong black border -->
+          <div>
+            <h4 style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px;">Option C: Strong Border</h4>
+            <div style="background: #f5f5f5; padding: 24px; border-radius: 8px;">
+              <div style="background: #ffffff; border: 1px solid rgba(0,0,0,0.2); border-radius: 10px; width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,0.15); overflow: hidden;">
+                <!-- Header -->
+                <div style="padding: 12px 16px; border-left: 4px solid var(--project-teal);">
+                  <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px; color: #111;">Security Working Group</div>
+                  <div style="font-size: 11px; color: #666;">Mon, Jan 6 · 10:00 - 11:00 AM · 1h</div>
+                </div>
+                <!-- Actions row -->
+                <div style="padding: 10px 16px; background: #f9f9f9; border-top: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; gap: 6px;">
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-teal); box-shadow: 0 0 0 2px #f9f9f9, 0 0 0 4px var(--project-teal);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-gold);"></div>
+                    <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--project-blue);"></div>
+                  </div>
+                  <div style="width: 24px; height: 24px; border-radius: 4px; border: 2px dashed #999; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px;">✕</div>
+                </div>
+                <!-- Content -->
+                <div style="padding: 12px 16px; border-top: 1px solid #e5e5e5;">
+                  <div style="font-size: 10px; color: #999; text-transform: uppercase; margin-bottom: 4px;">Attendees (5)</div>
+                  <div style="font-size: 12px; color: #666; margin-bottom: 12px;">alice@alpha.io, bob@alpha.io, +3 more</div>
+                  <div style="display: flex; align-items: center; gap: 6px; font-size: 11px;">
+                    <span style="width: 6px; height: 6px; border-radius: 50%; background: var(--project-teal);"></span>
+                    <a href="#" style="color: #666; text-decoration: none; display: flex; align-items: center; gap: 4px;">
+                      Work Calendar
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity: 0.5;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <p style="font-size: 11px; color: var(--text-muted); margin-top: 8px;">More defined edge</p>
+          </div>
+        </div>
+
+        <div class="note" style="margin-top: 24px;">
+          <strong>Recommendation:</strong>
+          <ul>
+            <li><strong>Width:</strong> 420px (up from 280px) - 50% wider to use available horizontal space</li>
+            <li><strong>Dark mode:</strong> Option B - white border at <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">rgba(255,255,255,0.15)</code> provides subtle but visible edge</li>
+            <li><strong>Light mode:</strong> Option A - shadow alone is sufficient, or Option B with <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">rgba(0,0,0,0.1)</code></li>
+            <li><strong>Skip button:</strong> Rounded square (<code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">border-radius: 4px</code>) distinguishes from project dots</li>
+            <li><strong>Calendar link:</strong> Calendar name + external icon (↗) replaces "Open in Google Calendar"</li>
+            <li><strong>Max width:</strong> Use <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">max-w-md</code> (448px) in Tailwind, or clamp to viewport</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- IMPLEMENTATION NOTES -->
+    <div class="section">
+      <div class="section-header">
+        <h2>Implementation Notes</h2>
+        <span class="section-label">Dev</span>
+      </div>
+      <div class="section-body">
+        <ul style="color: var(--text-secondary); line-height: 2;">
+          <li><strong>Background colors:</strong> Change Tailwind dark mode from <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">slate</code> to <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">zinc</code> or neutral grays</li>
+          <li><strong>Event gap:</strong> Add <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 3px;">gap: 2px</code> to event containers in TimeGrid.svelte</li>
+          <li><strong>Today column:</strong> Use background highlight + bottom border accent instead of gold text color</li>
+          <li><strong>Header consolidation:</strong> Merge two header rows into one flex row</li>
+          <li><strong>Day headers:</strong> Update to "5 Mon" format (date + day on same line)</li>
+          <li><strong>Project summary bar:</strong> Add below header with project hours + unclassified total</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

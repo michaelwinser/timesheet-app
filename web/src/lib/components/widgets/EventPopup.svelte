@@ -69,8 +69,8 @@
 		if (!anchorElement) return { top: 0, left: 0, placement: 'right' as const };
 
 		const rect = anchorElement.getBoundingClientRect();
-		const popupWidth = 320;
-		const popupHeight = 280; // Estimated max height
+		const popupWidth = 420;
+		const popupHeight = 400; // Estimated max height
 		const gap = 8;
 		const viewportWidth = window.innerWidth;
 		const viewportHeight = window.innerHeight;
@@ -110,7 +110,7 @@
 	<!-- Popup container -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed z-50 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 w-80 max-h-[320px] overflow-hidden"
+		class="fixed z-50 bg-white dark:bg-zinc-800 rounded-lg shadow-2xl border border-gray-200 dark:border-white/15 w-[420px] max-h-[400px] overflow-hidden"
 		style="top: {popupPosition.top}px; left: {popupPosition.left}px;"
 		onmouseenter={onmouseenter}
 		onmouseleave={onmouseleave}
@@ -131,25 +131,27 @@
 		</div>
 
 		<!-- Classification actions (second row) -->
-		<div class="px-4 py-2 border-t border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-			<div class="flex flex-wrap gap-2 items-center">
-				{#each activeProjects as project}
-					<button
-						type="button"
-						class="w-6 h-6 rounded-full hover:ring-2 hover:ring-offset-1 dark:ring-offset-gray-800 ring-gray-400 transition-shadow flex items-center justify-center"
-						class:ring-2={event.project_id === project.id}
-						class:ring-offset-1={event.project_id === project.id}
-						style="background-color: {project.color}"
-						title={project.name}
-						onclick={() => onclassify?.(project.id)}
-					></button>
-				{/each}
+		<div class="px-4 py-2.5 border-t border-b border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50">
+			<div class="flex items-center justify-between">
+				<div class="flex flex-wrap gap-2 items-center">
+					{#each activeProjects as project}
+						<button
+							type="button"
+							class="w-6 h-6 rounded-full hover:ring-2 hover:ring-offset-1 dark:ring-offset-zinc-800 ring-gray-400 transition-shadow flex items-center justify-center"
+							class:ring-2={event.project_id === project.id}
+							class:ring-offset-1={event.project_id === project.id}
+							style="background-color: {project.color}"
+							title={project.name}
+							onclick={() => onclassify?.(project.id)}
+						></button>
+					{/each}
+				</div>
 				<button
 					type="button"
-					class="w-6 h-6 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-600 dark:hover:border-gray-400 dark:hover:text-gray-300 flex items-center justify-center text-xs"
+					class="w-6 h-6 rounded border-2 border-dashed border-gray-300 dark:border-zinc-600 text-gray-400 hover:border-gray-500 hover:text-gray-600 dark:hover:border-zinc-400 dark:hover:text-zinc-300 flex items-center justify-center text-xs"
 					class:bg-gray-200={event.classification_status === 'skipped'}
-					class:dark:bg-gray-700={event.classification_status === 'skipped'}
-					title="Skip - did not attend"
+					class:dark:bg-zinc-700={event.classification_status === 'skipped'}
+					title="Did not attend"
 					onclick={() => onskip?.()}
 				>
 					✕
@@ -158,12 +160,12 @@
 		</div>
 
 		<!-- Content -->
-		<div class="px-4 py-3 space-y-3 max-h-[160px] overflow-y-auto">
+		<div class="px-4 py-3 space-y-3 max-h-[220px] overflow-y-auto">
 			<!-- Description -->
 			{#if event.description}
 				<div>
-					<span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">Description</span>
-					<div class="text-sm text-gray-700 dark:text-gray-300 line-clamp-3 prose prose-sm dark:prose-invert max-w-none">
+					<span class="text-xs text-gray-500 dark:text-zinc-400 uppercase tracking-wide block mb-1">Description</span>
+					<div class="text-sm text-gray-700 dark:text-zinc-300 line-clamp-4 prose prose-sm dark:prose-invert max-w-none">
 						{@html sanitizeHtml(event.description)}
 					</div>
 				</div>
@@ -172,37 +174,43 @@
 			<!-- Attendees -->
 			{#if event.attendees && event.attendees.length > 0}
 				<div>
-					<span class="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-1">
+					<span class="text-xs text-gray-500 dark:text-zinc-400 uppercase tracking-wide block mb-1">
 						Attendees ({event.attendees.length})
 					</span>
-					<p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+					<p class="text-sm text-gray-700 dark:text-zinc-300 line-clamp-2">
 						{event.attendees.slice(0, 5).join(', ')}{event.attendees.length > 5 ? `, +${event.attendees.length - 5} more` : ''}
 					</p>
 				</div>
 			{/if}
 
-			<!-- Calendar source and Google Calendar link -->
-			<div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-				{#if event.calendar_name}
-					<div class="flex items-center gap-2">
-						<span
-							class="w-2 h-2 rounded-full"
-							style="background-color: {event.calendar_color || '#9CA3AF'}"
-						></span>
-						{event.calendar_name}
-					</div>
-				{/if}
-				{#if event.calendar_id}
+			<!-- Calendar source with link -->
+			{#if event.calendar_name && event.calendar_id}
+				<div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400">
+					<span
+						class="w-2 h-2 rounded-full flex-shrink-0"
+						style="background-color: {event.calendar_color || '#9CA3AF'}"
+					></span>
 					<a
 						href="https://calendar.google.com/calendar/event?eid={btoa(event.external_id + ' ' + event.calendar_id)}"
 						target="_blank"
 						rel="noopener noreferrer"
-						class="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline"
+						class="hover:text-gray-700 dark:hover:text-zinc-200 flex items-center gap-1"
 					>
-						Open in Google Calendar
+						{event.calendar_name}
+						<svg class="w-3 h-3 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+						</svg>
 					</a>
-				{/if}
-			</div>
+				</div>
+			{:else if event.calendar_name}
+				<div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-zinc-400">
+					<span
+						class="w-2 h-2 rounded-full flex-shrink-0"
+						style="background-color: {event.calendar_color || '#9CA3AF'}"
+					></span>
+					{event.calendar_name}
+				</div>
+			{/if}
 		</div>
 	</div>
 {/if}

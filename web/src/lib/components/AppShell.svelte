@@ -23,9 +23,9 @@
 	}
 </script>
 
-<div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+<div class="min-h-screen bg-gray-50 dark:bg-zinc-900">
 	<!-- Top nav -->
-	<nav class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+	<nav class="bg-white dark:bg-zinc-800 border-b border-gray-200 dark:border-zinc-700">
 		<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 			<div class="flex justify-between h-16">
 				<div class="flex">
@@ -39,7 +39,7 @@
 								class="inline-flex items-center px-3 py-2 text-sm font-medium rounded-md
 									{$page.url.pathname === item.href
 										? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/50'
-										: 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-gray-700'}"
+										: 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-zinc-700'}"
 							>
 								{item.label}
 							</a>
@@ -64,7 +64,7 @@
 	</nav>
 
 	<!-- Mobile nav -->
-	<nav class="sm:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 z-40">
+	<nav class="sm:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-zinc-800 border-t border-gray-200 dark:border-zinc-700 z-40">
 		<div class="flex justify-around py-2">
 			{#each navItems as item}
 				<a
