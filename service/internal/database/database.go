@@ -441,4 +441,132 @@ var migrations = []migration{
 			CREATE INDEX IF NOT EXISTS idx_time_entries_is_stale ON time_entries(is_stale) WHERE is_stale = true;
 		`,
 	},
+	{
+		version: 15,
+		sql: `
+			-- Phase 3: Billing Periods
+			-- Billing periods for rate management over time
+			CREATE TABLE IF NOT EXISTS billing_periods (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+				starts_on DATE NOT NULL,
+				ends_on DATE,
+				hourly_rate DECIMAL(10,2) NOT NULL,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				-- Constraint: periods for same project cannot overlap
+				CONSTRAINT billing_period_dates_valid CHECK (ends_on IS NULL OR ends_on >= starts_on)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_billing_periods_user_id ON billing_periods(user_id);
+			CREATE INDEX IF NOT EXISTS idx_billing_periods_project_id ON billing_periods(project_id);
+			CREATE INDEX IF NOT EXISTS idx_billing_periods_dates ON billing_periods(project_id, starts_on, ends_on);
+
+			-- Function to check for overlapping periods
+			CREATE OR REPLACE FUNCTION check_billing_period_overlap()
+			RETURNS TRIGGER AS $$
+			BEGIN
+				IF EXISTS (
+					SELECT 1 FROM billing_periods
+					WHERE project_id = NEW.project_id
+					AND id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid)
+					AND (
+						-- New period overlaps existing period
+						(NEW.starts_on, COALESCE(NEW.ends_on, '9999-12-31'::date)) OVERLAPS
+						(starts_on, COALESCE(ends_on, '9999-12-31'::date))
+					)
+				) THEN
+					RAISE EXCEPTION 'Billing periods for project % cannot overlap', NEW.project_id;
+				END IF;
+				RETURN NEW;
+			END;
+			$$ LANGUAGE plpgsql;
+
+			DROP TRIGGER IF EXISTS billing_period_overlap_check ON billing_periods;
+			CREATE TRIGGER billing_period_overlap_check
+			BEFORE INSERT OR UPDATE ON billing_periods
+			FOR EACH ROW EXECUTE FUNCTION check_billing_period_overlap();
+		`,
+	},
+	{
+		version: 16,
+		sql: `
+			-- Phase 3: Invoices
+			-- Invoice status enum
+			DO $$ BEGIN
+				CREATE TYPE invoice_status AS ENUM ('draft', 'sent', 'paid');
+			EXCEPTION
+				WHEN duplicate_object THEN null;
+			END $$;
+
+			-- Invoices table
+			CREATE TABLE IF NOT EXISTS invoices (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
+				billing_period_id UUID REFERENCES billing_periods(id) ON DELETE SET NULL,
+				invoice_number TEXT NOT NULL,
+				period_start DATE NOT NULL,
+				period_end DATE NOT NULL,
+				invoice_date DATE NOT NULL,
+				status invoice_status NOT NULL DEFAULT 'draft',
+				total_hours DECIMAL(10,2) NOT NULL DEFAULT 0,
+				total_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+				spreadsheet_id TEXT,
+				spreadsheet_url TEXT,
+				worksheet_id INTEGER,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(user_id, invoice_number)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
+			CREATE INDEX IF NOT EXISTS idx_invoices_project_id ON invoices(project_id);
+			CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+			CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number);
+
+			-- Invoice line items table
+			CREATE TABLE IF NOT EXISTS invoice_line_items (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+				time_entry_id UUID NOT NULL REFERENCES time_entries(id) ON DELETE RESTRICT,
+				date DATE NOT NULL,
+				description TEXT,
+				hours DECIMAL(10,2) NOT NULL,
+				hourly_rate DECIMAL(10,2) NOT NULL,
+				amount DECIMAL(10,2) NOT NULL,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(invoice_id, time_entry_id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_invoice_line_items_invoice_id ON invoice_line_items(invoice_id);
+			CREATE INDEX IF NOT EXISTS idx_invoice_line_items_time_entry_id ON invoice_line_items(time_entry_id);
+
+			-- Add index to time_entries.invoice_id for faster lookups
+			CREATE INDEX IF NOT EXISTS idx_time_entries_invoice_id ON time_entries(invoice_id) WHERE invoice_id IS NOT NULL;
+		`,
+	},
+	{
+		version: 17,
+		sql: `
+			-- Phase 3: Project spreadsheet tracking
+			-- Add spreadsheet tracking columns to projects for "one spreadsheet per project" model
+			ALTER TABLE projects
+			ADD COLUMN IF NOT EXISTS sheets_spreadsheet_id TEXT,
+			ADD COLUMN IF NOT EXISTS sheets_spreadsheet_url TEXT;
+		`,
+	},
+	{
+		version: 18,
+		sql: `
+			-- Fix invoices table: add missing spreadsheet_url column and fix worksheet_id type
+			ALTER TABLE invoices
+			ADD COLUMN IF NOT EXISTS spreadsheet_url TEXT;
+
+			-- Change worksheet_id from TEXT to INTEGER
+			ALTER TABLE invoices
+			ALTER COLUMN worksheet_id TYPE INTEGER USING (NULLIF(worksheet_id, '')::INTEGER);
+		`,
+	},
 }
