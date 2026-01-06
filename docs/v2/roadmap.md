@@ -37,6 +37,7 @@ The **MCP Server** enables AI-assisted workflows, avoiding complex UI for bulk o
 
 | Component | Status | Notes |
 |-----------|--------|-------|
+| **Classification System** | Done | Rules engine, query syntax, bulk classify |
 | **MCP Server** | Done | Full tool suite for AI-assisted workflows |
 | **Time Entry Enhancements** | Done | Analyzer, protection model, calculation details |
 | **Billing & Invoicing** | Done | Billing periods, invoice generation, CSV/Sheets export |
@@ -45,18 +46,19 @@ The **MCP Server** enables AI-assisted workflows, avoiding complex UI for bulk o
 
 | Feature | Priority | Complexity | Reference |
 |---------|----------|------------|-----------|
-| Scoring Classification | High | Medium | [ADR-003](decisions/003-scoring-classification.md) |
-| Review Indicators | Medium | Low | Phase 1.4 in roadmap |
-| Project Fingerprints | Medium | Low | Phase 1.5 in roadmap |
-| Search/Classification UI | Medium | Medium | Phase 1.6 in roadmap |
+| Create Rule from Event | Medium | Low | Phase 5 |
+| Project Statistics | Low | Low | Phase 5 |
+| Sidebar Project Summary | Low | Medium | Phase 5 |
 
 ---
 
 ## Phases
 
-### Phase 1: Classification System (Current Priority)
+### Phase 1: Classification System (Complete)
 
-A hybrid classification system combining rules, LLM suggestions, and manual input.
+**Status**: Done.
+
+A hybrid classification system combining rules and manual input.
 
 **Goal**: Reduce manual classification to edge cases only, while preserving user control.
 
@@ -320,6 +322,7 @@ Not currently planned, but architecture supports:
 
 | Date | Change |
 |------|--------|
+| 2026-01-06 | Phase 1 (Classification System) complete |
 | 2026-01-06 | Phase 3 (Billing & Invoicing) complete |
 | 2026-01-05 | Phase 3 HTML mocks created; ready for implementation |
 | 2026-01-05 | Phase 2 implementation complete |
