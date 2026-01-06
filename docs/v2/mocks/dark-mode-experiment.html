@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dark Mode Experiment - Project-Colored Events</title>
+  <style>
+    :root {
+      /* Dark background - much darker than current */
+      --bg-page: #0d0d0d;
+      --bg-primary: #1a1a1a;
+      --bg-secondary: #242424;
+      --bg-tertiary: #2d2d2d;
+
+      /* Text */
+      --text-primary: #f0f0f0;
+      --text-secondary: #a0a0a0;
+      --text-muted: #666666;
+
+      /* Borders */
+      --border-color: #333333;
+      --border-light: #404040;
+
+      /* Accent */
+      --accent-blue: #4a90d9;
+      --accent-yellow: #f0c000;
+
+      /* Project colors - these would come from user data */
+      --project-alpha-omega: #00a8a8;
+      --project-eclipse: #d4a000;
+      --project-internal: #6b7280;
+      --project-consulting: #8b5cf6;
+      --project-training: #10b981;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-primary);
+      background: var(--bg-page);
+      padding: 20px;
+    }
+
+    .mock-container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      margin-bottom: 40px;
+    }
+
+    /* Experiment Section */
+    .experiment {
+      background: var(--bg-primary);
+      border-radius: 12px;
+      margin-bottom: 40px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+
+    .experiment-header {
+      background: var(--bg-secondary);
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .experiment-header h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .experiment-label {
+      display: inline-block;
+      padding: 4px 10px;
+      background: #7c3aed33;
+      color: #a78bfa;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .experiment-body {
+      padding: 24px;
+    }
+
+    .experiment-note {
+      background: var(--bg-tertiary);
+      border-left: 3px solid var(--accent-blue);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 20px;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .experiment-note strong {
+      color: var(--text-primary);
+    }
+
+    /* App Shell */
+    .app-shell {
+      background: var(--bg-page);
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+
+    /* Navigation */
+    .nav-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .nav-brand {
+      font-weight: 600;
+      font-size: 16px;
+      color: var(--text-primary);
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 24px;
+    }
+
+    .nav-link {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+    }
+
+    .nav-link.active {
+      color: var(--text-primary);
+    }
+
+    /* Week Header */
+    .week-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .week-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+      transition: all 0.15s;
+    }
+
+    .btn:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .btn-sm {
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    .week-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .week-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .filter-input {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text-primary);
+      font-size: 13px;
+      width: 200px;
+    }
+
+    .filter-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* Calendar Grid */
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 1px;
+      background: var(--border-color);
+    }
+
+    .day-column {
+      background: var(--bg-page);
+      min-height: 500px;
+    }
+
+    .day-header {
+      padding: 12px;
+      text-align: center;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .day-header.today {
+      background: var(--bg-secondary);
+    }
+
+    .day-name {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    .day-number {
+      font-size: 20px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    .day-header.today .day-number {
+      color: var(--accent-yellow);
+    }
+
+    .day-summary {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .day-events {
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    /* Event Cards - Project Colored */
+    .event-card {
+      border-radius: 6px;
+      padding: 10px 12px;
+      position: relative;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .event-card:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px);
+    }
+
+    /* Text color based on background brightness */
+    .event-card.light-bg {
+      color: #1a1a1a;
+    }
+
+    .event-card.dark-bg {
+      color: #ffffff;
+    }
+
+    .event-title {
+      font-weight: 500;
+      font-size: 13px;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .event-time {
+      font-size: 11px;
+      opacity: 0.8;
+    }
+
+    .event-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 11px;
+      opacity: 0.7;
+    }
+
+    /* Status Indicators - Corner badges */
+    .status-badge {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .status-badge.pending {
+      background: rgba(0,0,0,0.4);
+      color: #fff;
+    }
+
+    .status-badge.classified {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+
+    /* Unclassified Events - Gray with dashed border */
+    .event-card.unclassified {
+      background: var(--bg-tertiary);
+      border: 2px dashed var(--border-light);
+      color: var(--text-secondary);
+    }
+
+    .event-card.unclassified .event-title {
+      color: var(--text-primary);
+    }
+
+    /* DNA (Did Not Attend) Events */
+    .event-card.dna {
+      background: var(--bg-secondary);
+      opacity: 0.5;
+      color: var(--text-muted);
+    }
+
+    /* Selected state */
+    .event-card.selected {
+      box-shadow: 0 0 0 2px var(--accent-yellow), 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    /* Project Dropdown on card */
+    .event-project-select {
+      background: rgba(0,0,0,0.2);
+      border: none;
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: inherit;
+      cursor: pointer;
+      margin-top: 8px;
+      width: 100%;
+    }
+
+    /* Hours display */
+    .event-hours {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: rgba(0,0,0,0.2);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* DNA checkbox */
+    .dna-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      opacity: 0.8;
+      margin-top: 6px;
+    }
+
+    .dna-toggle input {
+      margin: 0;
+    }
+
+    /* Comparison section */
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 20px;
+    }
+
+    .comparison-panel {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .comparison-panel h3 {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .comparison-events {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Project Legend */
+    .project-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding: 12px 20px;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+
+    /* Alternative: Status via corner icon */
+    .corner-icon {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      background: var(--bg-page);
+      border: 2px solid var(--bg-page);
+    }
+
+    .corner-icon.pending {
+      background: #f59e0b;
+      color: #000;
+    }
+
+    .corner-icon.rule {
+      background: #3b82f6;
+      color: #fff;
+    }
+
+    .corner-icon.manual {
+      background: #10b981;
+      color: #fff;
+    }
+
+    /* Empty state */
+    .no-events {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    /* ========================================
+       TIME GRID VIEW STYLES
+       ======================================== */
+
+    .time-grid {
+      display: grid;
+      grid-template-columns: 60px repeat(5, 1fr);
+      background: var(--bg-page);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .time-grid-header {
+      display: contents;
+    }
+
+    .time-grid-header > div {
+      padding: 12px 8px;
+      text-align: center;
+      background: var(--bg-primary);
+      border-bottom: 1px solid var(--border-color);
+      font-size: 12px;
+    }
+
+    .time-grid-header .day-label {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .time-grid-header .day-date {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .time-gutter {
+      background: var(--bg-primary);
+      border-right: 1px solid var(--border-color);
+    }
+
+    .time-label {
+      height: 60px;
+      padding: 4px 8px;
+      font-size: 10px;
+      color: var(--text-muted);
+      text-align: right;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .time-grid-body {
+      display: contents;
+    }
+
+    .time-column {
+      position: relative;
+      border-right: 1px solid var(--border-color);
+      min-height: 480px;
+    }
+
+    .time-column:last-child {
+      border-right: none;
+    }
+
+    .hour-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: var(--border-color);
+    }
+
+    .half-hour-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: var(--border-color);
+      opacity: 0.3;
+    }
+
+    /* Time grid events */
+    .grid-event {
+      position: absolute;
+      left: 2px;
+      right: 2px;
+      border-radius: 4px;
+      padding: 4px 6px;
+      font-size: 11px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .grid-event:hover {
+      filter: brightness(1.1);
+      z-index: 10;
+    }
+
+    .grid-event-title {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .grid-event-time {
+      font-size: 10px;
+      opacity: 0.8;
+      white-space: nowrap;
+    }
+
+    /* Corner indicator - monochrome */
+    .indicator {
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      font-size: 10px;
+      opacity: 0.7;
+    }
+
+    .indicator.pin {
+      opacity: 0.5;
+    }
+
+    /* Pattern backgrounds for status - Original */
+    .grid-event.needs-review {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 4px,
+        rgba(0,0,0,0.15) 4px,
+        rgba(0,0,0,0.15) 8px
+      );
+    }
+
+    /* ========================================
+       STATUS STYLES - Google Calendar inspired
+       ======================================== */
+
+    /* DARK MODE STATUS STYLES */
+    /* Pending (unclassified): White on black with white border */
+    .status-pending {
+      background: var(--bg-page) !important;
+      color: #ffffff !important;
+      border: 2px solid rgba(255,255,255,0.5) !important;
+    }
+
+    .status-pending .grid-event-title,
+    .status-pending .grid-event-time,
+    .status-pending .mini-event-title {
+      color: #ffffff !important;
+    }
+
+    /* Project dots for classification */
+    .project-dots {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+    }
+
+    .project-dot {
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all 0.15s;
+      border: 2px solid transparent;
+    }
+
+    .project-dot:hover {
+      transform: scale(1.2);
+    }
+
+    /* Best guess highlight - solid ring around the dot */
+    .project-dot.best-guess {
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+    }
+
+    /* Light mode best guess */
+    .light-mode .project-dot.best-guess {
+      border: 2px solid #1a1a1a;
+      box-shadow: 0 0 0 2px rgba(0,0,0,0.2);
+    }
+
+    /* Needs verification: Outlined style - project color border/text on black */
+    .status-needs-verify {
+      background: var(--bg-page) !important;
+      border: 2px solid currentColor !important;
+    }
+
+    .status-needs-verify.project-teal {
+      color: var(--project-alpha-omega) !important;
+      border-color: var(--project-alpha-omega) !important;
+    }
+
+    .status-needs-verify.project-gold {
+      color: var(--project-eclipse) !important;
+      border-color: var(--project-eclipse) !important;
+    }
+
+    .status-needs-verify.project-purple {
+      color: var(--project-consulting) !important;
+      border-color: var(--project-consulting) !important;
+    }
+
+    .status-needs-verify.project-gray {
+      color: var(--project-internal) !important;
+      border-color: var(--project-internal) !important;
+    }
+
+    /* Confirmed/classified: Solid project color (default - no extra class needed) */
+
+    /* ========================================
+       LIGHT MODE STATUS STYLES
+       ======================================== */
+    .light-mode {
+      --bg-page-light: #ffffff;
+      --bg-primary-light: #f8f9fa;
+      --bg-secondary-light: #f0f1f2;
+      --text-primary-light: #1a1a1a;
+      --text-secondary-light: #666666;
+      --border-light-mode: #e0e0e0;
+    }
+
+    .light-mode {
+      background: var(--bg-page-light);
+    }
+
+    .light-mode .mini-grid {
+      background: var(--bg-page-light);
+      border: 1px solid var(--border-light-mode);
+    }
+
+    /* Light mode: Pending = Black on white with dark border */
+    .light-mode .status-pending-light {
+      background: var(--bg-page-light) !important;
+      color: #1a1a1a !important;
+      border: 2px solid rgba(0,0,0,0.4) !important;
+    }
+
+    .light-mode .status-pending-light .mini-event-title {
+      color: #1a1a1a !important;
+    }
+
+    /* Light mode: Needs verification = Outlined */
+    .light-mode .status-needs-verify-light {
+      background: var(--bg-page-light) !important;
+      border: 2px solid currentColor !important;
+    }
+
+    .light-mode .status-needs-verify-light.project-teal {
+      color: #008080 !important;
+      border-color: #008080 !important;
+    }
+
+    .light-mode .status-needs-verify-light.project-gold {
+      color: #b8860b !important;
+      border-color: #b8860b !important;
+    }
+
+    .light-mode .status-needs-verify-light.project-purple {
+      color: #7c3aed !important;
+      border-color: #7c3aed !important;
+    }
+
+    .light-mode .status-needs-verify-light.project-gray {
+      color: #4b5563 !important;
+      border-color: #4b5563 !important;
+    }
+
+    /* Light mode: Confirmed = Solid (slightly adjusted colors for light bg) */
+    .light-mode .confirmed-teal {
+      background: #00a8a8 !important;
+      color: #ffffff !important;
+    }
+
+    .light-mode .confirmed-gold {
+      background: #d4a000 !important;
+      color: #1a1a1a !important;
+    }
+
+    .light-mode .confirmed-purple {
+      background: #8b5cf6 !important;
+      color: #ffffff !important;
+    }
+
+    .light-mode .confirmed-gray {
+      background: #6b7280 !important;
+      color: #ffffff !important;
+    }
+
+    .grid-event.auto-classified {
+      /* Slightly lighter/more saturated */
+      filter: brightness(1.05);
+    }
+
+    /* Border variations */
+    .grid-event.border-thin {
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    .grid-event.border-thick {
+      border: 2px solid rgba(255,255,255,0.3);
+    }
+
+    .grid-event.border-dark {
+      border: 1px solid rgba(0,0,0,0.3);
+    }
+
+    .grid-event.border-dark-thick {
+      border: 2px solid rgba(0,0,0,0.4);
+    }
+
+    /* Unclassified in grid */
+    .grid-event.unclassified {
+      background: var(--bg-tertiary);
+      border: 2px dashed var(--border-light);
+      color: var(--text-secondary);
+    }
+
+    .grid-event.unclassified .grid-event-title {
+      color: var(--text-primary);
+    }
+
+    /* Pattern options */
+    .pattern-diagonal {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 3px,
+        rgba(255,255,255,0.1) 3px,
+        rgba(255,255,255,0.1) 6px
+      ) !important;
+    }
+
+    .pattern-dots {
+      background-image: radial-gradient(
+        rgba(255,255,255,0.15) 1px,
+        transparent 1px
+      ) !important;
+      background-size: 6px 6px !important;
+    }
+
+    .pattern-horizontal {
+      background-image: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(0,0,0,0.1) 3px,
+        rgba(0,0,0,0.1) 6px
+      ) !important;
+    }
+
+    /* Lighter tone variation */
+    .tone-light {
+      opacity: 0.7;
+    }
+
+    .tone-lighter {
+      opacity: 0.5;
+    }
+
+    /* Grid comparison panels */
+    .grid-comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-top: 20px;
+    }
+
+    .grid-panel {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .grid-panel h3 {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .mini-grid {
+      background: var(--bg-page);
+      border-radius: 6px;
+      padding: 8px;
+      min-height: 200px;
+      position: relative;
+    }
+
+    .mini-grid-hours {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 30px;
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
+    .mini-grid-hours span {
+      position: absolute;
+      right: 4px;
+    }
+
+    .mini-grid-events {
+      margin-left: 34px;
+      position: relative;
+      height: 180px;
+    }
+
+    .mini-event {
+      position: absolute;
+      left: 0;
+      right: 0;
+      border-radius: 3px;
+      padding: 3px 5px;
+      font-size: 10px;
+      overflow: hidden;
+    }
+
+    .mini-event-title {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  </style>
+</head>
+<body>
+  <div class="mock-container">
+
+    <h1>Dark Mode Experiment</h1>
+    <p class="subtitle">Project-colored events with status indicators</p>
+
+    <!-- EXPERIMENT 1: Full Calendar with Project Colors -->
+    <div class="experiment">
+      <div class="experiment-header">
+        <h2>Experiment 1: Project Colors as Event Background</h2>
+        <span class="experiment-label">Week View</span>
+      </div>
+      <div class="experiment-body">
+
+        <div class="app-shell">
+          <div class="nav-bar">
+            <span class="nav-brand">Timesheet</span>
+            <div class="nav-links">
+              <a href="#" class="nav-link active">Calendar</a>
+              <a href="#" class="nav-link">Projects</a>
+              <a href="#" class="nav-link">Rules</a>
+              <a href="#" class="nav-link">Invoices</a>
+            </div>
+          </div>
+
+          <div class="project-legend">
+            <div class="legend-item">
+              <span class="legend-dot" style="background: var(--project-alpha-omega);"></span>
+              <span>Alpha-Omega</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: var(--project-eclipse);"></span>
+              <span>Eclipse Security</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: var(--project-internal);"></span>
+              <span>Internal</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: var(--project-consulting);"></span>
+              <span>Consulting</span>
+            </div>
+            <div class="legend-item" style="margin-left: 24px; border-left: 1px solid var(--border-color); padding-left: 24px;">
+              <span class="legend-dot" style="background: var(--bg-page); border: 2px solid rgba(255,255,255,0.5);"></span>
+              <span>Pending</span>
+            </div>
+            <div class="legend-item">
+              <span class="legend-dot" style="background: var(--bg-page); border: 2px solid var(--project-alpha-omega);"></span>
+              <span>Needs Verification</span>
+            </div>
+          </div>
+
+          <div class="week-header">
+            <div class="week-nav">
+              <button class="btn btn-sm">← Prev</button>
+              <button class="btn btn-sm">Today</button>
+              <button class="btn btn-sm">Next →</button>
+              <span class="week-title">Week of January 05 - January 11, 2026</span>
+            </div>
+            <div class="week-controls">
+              <input type="text" class="filter-input" placeholder="Filter events...">
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary);">
+                <input type="checkbox"> Show DNA
+              </label>
+            </div>
+          </div>
+
+          <div class="calendar-grid">
+            <!-- Monday -->
+            <div class="day-column">
+              <div class="day-header">
+                <div class="day-name">Mon</div>
+                <div class="day-number">5</div>
+                <div class="day-summary">4.5h · 2 projects</div>
+              </div>
+              <div class="day-events">
+                <!-- Confirmed: Solid project color -->
+                <div class="event-card selected" style="background: var(--project-eclipse);">
+                  <div class="event-title">SLSA "Specification" Meeting</div>
+                  <div class="event-time">10:00 AM - 11:00 AM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">1.00 hrs</span>
+                  </div>
+                </div>
+                <!-- Needs Verification: Outlined style -->
+                <div class="event-card" style="background: var(--bg-page); color: var(--project-alpha-omega); border: 2px solid var(--project-alpha-omega);">
+                  <div class="event-title">Security Working Group</div>
+                  <div class="event-time">2:00 PM - 3:00 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">1.00 hrs</span>
+                    <span style="font-size: 10px; opacity: 0.8;">verify</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tuesday -->
+            <div class="day-column">
+              <div class="day-header today">
+                <div class="day-name">Tue</div>
+                <div class="day-number">6</div>
+                <div class="day-summary">6.0h · 1 project</div>
+              </div>
+              <div class="day-events">
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">Mila / Michael</div>
+                  <div class="event-time">9:00 AM - 9:30 AM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">0.50 hrs</span>
+                  </div>
+                </div>
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">Michael / Jarek</div>
+                  <div class="event-time">10:00 AM - 10:30 AM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">0.50 hrs</span>
+                  </div>
+                </div>
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">OSTIF / Alpha-Omega</div>
+                  <div class="event-time">11:00 AM - 11:30 AM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">0.50 hrs</span>
+                  </div>
+                </div>
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">Alpha-Omega Program Mgmt</div>
+                  <div class="event-time">1:00 PM - 2:00 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">1.00 hrs</span>
+                  </div>
+                </div>
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">AO Operations Meeting</div>
+                  <div class="event-time">2:00 PM - 3:00 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">1.00 hrs</span>
+                  </div>
+                </div>
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">CRob - MichaelW - Monthly</div>
+                  <div class="event-time">3:00 PM - 3:30 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">0.50 hrs</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Wednesday -->
+            <div class="day-column">
+              <div class="day-header">
+                <div class="day-name">Wed</div>
+                <div class="day-number">7</div>
+                <div class="day-summary">4.0h · 1 project</div>
+              </div>
+              <div class="day-events">
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">VEX Generation Group</div>
+                  <div class="event-time">11:00 AM - 12:00 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">1.00 hrs</span>
+                  </div>
+                </div>
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">Alpha Omega Public Meeting</div>
+                  <div class="event-time">1:00 PM - 2:00 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">1.00 hrs</span>
+                  </div>
+                </div>
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">Alpha Omega Package Mgr</div>
+                  <div class="event-time">2:00 PM - 3:00 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">1.00 hrs</span>
+                  </div>
+                </div>
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">Capslock working group</div>
+                  <div class="event-time">4:00 PM - 4:30 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">0.50 hrs</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Thursday -->
+            <div class="day-column">
+              <div class="day-header">
+                <div class="day-name">Thu</div>
+                <div class="day-number">8</div>
+                <div class="day-summary">1.0h · 1 project</div>
+              </div>
+              <div class="day-events">
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">AO Office Hours</div>
+                  <div class="event-time">1:00 PM - 2:00 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">1.00 hrs</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Friday -->
+            <div class="day-column">
+              <div class="day-header">
+                <div class="day-name">Fri</div>
+                <div class="day-number">9</div>
+                <div class="day-summary">2.0h · 1 project</div>
+              </div>
+              <div class="day-events">
+                <div class="event-card" style="background: var(--project-alpha-omega);">
+                  <div class="event-title">Michael / Michael (weekly)</div>
+                  <div class="event-time">12:00 PM - 1:00 PM</div>
+                  <div class="event-meta">
+                    <span class="event-hours">1.00 hrs</span>
+                  </div>
+                </div>
+                <div class="event-card" style="background: var(--bg-page); color: #fff; border: 2px solid rgba(255,255,255,0.5);">
+                  <div class="event-title">Team Retrospective</div>
+                  <div class="event-time">3:00 PM - 4:00 PM</div>
+                  <div class="project-dots">
+                    <div class="project-dot best-guess" style="background: var(--project-alpha-omega);" title="Alpha-Omega (best guess)"></div>
+                    <div class="project-dot" style="background: var(--project-eclipse);" title="Eclipse Security"></div>
+                    <div class="project-dot" style="background: var(--project-internal);" title="Internal"></div>
+                    <div class="project-dot" style="background: var(--project-consulting);" title="Consulting"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Saturday -->
+            <div class="day-column">
+              <div class="day-header">
+                <div class="day-name">Sat</div>
+                <div class="day-number">10</div>
+                <div class="day-summary">—</div>
+              </div>
+              <div class="day-events">
+                <div class="no-events">No events</div>
+              </div>
+            </div>
+
+            <!-- Sunday -->
+            <div class="day-column">
+              <div class="day-header">
+                <div class="day-name">Sun</div>
+                <div class="day-number">11</div>
+                <div class="day-summary">—</div>
+              </div>
+              <div class="day-events">
+                <div class="no-events">No events</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="experiment-note">
+          <strong>Classification status (Google Calendar style):</strong>
+          <ul style="margin-top: 8px; margin-left: 20px;">
+            <li><strong>Confirmed:</strong> Solid project color background (most events)</li>
+            <li><strong>Needs verification:</strong> Outlined style — project color border + text on black (see "Security Working Group" on Monday)</li>
+            <li><strong>Pending:</strong> White border on black — shows project dots with best guess highlighted (see "Team Retrospective" on Friday)</li>
+            <li><strong>Reclassification:</strong> Hover popup on confirmed events (not shown in mock)</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EXPERIMENT 2: Time Grid View -->
+    <div class="experiment">
+      <div class="experiment-header">
+        <h2>Experiment 2: Time Grid View</h2>
+        <span class="experiment-label">Grid Layout</span>
+      </div>
+      <div class="experiment-body">
+
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          Time grid view showing events positioned by time with Google Calendar-style status indicators.
+        </p>
+
+        <div class="app-shell">
+          <div class="week-header" style="padding: 12px 16px;">
+            <div class="week-nav">
+              <button class="btn btn-sm">←</button>
+              <button class="btn btn-sm">Today</button>
+              <button class="btn btn-sm">→</button>
+              <span class="week-title" style="font-size: 16px;">January 6 - 10, 2026</span>
+            </div>
+          </div>
+
+          <div class="time-grid">
+            <!-- Header row -->
+            <div class="time-grid-header">
+              <div></div>
+              <div><span class="day-label">Mon</span><br><span class="day-date">Jan 6</span></div>
+              <div style="background: var(--bg-secondary);"><span class="day-label" style="color: var(--accent-yellow);">Tue</span><br><span class="day-date">Jan 7</span></div>
+              <div><span class="day-label">Wed</span><br><span class="day-date">Jan 8</span></div>
+              <div><span class="day-label">Thu</span><br><span class="day-date">Jan 9</span></div>
+              <div><span class="day-label">Fri</span><br><span class="day-date">Jan 10</span></div>
+            </div>
+
+            <!-- Time gutter -->
+            <div class="time-gutter">
+              <div class="time-label">9 AM</div>
+              <div class="time-label">10 AM</div>
+              <div class="time-label">11 AM</div>
+              <div class="time-label">12 PM</div>
+              <div class="time-label">1 PM</div>
+              <div class="time-label">2 PM</div>
+              <div class="time-label">3 PM</div>
+              <div class="time-label">4 PM</div>
+            </div>
+
+            <!-- Monday -->
+            <div class="time-column">
+              <!-- Hour lines -->
+              <div class="hour-line" style="top: 60px;"></div>
+              <div class="hour-line" style="top: 120px;"></div>
+              <div class="hour-line" style="top: 180px;"></div>
+              <div class="hour-line" style="top: 240px;"></div>
+              <div class="hour-line" style="top: 300px;"></div>
+              <div class="hour-line" style="top: 360px;"></div>
+              <div class="hour-line" style="top: 420px;"></div>
+
+              <!-- Events with overlaps -->
+              <div class="grid-event" style="background: var(--project-eclipse); top: 60px; height: 58px; right: 50%;">
+                <span class="indicator pin">📌</span>
+                <div class="grid-event-title">SLSA Spec</div>
+                <div class="grid-event-time">10-11am</div>
+              </div>
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 75px; height: 43px; left: 50%;">
+                <div class="grid-event-title">1:1 Call</div>
+                <div class="grid-event-time">10:15-10:45</div>
+              </div>
+              <!-- Pending: white on black -->
+              <div class="grid-event status-pending" style="top: 180px; height: 58px;">
+                <div class="grid-event-title">Team Standup</div>
+                <div class="grid-event-time">12-1pm · pending</div>
+              </div>
+              <!-- Needs verification: outlined -->
+              <div class="grid-event status-needs-verify project-purple" style="top: 300px; height: 118px; right: 45%;">
+                <div class="grid-event-title">Client Workshop</div>
+                <div class="grid-event-time">2-4pm · verify</div>
+              </div>
+              <div class="grid-event" style="background: var(--project-internal); top: 330px; height: 58px; left: 55%;">
+                <div class="grid-event-title">Internal Sync</div>
+                <div class="grid-event-time">2:30-3:30pm</div>
+              </div>
+            </div>
+
+            <!-- Tuesday -->
+            <div class="time-column" style="background: rgba(255,255,255,0.02);">
+              <div class="hour-line" style="top: 60px;"></div>
+              <div class="hour-line" style="top: 120px;"></div>
+              <div class="hour-line" style="top: 180px;"></div>
+              <div class="hour-line" style="top: 240px;"></div>
+              <div class="hour-line" style="top: 300px;"></div>
+              <div class="hour-line" style="top: 360px;"></div>
+              <div class="hour-line" style="top: 420px;"></div>
+
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 0; height: 28px;">
+                <div class="grid-event-title">Mila / Michael</div>
+              </div>
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 60px; height: 28px;">
+                <div class="grid-event-title">Michael / Jarek</div>
+              </div>
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 120px; height: 28px;">
+                <div class="grid-event-title">OSTIF / Alpha-Omega</div>
+              </div>
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 240px; height: 58px;">
+                <div class="grid-event-title">Program Management</div>
+                <div class="grid-event-time">1-2pm</div>
+              </div>
+              <div class="grid-event status-needs-verify project-teal" style="top: 300px; height: 58px;">
+                <div class="grid-event-title">AO Operations</div>
+                <div class="grid-event-time">2-3pm · verify</div>
+              </div>
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 360px; height: 28px;">
+                <div class="grid-event-title">CRob Monthly</div>
+              </div>
+            </div>
+
+            <!-- Wednesday -->
+            <div class="time-column">
+              <div class="hour-line" style="top: 60px;"></div>
+              <div class="hour-line" style="top: 120px;"></div>
+              <div class="hour-line" style="top: 180px;"></div>
+              <div class="hour-line" style="top: 240px;"></div>
+              <div class="hour-line" style="top: 300px;"></div>
+              <div class="hour-line" style="top: 360px;"></div>
+              <div class="hour-line" style="top: 420px;"></div>
+
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 120px; height: 58px;">
+                <div class="grid-event-title">VEX Generation</div>
+                <div class="grid-event-time">11am-12pm</div>
+              </div>
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 240px; height: 58px;">
+                <div class="grid-event-title">Alpha Omega Public</div>
+                <div class="grid-event-time">1-2pm</div>
+              </div>
+              <div class="grid-event status-needs-verify project-teal" style="top: 300px; height: 58px;">
+                <div class="grid-event-title">Package Manager</div>
+                <div class="grid-event-time">2-3pm · verify</div>
+              </div>
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 420px; height: 28px;">
+                <div class="grid-event-title">Capslock WG</div>
+              </div>
+            </div>
+
+            <!-- Thursday -->
+            <div class="time-column">
+              <div class="hour-line" style="top: 60px;"></div>
+              <div class="hour-line" style="top: 120px;"></div>
+              <div class="hour-line" style="top: 180px;"></div>
+              <div class="hour-line" style="top: 240px;"></div>
+              <div class="hour-line" style="top: 300px;"></div>
+              <div class="hour-line" style="top: 360px;"></div>
+              <div class="hour-line" style="top: 420px;"></div>
+
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 240px; height: 58px;">
+                <div class="grid-event-title">AO Office Hours</div>
+                <div class="grid-event-time">1-2pm</div>
+              </div>
+            </div>
+
+            <!-- Friday -->
+            <div class="time-column">
+              <div class="hour-line" style="top: 60px;"></div>
+              <div class="hour-line" style="top: 120px;"></div>
+              <div class="hour-line" style="top: 180px;"></div>
+              <div class="hour-line" style="top: 240px;"></div>
+              <div class="hour-line" style="top: 300px;"></div>
+              <div class="hour-line" style="top: 360px;"></div>
+              <div class="hour-line" style="top: 420px;"></div>
+
+              <div class="grid-event" style="background: var(--project-alpha-omega); top: 180px; height: 58px;">
+                <div class="grid-event-title">Michael Weekly</div>
+                <div class="grid-event-time">12-1pm</div>
+              </div>
+              <div class="grid-event status-pending" style="top: 360px; height: 58px;">
+                <div class="grid-event-title">Team Retro</div>
+                <div class="grid-event-time">3-4pm · pending</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="experiment-note">
+          <strong>Status indicators in grid view (Google Calendar style):</strong>
+          <ul style="margin-top: 8px; margin-left: 20px;">
+            <li><strong>Solid color:</strong> Confirmed/classified (see "1:1 Call", "Program Management")</li>
+            <li><strong>Outlined (border + text):</strong> Needs verification (see "AO Operations", "Client Workshop")</li>
+            <li><strong>White on black:</strong> Pending/unclassified (see "Team Standup", "Team Retro")</li>
+            <li><strong>📌 Pin icon:</strong> Manually pinned (see "SLSA Spec")</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EXPERIMENT 3: Status Styles Reference -->
+    <div class="experiment">
+      <div class="experiment-header">
+        <h2>Experiment 3: Status Styles Reference</h2>
+        <span class="experiment-label">Dark Mode</span>
+      </div>
+      <div class="experiment-body">
+
+        <h3 style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">Google Calendar Style — Outlined Events for Unconfirmed Status</h3>
+
+        <div class="grid-comparison">
+          <div class="grid-panel" style="grid-column: span 2;">
+            <h3>Status Progression: Pending → Needs Verification → Confirmed</h3>
+            <div class="mini-grid" style="min-height: 280px;">
+              <div class="mini-grid-events" style="height: 260px;">
+                <!-- Pending (unclassified) with project dots -->
+                <div class="mini-event status-pending" style="top: 0; height: 55px;">
+                  <div class="mini-event-title">Team Sync</div>
+                  <div class="project-dots" style="margin-top: 4px;">
+                    <div class="project-dot best-guess" style="background: var(--project-alpha-omega); width: 14px; height: 14px;" title="Alpha-Omega (best guess)"></div>
+                    <div class="project-dot" style="background: var(--project-eclipse); width: 14px; height: 14px;" title="Eclipse"></div>
+                    <div class="project-dot" style="background: var(--project-internal); width: 14px; height: 14px;" title="Internal"></div>
+                  </div>
+                </div>
+
+                <!-- Needs verification - teal -->
+                <div class="mini-event status-needs-verify project-teal" style="top: 65px; height: 40px;">
+                  <div class="mini-event-title">Alpha-Omega Weekly</div>
+                  <div style="font-size: 9px; opacity: 0.8;">Needs verification</div>
+                </div>
+
+                <!-- Needs verification - gold -->
+                <div class="mini-event status-needs-verify project-gold" style="top: 115px; height: 40px;">
+                  <div class="mini-event-title">Security Review</div>
+                  <div style="font-size: 9px; opacity: 0.8;">Needs verification</div>
+                </div>
+
+                <!-- Confirmed - teal -->
+                <div class="mini-event" style="background: var(--project-alpha-omega); top: 165px; height: 40px;">
+                  <div class="mini-event-title">VEX Generation</div>
+                  <div style="font-size: 9px; opacity: 0.7;">Confirmed</div>
+                </div>
+
+                <!-- Confirmed - gold -->
+                <div class="mini-event" style="background: var(--project-eclipse); top: 215px; height: 40px;">
+                  <div class="mini-event-title">SLSA Spec Meeting</div>
+                  <div style="font-size: 9px; opacity: 0.7;">Confirmed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="color: var(--text-secondary); font-size: 14px; margin: 24px 0 16px;">Side-by-Side: Different Project Colors</h3>
+
+        <div class="grid-comparison">
+          <div class="grid-panel">
+            <h3>Teal (Alpha-Omega)</h3>
+            <div class="mini-grid">
+              <div class="mini-grid-events">
+                <div class="mini-event status-pending" style="top: 0; height: 50px;">
+                  <div class="mini-event-title">Pending</div>
+                  <div class="project-dots" style="margin-top: 4px;">
+                    <div class="project-dot best-guess" style="background: var(--project-alpha-omega); width: 12px; height: 12px;"></div>
+                    <div class="project-dot" style="background: var(--project-eclipse); width: 12px; height: 12px;"></div>
+                    <div class="project-dot" style="background: var(--project-internal); width: 12px; height: 12px;"></div>
+                  </div>
+                </div>
+                <div class="mini-event status-needs-verify project-teal" style="top: 60px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event" style="background: var(--project-alpha-omega); top: 110px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-panel">
+            <h3>Gold (Eclipse Security)</h3>
+            <div class="mini-grid">
+              <div class="mini-grid-events">
+                <div class="mini-event status-pending" style="top: 0; height: 50px;">
+                  <div class="mini-event-title">Pending</div>
+                  <div class="project-dots" style="margin-top: 4px;">
+                    <div class="project-dot" style="background: var(--project-alpha-omega); width: 12px; height: 12px;"></div>
+                    <div class="project-dot best-guess" style="background: var(--project-eclipse); width: 12px; height: 12px;"></div>
+                    <div class="project-dot" style="background: var(--project-internal); width: 12px; height: 12px;"></div>
+                  </div>
+                </div>
+                <div class="mini-event status-needs-verify project-gold" style="top: 60px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event" style="background: var(--project-eclipse); top: 110px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-panel">
+            <h3>Purple (Consulting)</h3>
+            <div class="mini-grid">
+              <div class="mini-grid-events">
+                <div class="mini-event status-pending" style="top: 0; height: 50px;">
+                  <div class="mini-event-title">Pending</div>
+                  <div class="project-dots" style="margin-top: 4px;">
+                    <div class="project-dot" style="background: var(--project-alpha-omega); width: 12px; height: 12px;"></div>
+                    <div class="project-dot" style="background: var(--project-eclipse); width: 12px; height: 12px;"></div>
+                    <div class="project-dot best-guess" style="background: var(--project-consulting); width: 12px; height: 12px;"></div>
+                  </div>
+                </div>
+                <div class="mini-event status-needs-verify project-purple" style="top: 60px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event" style="background: var(--project-consulting); top: 110px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-panel">
+            <h3>Gray (Internal)</h3>
+            <div class="mini-grid">
+              <div class="mini-grid-events">
+                <div class="mini-event status-pending" style="top: 0; height: 50px;">
+                  <div class="mini-event-title">Pending</div>
+                  <div class="project-dots" style="margin-top: 4px;">
+                    <div class="project-dot" style="background: var(--project-alpha-omega); width: 12px; height: 12px;"></div>
+                    <div class="project-dot" style="background: var(--project-eclipse); width: 12px; height: 12px;"></div>
+                    <div class="project-dot best-guess" style="background: var(--project-internal); width: 12px; height: 12px;"></div>
+                  </div>
+                </div>
+                <div class="mini-event status-needs-verify project-gray" style="top: 60px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event" style="background: var(--project-internal); top: 110px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="experiment-note">
+          <strong>Status model (Google Calendar inspired):</strong>
+          <ul style="margin-top: 8px; margin-left: 20px;">
+            <li><strong>Pending:</strong> White border on black — shows project dots with best guess highlighted (white ring)</li>
+            <li><strong>Needs verification:</strong> Outlined style — project color border + text on black background</li>
+            <li><strong>Confirmed:</strong> Solid project color background — fully classified</li>
+            <li><strong>Reclassification:</strong> Hover popup on confirmed events</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- EXPERIMENT 4: Light Mode -->
+    <div class="experiment">
+      <div class="experiment-header">
+        <h2>Experiment 4: Light Mode</h2>
+        <span class="experiment-label">Light Mode</span>
+      </div>
+      <div class="experiment-body">
+
+        <h3 style="color: var(--text-secondary); font-size: 14px; margin-bottom: 16px;">Side-by-Side: Dark Mode vs Light Mode</h3>
+
+        <div class="grid-comparison">
+          <!-- Dark Mode Column -->
+          <div class="grid-panel">
+            <h3>Dark Mode</h3>
+            <div class="mini-grid" style="min-height: 220px;">
+              <div class="mini-grid-events" style="height: 200px;">
+                <div class="mini-event status-pending" style="top: 0; height: 40px;">
+                  <div class="mini-event-title">Pending</div>
+                </div>
+                <div class="mini-event status-needs-verify project-teal" style="top: 50px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event status-needs-verify project-gold" style="top: 100px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event" style="background: var(--project-alpha-omega); top: 150px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+            <p style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">
+              Pending: white on black<br>
+              Verify: colored outline on black<br>
+              Confirmed: solid color
+            </p>
+          </div>
+
+          <!-- Light Mode Column -->
+          <div class="grid-panel light-mode" style="background: #f8f9fa;">
+            <h3 style="color: #666;">Light Mode</h3>
+            <div class="mini-grid" style="min-height: 220px;">
+              <div class="mini-grid-events" style="height: 200px;">
+                <div class="mini-event status-pending-light" style="top: 0; height: 40px;">
+                  <div class="mini-event-title">Pending</div>
+                </div>
+                <div class="mini-event status-needs-verify-light project-teal" style="top: 50px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event status-needs-verify-light project-gold" style="top: 100px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event confirmed-teal" style="top: 150px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+            <p style="margin-top: 8px; font-size: 11px; color: #888;">
+              Pending: black on white<br>
+              Verify: colored outline on white<br>
+              Confirmed: solid color
+            </p>
+          </div>
+        </div>
+
+        <h3 style="color: var(--text-secondary); font-size: 14px; margin: 24px 0 16px;">Light Mode: All Project Colors</h3>
+
+        <div class="grid-comparison">
+          <div class="grid-panel light-mode" style="background: #f8f9fa;">
+            <h3 style="color: #666;">Teal (Alpha-Omega)</h3>
+            <div class="mini-grid">
+              <div class="mini-grid-events">
+                <div class="mini-event status-pending-light" style="top: 0; height: 40px;">
+                  <div class="mini-event-title">Pending</div>
+                </div>
+                <div class="mini-event status-needs-verify-light project-teal" style="top: 50px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event confirmed-teal" style="top: 100px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-panel light-mode" style="background: #f8f9fa;">
+            <h3 style="color: #666;">Gold (Eclipse Security)</h3>
+            <div class="mini-grid">
+              <div class="mini-grid-events">
+                <div class="mini-event status-pending-light" style="top: 0; height: 40px;">
+                  <div class="mini-event-title">Pending</div>
+                </div>
+                <div class="mini-event status-needs-verify-light project-gold" style="top: 50px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event confirmed-gold" style="top: 100px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-panel light-mode" style="background: #f8f9fa;">
+            <h3 style="color: #666;">Purple (Consulting)</h3>
+            <div class="mini-grid">
+              <div class="mini-grid-events">
+                <div class="mini-event status-pending-light" style="top: 0; height: 40px;">
+                  <div class="mini-event-title">Pending</div>
+                </div>
+                <div class="mini-event status-needs-verify-light project-purple" style="top: 50px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event confirmed-purple" style="top: 100px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-panel light-mode" style="background: #f8f9fa;">
+            <h3 style="color: #666;">Gray (Internal)</h3>
+            <div class="mini-grid">
+              <div class="mini-grid-events">
+                <div class="mini-event status-pending-light" style="top: 0; height: 40px;">
+                  <div class="mini-event-title">Pending</div>
+                </div>
+                <div class="mini-event status-needs-verify-light project-gray" style="top: 50px; height: 40px;">
+                  <div class="mini-event-title">Needs verification</div>
+                </div>
+                <div class="mini-event confirmed-gray" style="top: 100px; height: 40px;">
+                  <div class="mini-event-title">Confirmed</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="experiment-note">
+          <strong>Light mode adaptations:</strong>
+          <ul style="margin-top: 8px; margin-left: 20px;">
+            <li><strong>Pending:</strong> Black text on white (with subtle border) — inverse of dark mode</li>
+            <li><strong>Needs verification:</strong> Outlined style — project color border + text on white background</li>
+            <li><strong>Confirmed:</strong> Solid project color background — same concept, adjusted for contrast</li>
+          </ul>
+          <p style="margin-top: 12px;">The outlined "needs verification" style works in both modes and matches Google Calendar's approach.</p>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

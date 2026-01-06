@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billing & Invoicing - UI Mocks</title>
+  <style>
+    :root {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f8f9fa;
+      --bg-tertiary: #e9ecef;
+      --text-primary: #212529;
+      --text-secondary: #6c757d;
+      --text-muted: #adb5bd;
+      --border-color: #dee2e6;
+      --accent-blue: #4a90d9;
+      --accent-green: #28a745;
+      --accent-yellow: #ffc107;
+      --accent-orange: #fd7e14;
+      --accent-red: #dc3545;
+      --project-acme: #4a90d9;
+      --project-internal: #6c757d;
+      --project-training: #28a745;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-primary);
+      background: var(--bg-secondary);
+      padding: 20px;
+    }
+
+    .mock-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .mock-section {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 40px;
+      overflow: hidden;
+    }
+
+    .mock-header {
+      background: var(--bg-tertiary);
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .mock-header h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .mock-body {
+      padding: 20px;
+    }
+
+    .mock-label {
+      display: inline-block;
+      padding: 4px 8px;
+      background: #e9d5ff;
+      color: #7c3aed;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-success {
+      background: var(--accent-green);
+      color: white;
+    }
+
+    .btn-danger {
+      background: var(--accent-red);
+      color: white;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--accent-blue);
+      padding: 4px 8px;
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    /* Page Header */
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .page-title {
+      font-size: 24px;
+      font-weight: 600;
+    }
+
+    /* Filters Bar */
+    .filters-bar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 20px;
+      padding: 12px 16px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .filter-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+    }
+
+    select, input[type="text"], input[type="date"] {
+      padding: 6px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 13px;
+      background: white;
+    }
+
+    /* Invoice List */
+    .invoice-list {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .invoice-item {
+      display: grid;
+      grid-template-columns: 140px 1fr 140px 100px 80px 150px;
+      gap: 16px;
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      align-items: center;
+    }
+
+    .invoice-item:last-child {
+      border-bottom: none;
+    }
+
+    .invoice-item:hover {
+      background: var(--bg-secondary);
+      cursor: pointer;
+    }
+
+    .invoice-number {
+      font-weight: 600;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+    }
+
+    .invoice-project {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .project-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .invoice-date-range {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .invoice-total {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+
+    .invoice-hours {
+      color: var(--text-secondary);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    /* Status badges */
+    .status-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+      text-align: center;
+    }
+
+    .status-badge.draft {
+      background: #e9ecef;
+      color: #495057;
+    }
+
+    .status-badge.sent {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .status-badge.paid {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    /* Invoice actions */
+    .invoice-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal {
+      background: white;
+      border-radius: 8px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 90vh;
+      overflow: auto;
+    }
+
+    .modal-header {
+      padding: 20px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .modal-body {
+      padding: 20px;
+    }
+
+    .modal-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    /* Form fields */
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 6px;
+      color: var(--text-secondary);
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .form-hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+    }
+
+    /* Info box */
+    .info-box {
+      background: #f0f9ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+
+    .info-box strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    /* Invoice detail */
+    .invoice-detail {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .invoice-detail-header {
+      padding: 24px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .invoice-detail-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .invoice-detail-number {
+      font-size: 28px;
+      font-weight: 600;
+      font-family: 'Monaco', 'Courier New', monospace;
+    }
+
+    .invoice-meta {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .invoice-meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .invoice-meta-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .invoice-meta-value {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    /* Line items table */
+    .line-items-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .line-items-table thead {
+      background: var(--bg-secondary);
+    }
+
+    .line-items-table th {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .line-items-table th.align-right {
+      text-align: right;
+    }
+
+    .line-items-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      font-size: 14px;
+    }
+
+    .line-items-table td.align-right {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .line-items-table tbody tr:hover {
+      background: var(--bg-secondary);
+    }
+
+    .line-items-table tfoot td {
+      padding: 16px;
+      font-weight: 600;
+      font-size: 16px;
+      border-top: 2px solid var(--border-color);
+    }
+
+    /* Billing periods */
+    .period-list {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .period-item {
+      display: grid;
+      grid-template-columns: 200px 200px 120px 1fr 100px;
+      gap: 16px;
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+      align-items: center;
+    }
+
+    .period-item:last-child {
+      border-bottom: none;
+    }
+
+    .period-item.active {
+      background: #f0f9ff;
+    }
+
+    .period-dates {
+      font-size: 13px;
+    }
+
+    .period-rate {
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .period-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--accent-green);
+      color: white;
+    }
+
+    /* Empty state */
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.5;
+    }
+
+    .empty-state-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .empty-state-text {
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+
+    /* Notes */
+    .note {
+      background: #f0f9ff;
+      border-left: 3px solid var(--accent-blue);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 16px;
+    }
+
+    .note strong {
+      color: var(--text-primary);
+    }
+
+    /* Stats cards */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .stat-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+
+    .stat-value {
+      font-size: 28px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Alert */
+    .alert {
+      padding: 12px 16px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+
+    .alert.warning {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      color: #92400e;
+    }
+
+    .alert.info {
+      background: #dbeafe;
+      border: 1px solid #93c5fd;
+      color: #1e40af;
+    }
+  </style>
+</head>
+<body>
+  <div class="mock-container">
+
+    <h1 style="margin-bottom: 8px;">Billing & Invoicing - UI Mocks</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 40px;">Phase 3: Billing periods, invoice generation, and export</p>
+
+    <!-- MOCK 1: Invoices List View -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 1: Invoices List View</h2>
+        <span class="mock-label">Main View</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="page-header">
+          <h1 class="page-title">Invoices</h1>
+          <button class="btn btn-primary">+ New Invoice</button>
+        </div>
+
+        <div class="filters-bar">
+          <div class="filter-group">
+            <span class="filter-label">Project:</span>
+            <select>
+              <option>All Projects</option>
+              <option>Acme Corp</option>
+              <option>Training</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">Status:</span>
+            <select>
+              <option>All Statuses</option>
+              <option>Draft</option>
+              <option>Sent</option>
+              <option>Paid</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">Date:</span>
+            <input type="date" value="2025-01-01">
+            <span>to</span>
+            <input type="date" value="2025-12-31">
+          </div>
+        </div>
+
+        <div class="invoice-list">
+          <!-- Draft invoice -->
+          <div class="invoice-item">
+            <div class="invoice-number">ACME-2025-001</div>
+            <div class="invoice-project">
+              <span class="project-dot" style="background: var(--project-acme);"></span>
+              <span>Acme Corp</span>
+            </div>
+            <div class="invoice-date-range">Jan 1 – 15, 2025</div>
+            <div class="invoice-hours">42.5h</div>
+            <div>
+              <span class="status-badge draft">Draft</span>
+            </div>
+            <div class="invoice-actions">
+              <button class="btn btn-ghost btn-sm">Edit</button>
+              <button class="btn btn-secondary btn-sm">Export CSV</button>
+            </div>
+          </div>
+
+          <!-- Sent invoice -->
+          <div class="invoice-item">
+            <div class="invoice-number">ACME-2024-012</div>
+            <div class="invoice-project">
+              <span class="project-dot" style="background: var(--project-acme);"></span>
+              <span>Acme Corp</span>
+            </div>
+            <div class="invoice-date-range">Dec 16 – 31, 2024</div>
+            <div class="invoice-hours">38.0h</div>
+            <div>
+              <span class="status-badge sent">Sent</span>
+            </div>
+            <div class="invoice-actions">
+              <button class="btn btn-ghost btn-sm">View</button>
+              <button class="btn btn-secondary btn-sm">Mark Paid</button>
+            </div>
+          </div>
+
+          <!-- Paid invoice -->
+          <div class="invoice-item">
+            <div class="invoice-number">TRAIN-2024-003</div>
+            <div class="invoice-project">
+              <span class="project-dot" style="background: var(--project-training);"></span>
+              <span>Training</span>
+            </div>
+            <div class="invoice-date-range">Dec 1 – 15, 2024</div>
+            <div class="invoice-hours">24.0h</div>
+            <div>
+              <span class="status-badge paid">Paid</span>
+            </div>
+            <div class="invoice-actions">
+              <button class="btn btn-ghost btn-sm">View</button>
+              <button class="btn btn-secondary btn-sm">Export</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Navigation:</strong> Click invoice row to view details. Filter by project, status, or date range. Status flow: Draft → Sent → Paid.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 2: Create Invoice Modal -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 2: Create Invoice Modal</h2>
+        <span class="mock-label">New Invoice</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="modal" style="position: relative;">
+          <div class="modal-header">
+            <h3 class="modal-title">Create Invoice</h3>
+          </div>
+          <div class="modal-body">
+
+            <div class="form-group">
+              <label class="form-label">Project</label>
+              <select class="form-control">
+                <option>Select a billable project...</option>
+                <option selected>Acme Corp</option>
+                <option>Training</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Date Range</label>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <input type="date" class="form-control" value="2025-01-01">
+                <span style="color: var(--text-secondary);">to</span>
+                <input type="date" class="form-control" value="2025-01-15">
+              </div>
+              <div class="form-hint">Invoice will include all unbilled time entries in this range</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Invoice Date</label>
+              <input type="date" class="form-control" value="2025-01-16">
+              <div class="form-hint">Defaults to today, can be changed</div>
+            </div>
+
+            <div class="info-box">
+              <strong>Preview</strong>
+              <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+                <span>42.5 hours across 8 time entries</span>
+                <span style="font-weight: 600;">$4,250.00</span>
+              </div>
+              <div style="margin-top: 4px; color: var(--text-secondary); font-size: 12px;">
+                Using billing period: Jan 1, 2025 – ongoing @ $100/hr
+              </div>
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary">Cancel</button>
+            <button class="btn btn-primary">Create Invoice</button>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Smart defaults:</strong> Invoice date defaults to today. Preview shows total hours, entry count, and applicable billing rate.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 3: Invoice Detail View -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 3: Invoice Detail View</h2>
+        <span class="mock-label">Full Details</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="invoice-detail">
+          <div class="invoice-detail-header">
+            <div class="invoice-detail-title">
+              <div>
+                <div class="invoice-detail-number">ACME-2025-001</div>
+                <div style="margin-top: 8px;">
+                  <span class="status-badge draft">Draft</span>
+                </div>
+              </div>
+              <div style="display: flex; gap: 12px;">
+                <button class="btn btn-secondary">Export CSV</button>
+                <button class="btn btn-secondary">Export to Sheets</button>
+                <button class="btn btn-success">Send</button>
+              </div>
+            </div>
+
+            <div class="invoice-meta">
+              <div class="invoice-meta-item">
+                <span class="invoice-meta-label">Project</span>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span class="project-dot" style="background: var(--project-acme);"></span>
+                  <span class="invoice-meta-value">Acme Corp</span>
+                </div>
+              </div>
+              <div class="invoice-meta-item">
+                <span class="invoice-meta-label">Invoice Date</span>
+                <span class="invoice-meta-value">January 16, 2025</span>
+              </div>
+              <div class="invoice-meta-item">
+                <span class="invoice-meta-label">Period</span>
+                <span class="invoice-meta-value">Jan 1 – 15, 2025</span>
+              </div>
+              <div class="invoice-meta-item">
+                <span class="invoice-meta-label">Rate</span>
+                <span class="invoice-meta-value">$100.00 / hour</span>
+              </div>
+            </div>
+          </div>
+
+          <table class="line-items-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th class="align-right">Hours</th>
+                <th class="align-right">Rate</th>
+                <th class="align-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Jan 2, 2025</td>
+                <td>Weekly Sync, Code Review, Design Discussion</td>
+                <td class="align-right">4.0</td>
+                <td class="align-right">$100.00</td>
+                <td class="align-right">$400.00</td>
+              </tr>
+              <tr>
+                <td>Jan 3, 2025</td>
+                <td>Sprint Planning, Backlog Grooming</td>
+                <td class="align-right">3.5</td>
+                <td class="align-right">$100.00</td>
+                <td class="align-right">$350.00</td>
+              </tr>
+              <tr>
+                <td>Jan 6, 2025</td>
+                <td>Client Workshop, Team Standup</td>
+                <td class="align-right">5.5</td>
+                <td class="align-right">$100.00</td>
+                <td class="align-right">$550.00</td>
+              </tr>
+              <tr>
+                <td>Jan 7, 2025</td>
+                <td>Development Work</td>
+                <td class="align-right">7.0</td>
+                <td class="align-right">$100.00</td>
+                <td class="align-right">$700.00</td>
+              </tr>
+              <tr>
+                <td>Jan 8, 2025</td>
+                <td>Development Work, Code Review</td>
+                <td class="align-right">6.5</td>
+                <td class="align-right">$100.00</td>
+                <td class="align-right">$650.00</td>
+              </tr>
+              <tr>
+                <td>Jan 9, 2025</td>
+                <td>Client Meeting, Documentation</td>
+                <td class="align-right">5.0</td>
+                <td class="align-right">$100.00</td>
+                <td class="align-right">$500.00</td>
+              </tr>
+              <tr>
+                <td>Jan 10, 2025</td>
+                <td>Development Work, Testing</td>
+                <td class="align-right">8.0</td>
+                <td class="align-right">$100.00</td>
+                <td class="align-right">$800.00</td>
+              </tr>
+              <tr>
+                <td>Jan 13, 2025</td>
+                <td>Weekly Sync, Planning</td>
+                <td class="align-right">3.0</td>
+                <td class="align-right">$100.00</td>
+                <td class="align-right">$300.00</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="2">Total</td>
+                <td class="align-right">42.5h</td>
+                <td></td>
+                <td class="align-right">$4,250.00</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+
+        <div class="note">
+          <strong>Line items:</strong> Each row represents one time entry (one day per project). Description comes from time entry title. Rate is snapshot from billing period at invoice creation.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 4: Invoice Status Flow -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 4: Invoice Status Transitions</h2>
+        <span class="mock-label">Draft → Sent → Paid</span>
+      </div>
+      <div class="mock-body">
+
+        <div style="margin-bottom: 32px;">
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary);">DRAFT STATUS</h3>
+          <div class="alert info">
+            <strong>Draft invoices can be edited</strong> You can regenerate, add/remove entries, or delete this invoice.
+          </div>
+          <div style="display: flex; gap: 12px;">
+            <button class="btn btn-secondary">Regenerate</button>
+            <button class="btn btn-secondary">Delete</button>
+            <button class="btn btn-success">→ Send Invoice</button>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 32px;">
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary);">SENT STATUS</h3>
+          <div class="alert info">
+            <strong>Invoice sent to client</strong> Time entries are locked and cannot be changed. Invoice can still be exported.
+          </div>
+          <div style="display: flex; gap: 12px;">
+            <button class="btn btn-secondary">Export CSV</button>
+            <button class="btn btn-secondary">Export to Sheets</button>
+            <button class="btn btn-success">→ Mark as Paid</button>
+            <button class="btn btn-ghost">← Back to Draft</button>
+          </div>
+        </div>
+
+        <div>
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary);">PAID STATUS</h3>
+          <div class="alert info">
+            <strong>Invoice paid</strong> Archived for record-keeping. Can be viewed and exported but not modified.
+          </div>
+          <div style="display: flex; gap: 12px;">
+            <button class="btn btn-secondary">Export CSV</button>
+            <button class="btn btn-secondary">Export to Sheets</button>
+            <button class="btn btn-ghost">← Back to Sent</button>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Time entry locking:</strong> When invoice status changes to "Sent", all included time entries become immutable (invoiced state). Reverting to Draft does not unlock them.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 5: Billing Periods Management -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 5: Billing Periods (Project Settings)</h2>
+        <span class="mock-label">Rate Management</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="page-header">
+          <div>
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+              <span class="project-dot" style="background: var(--project-acme); width: 12px; height: 12px;"></span>
+              <h1 class="page-title">Acme Corp</h1>
+            </div>
+            <p style="color: var(--text-secondary); font-size: 14px;">Manage billing rates over time</p>
+          </div>
+          <button class="btn btn-primary">+ Add Billing Period</button>
+        </div>
+
+        <div class="alert warning">
+          <strong>⚠️ Rate change needed?</strong> Don't edit existing periods. Create a new period with the new rate and set a start date.
+        </div>
+
+        <div class="period-list">
+          <!-- Active period -->
+          <div class="period-item active">
+            <div class="period-dates">
+              <div style="font-weight: 500;">Jan 1, 2025</div>
+              <div style="color: var(--text-secondary); font-size: 12px;">No end date</div>
+            </div>
+            <div class="period-rate">$100.00 / hour</div>
+            <div>
+              <span class="period-badge">ACTIVE</span>
+            </div>
+            <div style="color: var(--text-secondary); font-size: 13px;">
+              Current billing rate
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+              <button class="btn btn-ghost btn-sm">Edit</button>
+            </div>
+          </div>
+
+          <!-- Past period -->
+          <div class="period-item">
+            <div class="period-dates">
+              <div style="font-weight: 500;">Jul 1, 2024</div>
+              <div style="color: var(--text-secondary); font-size: 12px;">to Dec 31, 2024</div>
+            </div>
+            <div class="period-rate">$90.00 / hour</div>
+            <div></div>
+            <div style="color: var(--text-secondary); font-size: 13px;">
+              6 invoices created
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+              <button class="btn btn-ghost btn-sm">View</button>
+            </div>
+          </div>
+
+          <!-- Older period -->
+          <div class="period-item">
+            <div class="period-dates">
+              <div style="font-weight: 500;">Jan 1, 2024</div>
+              <div style="color: var(--text-secondary); font-size: 12px;">to Jun 30, 2024</div>
+            </div>
+            <div class="period-rate">$85.00 / hour</div>
+            <div></div>
+            <div style="color: var(--text-secondary); font-size: 13px;">
+              6 invoices created
+            </div>
+            <div style="display: flex; gap: 8px; justify-content: flex-end;">
+              <button class="btn btn-ghost btn-sm">View</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>How it works:</strong> Periods cannot overlap. When creating an invoice, the system matches time entries to periods by date and uses the corresponding rate. Active period has no end date.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 6: Add Billing Period Modal -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 6: Add Billing Period</h2>
+        <span class="mock-label">New Rate Period</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="modal" style="position: relative;">
+          <div class="modal-header">
+            <h3 class="modal-title">Add Billing Period</h3>
+          </div>
+          <div class="modal-body">
+
+            <div class="alert info">
+              Creating a new period will automatically set an end date on the current active period.
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Start Date</label>
+              <input type="date" class="form-control" value="2025-02-01">
+              <div class="form-hint">New rate takes effect on this date</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Hourly Rate</label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <span style="color: var(--text-secondary); font-weight: 500;">$</span>
+                <input type="number" class="form-control" value="110" step="0.01" style="max-width: 150px;">
+                <span style="color: var(--text-secondary);">per hour</span>
+              </div>
+              <div class="form-hint">Previous rate: $100.00/hr</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">End Date (Optional)</label>
+              <input type="date" class="form-control" placeholder="No end date">
+              <div class="form-hint">Leave empty for ongoing rate</div>
+            </div>
+
+            <div class="info-box">
+              <strong>Summary</strong>
+              <div style="margin-top: 8px;">
+                • Current period (Jan 1 – ongoing @ $100/hr) will end on Jan 31, 2025<br>
+                • New period will start Feb 1, 2025 @ $110/hr
+              </div>
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary">Cancel</button>
+            <button class="btn btn-primary">Add Period</button>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Rate change workflow:</strong> Adding a new period automatically closes the previous one. Existing invoices are not affected (they snapshot the rate at creation time).
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 7: Export Options -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 7: Google Sheets Export</h2>
+        <span class="mock-label">Export Flow</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="modal" style="position: relative;">
+          <div class="modal-header">
+            <h3 class="modal-title">Export to Google Sheets</h3>
+          </div>
+          <div class="modal-body">
+
+            <div class="info-box">
+              <strong>First export for this project</strong>
+              <div style="margin-top: 8px;">
+                A new Google Sheets document will be created: "Acme Corp - Invoices"<br>
+                Each invoice will be added as a separate worksheet.
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Spreadsheet Name</label>
+              <input type="text" class="form-control" value="Acme Corp - Invoices">
+              <div class="form-hint">This will be the Google Sheets document name</div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Worksheet Name</label>
+              <input type="text" class="form-control" value="ACME-2025-001">
+              <div class="form-hint">Invoice number by default</div>
+            </div>
+
+            <div style="background: var(--bg-secondary); padding: 16px; border-radius: 6px; margin-top: 20px;">
+              <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">PREVIEW</div>
+              <div style="font-family: 'Monaco', 'Courier New', monospace; font-size: 12px;">
+                <div style="margin-bottom: 8px;">
+                  <strong>Acme Corp - Invoices</strong><br>
+                  └─ 📄 ACME-2025-001 (new)
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-secondary">Cancel</button>
+            <button class="btn btn-primary">Export to Sheets</button>
+          </div>
+        </div>
+
+        <div style="margin-top: 32px;">
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px;">Subsequent Export (Project already has spreadsheet)</h3>
+
+          <div class="modal" style="position: relative;">
+            <div class="modal-header">
+              <h3 class="modal-title">Export to Google Sheets</h3>
+            </div>
+            <div class="modal-body">
+
+              <div class="info-box">
+                <strong>Exporting to existing spreadsheet</strong>
+                <div style="margin-top: 8px;">
+                  <a href="#" style="color: var(--accent-blue);">Acme Corp - Invoices</a><br>
+                  A new worksheet will be added for this invoice.
+                </div>
+              </div>
+
+              <div style="background: var(--bg-secondary); padding: 16px; border-radius: 6px; margin-top: 20px;">
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">PREVIEW</div>
+                <div style="font-family: 'Monaco', 'Courier New', monospace; font-size: 12px;">
+                  <div style="margin-bottom: 8px;">
+                    <strong>Acme Corp - Invoices</strong><br>
+                    ├─ 📄 ACME-2024-012<br>
+                    ├─ 📄 ACME-2024-011<br>
+                    ├─ 📄 ACME-2024-010<br>
+                    └─ 📄 ACME-2025-001 (new)
+                  </div>
+                </div>
+              </div>
+
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-secondary">Cancel</button>
+              <button class="btn btn-primary">Export to Sheets</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Living document model:</strong> One spreadsheet per project, one worksheet per invoice. Re-exporting updates the existing worksheet in place.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 8: Empty States -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 8: Empty States</h2>
+        <span class="mock-label">No Data</span>
+      </div>
+      <div class="mock-body">
+
+        <div style="margin-bottom: 32px;">
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary);">No Invoices</h3>
+          <div class="empty-state">
+            <div class="empty-state-icon">📄</div>
+            <div class="empty-state-title">No invoices yet</div>
+            <div class="empty-state-text">Create your first invoice from billable time entries</div>
+            <button class="btn btn-primary">+ Create Invoice</button>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 32px;">
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary);">No Unbilled Time</h3>
+          <div class="alert warning">
+            <strong>No unbilled time entries</strong> All time entries in this date range have already been invoiced. Select a different date range or add more time entries.
+          </div>
+        </div>
+
+        <div>
+          <h3 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary);">No Billing Period</h3>
+          <div class="alert warning">
+            <strong>No billing period defined</strong> This project doesn't have a billing period covering the selected dates. Add a billing period with an hourly rate first.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 9: Invoice Number Format -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 9: Invoice Numbering</h2>
+        <span class="mock-label">Reference</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="info-box" style="margin-bottom: 16px;">
+          <strong>Invoice Number Format: {PROJECT}-{YEAR}-{SEQ}</strong>
+          <div style="margin-top: 8px; color: var(--text-secondary);">
+            • Project prefix derived from project name (e.g., "Acme Corp" → "ACME")<br>
+            • Year is invoice year (not date range year)<br>
+            • Sequence resets each year per project
+          </div>
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead>
+            <tr style="background: var(--bg-secondary);">
+              <th style="padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color);">Invoice Number</th>
+              <th style="padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color);">Project</th>
+              <th style="padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color);">Invoice Date</th>
+              <th style="padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color);">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color); font-family: 'Monaco', monospace;">ACME-2025-001</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Acme Corp</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Jan 16, 2025</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">First invoice for 2025</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color); font-family: 'Monaco', monospace;">ACME-2025-002</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Acme Corp</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Feb 1, 2025</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Sequence increments</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color); font-family: 'Monaco', monospace;">TRAIN-2025-001</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Training</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Jan 20, 2025</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Different project, separate sequence</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; font-family: 'Monaco', monospace;">ACME-2024-012</td>
+              <td style="padding: 10px;">Acme Corp</td>
+              <td style="padding: 10px;">Dec 31, 2024</td>
+              <td style="padding: 10px;">Previous year, different sequence</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="note">
+          <strong>Prefix generation:</strong> System automatically generates project prefix from name. User can customize if needed. Sequential numbers ensure unique invoice IDs per project per year.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 10: Time Entry with Invoice Info -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 10: Time Entry → Invoice Link</h2>
+        <span class="mock-label">Bidirectional Reference</span>
+      </div>
+      <div class="mock-body">
+
+        <div style="border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden;">
+          <div style="padding: 24px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px;">
+              <div style="display: flex; align-items: center; gap: 16px;">
+                <div style="font-size: 32px; font-weight: 600;">4.0h</div>
+                <div>
+                  <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                    <span class="project-dot" style="background: var(--project-acme);"></span>
+                    <span style="font-size: 16px; font-weight: 500;">Acme Corp</span>
+                  </div>
+                  <p style="color: var(--text-secondary); font-size: 13px;">Monday, January 6, 2025</p>
+                </div>
+              </div>
+              <span class="badge invoiced">Invoiced</span>
+            </div>
+
+            <div class="alert info" style="margin-bottom: 0;">
+              <strong>Included in invoice</strong>
+              <div style="margin-top: 4px;">
+                <a href="#" style="color: var(--accent-blue); font-weight: 500;">ACME-2025-001</a> • Sent on Jan 16, 2025
+              </div>
+            </div>
+          </div>
+
+          <div style="padding: 20px;">
+            <div style="margin-bottom: 16px;">
+              <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Title</div>
+              <div style="padding: 8px 12px; background: var(--bg-secondary); border-radius: 6px;">
+                Weekly Sync, Code Review, Design Discussion
+              </div>
+            </div>
+
+            <div>
+              <div style="font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Invoice Details</div>
+              <table style="width: 100%; font-size: 13px;">
+                <tr>
+                  <td style="padding: 6px 0; color: var(--text-secondary);">Rate</td>
+                  <td style="padding: 6px 0; text-align: right; font-weight: 500;">$100.00 / hour</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; color: var(--text-secondary);">Amount</td>
+                  <td style="padding: 6px 0; text-align: right; font-weight: 600;">$400.00</td>
+                </tr>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Locked indicator:</strong> Invoiced time entries show which invoice they're part of. Clicking the invoice number navigates to invoice detail view.
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>
