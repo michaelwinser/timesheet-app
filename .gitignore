@@ -30,6 +30,7 @@ Thumbs.db
 # Environment
 .env
 .env.local
+apikey.txt
 
 # Logs
 *.log
