@@ -38,12 +38,12 @@ The **MCP Server** enables AI-assisted workflows, avoiding complex UI for bulk o
 | Component | Status | Notes |
 |-----------|--------|-------|
 | **MCP Server** | Done | Full tool suite for AI-assisted workflows |
+| **Time Entry Enhancements** | Done | Analyzer, protection model, calculation details |
 
 ### Not Yet Implemented
 
 | Feature | Priority | Complexity | Reference |
 |---------|----------|------------|-----------|
-| Time Entry Enhancements | High | High | [prd-time-entry-enhancements.md](prd-time-entry-enhancements.md) |
 | Billing Periods | Medium | Low | [ADR-002](decisions/002-billing-periods.md) |
 | Invoicing | Medium | Medium | [prd-invoicing.md](../prd-invoicing.md) |
 | Google Sheets Export | Low | Low | [prd-project-spreadsheets.md](../prd-project-spreadsheets.md) |
@@ -143,9 +143,9 @@ Deferred in favor of MCP server, which enables experimentation with LLM-assisted
 
 ---
 
-### Phase 2: Time Entry Enhancements (Ready for Implementation)
+### Phase 2: Time Entry Enhancements (Complete)
 
-**Status**: Requirements complete. Ready for implementation.
+**Status**: Done.
 
 **PRD**: [prd-time-entry-enhancements.md](prd-time-entry-enhancements.md)
 
@@ -315,6 +315,7 @@ Not currently planned, but architecture supports:
 
 | Date | Change |
 |------|--------|
+| 2026-01-05 | Phase 2 implementation complete |
 | 2026-01-05 | Phase 2 requirements complete; PRD and mocks ready for implementation |
 | 2026-01-05 | Marked Phase 4 (MCP Server) as complete |
 | 2026-01-05 | Deferred Phase 1.7 (LLM Integration) in favor of MCP experimentation |
