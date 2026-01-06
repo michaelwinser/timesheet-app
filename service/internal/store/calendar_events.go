@@ -45,6 +45,7 @@ type CalendarEvent struct {
 	Transparency             *string
 	IsOrphaned               bool
 	IsSuppressed             bool
+	IsLocked                 bool // Protection model: locked via Lock Day/Week
 	ClassificationStatus     ClassificationStatus
 	ClassificationSource     *ClassificationSource
 	ClassificationConfidence *float64
@@ -212,7 +213,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 	query := `
 		SELECT ce.id, ce.connection_id, ce.calendar_id, ce.user_id, ce.external_id, ce.title, ce.description,
 		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.response_status,
-		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.classification_status,
+		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_locked, ce.classification_status,
 		       ce.classification_source, ce.classification_confidence, ce.needs_review,
 		       ce.project_id, ce.created_at, ce.updated_at,
 		       p.id, p.user_id, p.name, p.short_code, p.client, p.color, p.is_billable, p.is_archived,
@@ -269,7 +270,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		err := rows.Scan(
 			&e.ID, &e.ConnectionID, &e.CalendarID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
 			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
-			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.ClassificationStatus,
+			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.ClassificationStatus,
 			&e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 			&pID, &pUserID, &pName, &pShortCode, &pClient, &pColor, &pIsBillable, &pIsArchived,

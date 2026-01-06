@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/michaelw/timesheet-app/service/internal/store"
+	"github.com/michaelw/timesheet-app/service/internal/timeentry"
 )
 
 // ServiceVote represents a vote with UUIDs for database storage
@@ -34,19 +35,21 @@ type ClassificationResult struct {
 // It handles I/O and database operations, delegating pure classification
 // logic to the Classify function.
 type Service struct {
-	pool           *pgxpool.Pool
-	ruleStore      *store.ClassificationRuleStore
-	eventStore     *store.CalendarEventStore
-	timeEntryStore *store.TimeEntryStore
+	pool             *pgxpool.Pool
+	ruleStore        *store.ClassificationRuleStore
+	eventStore       *store.CalendarEventStore
+	timeEntryStore   *store.TimeEntryStore
+	timeEntryService *timeentry.Service
 }
 
 // NewService creates a new classification service
 func NewService(pool *pgxpool.Pool, ruleStore *store.ClassificationRuleStore, eventStore *store.CalendarEventStore, timeEntryStore *store.TimeEntryStore) *Service {
 	return &Service{
-		pool:           pool,
-		ruleStore:      ruleStore,
-		eventStore:     eventStore,
-		timeEntryStore: timeEntryStore,
+		pool:             pool,
+		ruleStore:        ruleStore,
+		eventStore:       eventStore,
+		timeEntryStore:   timeEntryStore,
+		timeEntryService: timeentry.NewService(eventStore, timeEntryStore),
 	}
 }
 
@@ -323,12 +326,23 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Ta
 			if err != nil {
 				continue
 			}
+		}
+	}
 
-			// Create time entry from classified event
-			duration := event.EndTime.Sub(event.StartTime).Hours()
-			eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
-			_, err = s.timeEntryStore.CreateFromCalendar(ctx, userID, targetID, eventDate, duration, &event.Title)
-			if err != nil {
+	// Recalculate time entries for all affected dates
+	if !dryRun && len(applyResult.Classified) > 0 {
+		affectedDates := make(map[time.Time]bool)
+		for _, c := range applyResult.Classified {
+			event := eventMap[c.EventID.String()]
+			if event != nil {
+				eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
+				affectedDates[eventDate] = true
+			}
+		}
+
+		for date := range affectedDates {
+			// Recalculate time entries for this date using the analyzer
+			if err := s.timeEntryService.RecalculateForDate(ctx, userID, date); err != nil {
 				// Log but don't fail - classification succeeded
 				continue
 			}
@@ -509,4 +523,15 @@ func attendanceResultToServiceResult(result AttendanceResult, storeRules []*stor
 		Source:      MatchSourceRule,
 		Votes:       votes,
 	}
+}
+
+// RecalculateTimeEntries recalculates time entries for a specific date.
+// This should be called after event classification changes.
+func (s *Service) RecalculateTimeEntries(ctx context.Context, userID uuid.UUID, date time.Time) error {
+	return s.timeEntryService.RecalculateForDate(ctx, userID, date)
+}
+
+// RecalculateTimeEntriesForEvent recalculates the time entry affected by a specific event.
+func (s *Service) RecalculateTimeEntriesForEvent(ctx context.Context, userID uuid.UUID, event *store.CalendarEvent) error {
+	return s.timeEntryService.RecalculateForEvent(ctx, userID, event)
 }

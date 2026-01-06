@@ -33,14 +33,19 @@ The **MCP Server** enables AI-assisted workflows, avoiding complex UI for bulk o
 | **Day/Week View** | Done | Time grid, URL-based navigation |
 | **Classification UI** | Done | Project color circles, reclassify support |
 
+### Completed
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| **MCP Server** | Done | Full tool suite for AI-assisted workflows |
+
 ### Not Yet Implemented
 
 | Feature | Priority | Complexity | Reference |
 |---------|----------|------------|-----------|
-| Classification System | High | High | [ADR-003](decisions/003-scoring-classification.md) |
+| Time Entry Enhancements | High | High | [prd-time-entry-enhancements.md](prd-time-entry-enhancements.md) |
 | Billing Periods | Medium | Low | [ADR-002](decisions/002-billing-periods.md) |
 | Invoicing | Medium | Medium | [prd-invoicing.md](../prd-invoicing.md) |
-| MCP Server | Medium | Medium | [prd-mcp-server.md](../prd-mcp-server.md) |
 | Google Sheets Export | Low | Low | [prd-project-spreadsheets.md](../prd-project-spreadsheets.md) |
 
 ---
@@ -130,47 +135,54 @@ Gmail-style search that serves multiple purposes:
 - **Classify**: Apply to search results
 - **Create Rule**: Save search as rule
 
-#### 1.7 LLM Integration
+#### 1.7 LLM Integration (Deferred)
 
-**Rule Suggestions (daily job):**
-- Analyze recent manual classifications
-- Detect patterns (3+ similar manual classifications)
-- Propose rules for user review
-- Include reclassification feedback as training signal
+Deferred in favor of MCP server, which enables experimentation with LLM-assisted workflows without building complex UI.
 
-**Reclassification Feedback:**
-- When user overrides LLM/rule classification, capture reason
-- Store as training data for future suggestions
-- "Why?" prompt: optional short explanation
-
-**Reference**: [prd-rules-v2.md](../prd-rules-v2.md), [llm-classification-design.md](../llm-classification-design.md)
+**Reference**: [prd-rules-v2.md](../prd-rules-v2.md)
 
 ---
 
-### Phase 2: Time Entry Enhancements
+### Phase 2: Time Entry Enhancements (Ready for Implementation)
 
-Improve time entry tracking with features from v1 PRD.
+**Status**: Requirements complete. Ready for implementation.
 
-**Deliverables**:
+**PRD**: [prd-time-entry-enhancements.md](prd-time-entry-enhancements.md)
 
-1. **Contributing Events Tracking**
-   - Store which calendar events fed into each time entry
-   - Display event list in time entry detail
+**Mocks**: [mocks/time-entry-enhancements.html](mocks/time-entry-enhancements.html)
 
-2. **Overlapping Event Handling**
-   - When multiple events for same project overlap, use time union (not sum)
-   - Store `calculation_details` JSON for audit
+#### Core Change
 
-3. **Description Accumulation**
-   - Merge event titles into entry description
-   - Respect user edits (`has_user_edits` flag)
+Time entries become a **computed view** over classified events, updating automatically until protected by the user.
 
-4. **Orphaned Event Handling**
-   - Mark events as orphaned when deleted from Google
-   - Surface orphaned entries for user review
-   - Auto-delete if no user edits and not invoiced
+#### Protection Model
 
-**Reference**: [domain-glossary.md](domain-glossary.md), [prd.md](../prd.md) (Overlapping Events section)
+| State | How it happens | Behavior |
+|-------|----------------|----------|
+| **Unlocked** | Default | System updates freely |
+| **Pinned** | User edits hours/title/description | Protected from auto-update |
+| **Locked** | User clicks Lock Day/Week | Protected from auto-update |
+| **Invoiced** | Added to invoice | Immutable |
+
+#### Key Features
+
+1. **Time Entry Analyzer** - Pure function computing entries from events
+2. **Overlap Handling** - Union for same-project, detection for cross-project (>15m)
+3. **Rounding** - 15m granularity with transparent calculation details
+4. **Contributing Events** - Track and display which events feed each entry
+5. **Lock Day/Week** - Bulk protection for sign-off workflow
+6. **Stale Indicators** - Orange dot on protected items when computed differs
+7. **Orphaned Events** - Handle deleted calendar events gracefully
+
+#### Implementation Phases
+
+- 2.1: Analyzer Foundation (union, rounding, calculation_details)
+- 2.2: Contributing Events (junction table, API, basic UI)
+- 2.3: Protection Model (pinned, locked, stale fields)
+- 2.4: Live Updates (wire into sync/classification, flash feedback)
+- 2.5: UI Polish (indicators, lock controls, detail view)
+- 2.6: Cross-Project Overlaps (detection, one-click fixes)
+- 2.7: Title/Description Generation
 
 ---
 
@@ -202,33 +214,21 @@ Enable invoicing for billable projects.
 
 ---
 
-### Phase 4: MCP Server
+### Phase 4: MCP Server (Complete)
 
-Enable AI-assisted workflows via Model Context Protocol.
+**Status**: Done.
 
-**Goal**: Avoid complex UI for bulk operations. Natural language commands like:
+AI-assisted workflows via Model Context Protocol. Enables natural language commands like:
 - "Mark all events from this week as skipped"
 - "Create a rule for all meetings with @alice"
 - "Show me potential double-billing"
 
-**Deliverables**:
-
-1. **MCP Server Foundation**
-   - Python MCP server with stdio transport
-   - Connect to PostgreSQL directly
-   - Auth via API key or environment variable
-
-2. **Core Tools**
-   - `get_time_entries` - Rich data retrieval for LLM reasoning
-   - `list_projects`, `list_rules` - Context for classification
-   - `search_events` - Find events by text
-   - `bulk_classify` - Classify multiple events at once
-   - `create_rule` - Create rules from natural language
-
-3. **Resources & Prompts**
-   - `timesheet://projects` - Auto-loaded project list
-   - `timesheet://rules` - Current rules for reference
-   - Built-in prompts for common workflows
+**Implemented Tools**:
+- `list_projects`, `list_rules` - Context for classification
+- `list_pending_events`, `search_events` - Find events
+- `classify_event`, `bulk_classify` - Classification operations
+- `create_rule`, `preview_rule`, `apply_rules` - Rule management
+- `create_time_entry`, `get_time_summary` - Time tracking
 
 **Reference**: [prd-mcp-server.md](../prd-mcp-server.md)
 
@@ -282,6 +282,10 @@ Not currently planned, but architecture supports:
 | [prd-invoicing.md](../prd-invoicing.md) | Invoice generation |
 | [prd-mcp-server.md](../prd-mcp-server.md) | AI assistant integration |
 | [prd-project-spreadsheets.md](../prd-project-spreadsheets.md) | Google Sheets export |
+| **v2 PRDs** | |
+| [prd-time-entry-enhancements.md](prd-time-entry-enhancements.md) | Phase 2: Time entry calculation and protection |
+| **v2 Mocks** | |
+| [mocks/time-entry-enhancements.html](mocks/time-entry-enhancements.html) | Phase 2: UI wireframes |
 | **v2 Architecture** | |
 | [architecture.md](architecture.md) | Layer definitions, naming conventions |
 | [domain-glossary.md](domain-glossary.md) | Entity definitions, operations |
@@ -311,6 +315,9 @@ Not currently planned, but architecture supports:
 
 | Date | Change |
 |------|--------|
+| 2026-01-05 | Phase 2 requirements complete; PRD and mocks ready for implementation |
+| 2026-01-05 | Marked Phase 4 (MCP Server) as complete |
+| 2026-01-05 | Deferred Phase 1.7 (LLM Integration) in favor of MCP experimentation |
 | 2026-01-02 | Reordered Phase 1: Review Indicators (1.4), Fingerprints (1.5), Search UI (1.6), LLM (1.7) |
 | 2025-01-02 | Refined Phase 1 with scoring-based classification, LLM integration |
 | 2025-01-02 | Initial roadmap created |

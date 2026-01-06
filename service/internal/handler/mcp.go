@@ -963,7 +963,8 @@ func (h *MCPHandler) bulkClassify(ctx context.Context, userID uuid.UUID, args ma
 		return nil, fmt.Errorf("invalid query: %w", err)
 	}
 
-	var classifiedCount, skippedCount, entriesCreated int
+	var classifiedCount, skippedCount int
+	affectedDates := make(map[time.Time]bool)
 
 	// Process each matching event
 	for _, match := range preview.Matches {
@@ -983,17 +984,23 @@ func (h *MCPHandler) bulkClassify(ctx context.Context, userID uuid.UUID, args ma
 			continue
 		}
 
+		// Track affected date for recalculation
+		eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
+		affectedDates[eventDate] = true
+
 		if skip {
 			skippedCount++
 		} else {
 			classifiedCount++
+		}
+	}
 
-			// Create time entry
-			duration := event.EndTime.Sub(event.StartTime).Hours()
-			eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
-			if _, err := h.entries.CreateFromCalendar(ctx, userID, *projectID, eventDate, duration, &event.Title); err == nil {
-				entriesCreated++
-			}
+	// Recalculate time entries for all affected dates
+	// This uses the analyzer to properly compute hours with overlap handling and rounding
+	entriesUpdated := 0
+	for date := range affectedDates {
+		if err := h.classificationSvc.RecalculateTimeEntries(ctx, userID, date); err == nil {
+			entriesUpdated++
 		}
 	}
 
@@ -1008,7 +1015,7 @@ func (h *MCPHandler) bulkClassify(ctx context.Context, userID uuid.UUID, args ma
 	if skip {
 		result = fmt.Sprintf("Bulk skip complete:\n- Query: `%s`\n- Events skipped: %d", query, skippedCount)
 	} else {
-		result = fmt.Sprintf("Bulk classification complete:\n- Query: `%s`\n- Project: %s\n- Events classified: %d\n- Time entries created: %d", query, projectName, classifiedCount, entriesCreated)
+		result = fmt.Sprintf("Bulk classification complete:\n- Query: `%s`\n- Project: %s\n- Events classified: %d\n- Days with time entries updated: %d", query, projectName, classifiedCount, entriesUpdated)
 	}
 
 	return map[string]any{

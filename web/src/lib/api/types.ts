@@ -64,12 +64,42 @@ export interface TimeEntry {
 	project?: Project;
 	date: string;
 	hours: number;
+	title?: string;
 	description?: string;
 	source: 'manual' | 'calendar' | 'import';
 	invoice_id?: string | null;
 	has_user_edits?: boolean;
+	// Protection model fields
+	is_pinned?: boolean;
+	is_locked?: boolean;
+	is_stale?: boolean;
+	// Computed fields (from analyzer)
+	computed_hours?: number;
+	computed_title?: string;
+	computed_description?: string;
+	calculation_details?: CalculationDetails;
+	contributing_events?: string[];
 	created_at: string;
 	updated_at?: string;
+}
+
+export interface CalculationDetails {
+	events: Array<{
+		id: string;
+		title: string;
+		start: string;
+		end: string;
+		raw_minutes: number;
+		is_all_day?: boolean;
+	}>;
+	time_ranges: Array<{
+		start: string;
+		end: string;
+		minutes: number;
+	}>;
+	union_minutes: number;
+	rounding_applied: string;
+	final_minutes: number;
 }
 
 export interface TimeEntryCreate {

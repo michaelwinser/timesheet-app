@@ -1494,6 +1494,9 @@ components:
           format: float
           minimum: 0
           example: 2.5
+        title:
+          type: string
+          description: Short title (generated from events or user-provided)
         description:
           type: string
           example: "Worked on API design"
@@ -1510,12 +1513,83 @@ components:
           type: boolean
           default: false
           description: Whether user has modified this entry
+        # Protection model fields
+        is_pinned:
+          type: boolean
+          default: false
+          description: Entry is pinned (user has edited it)
+        is_locked:
+          type: boolean
+          default: false
+          description: Entry is locked (via Lock Day/Week)
+        is_stale:
+          type: boolean
+          default: false
+          description: Computed values differ from current values
+        # Computed fields
+        computed_hours:
+          type: number
+          format: float
+          description: Latest calculated hours from events
+        computed_title:
+          type: string
+          description: Generated title from events
+        computed_description:
+          type: string
+          description: Generated description from events
+        calculation_details:
+          $ref: '#/components/schemas/CalculationDetails'
+        contributing_events:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Event IDs that contribute to this entry
         created_at:
           type: string
           format: date-time
         updated_at:
           type: string
           format: date-time
+
+    CalculationDetails:
+      type: object
+      description: Audit trail showing how hours were calculated
+      properties:
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+              start:
+                type: string
+              end:
+                type: string
+              raw_minutes:
+                type: integer
+              is_all_day:
+                type: boolean
+        time_ranges:
+          type: array
+          items:
+            type: object
+            properties:
+              start:
+                type: string
+              end:
+                type: string
+              minutes:
+                type: integer
+        union_minutes:
+          type: integer
+        rounding_applied:
+          type: string
+        final_minutes:
+          type: integer
 
     TimeEntryCreate:
       type: object

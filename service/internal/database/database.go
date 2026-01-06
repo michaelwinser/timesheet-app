@@ -408,4 +408,37 @@ var migrations = []migration{
 			CREATE INDEX IF NOT EXISTS idx_mcp_access_tokens_user_id ON mcp_access_tokens(user_id);
 		`,
 	},
+	{
+		version: 14,
+		sql: `
+			-- Phase 2: Time Entry Enhancements
+			-- Add protection model and computed fields to time_entries
+			ALTER TABLE time_entries
+			ADD COLUMN IF NOT EXISTS title TEXT,
+			ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
+			ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT FALSE,
+			ADD COLUMN IF NOT EXISTS is_stale BOOLEAN NOT NULL DEFAULT FALSE,
+			ADD COLUMN IF NOT EXISTS computed_hours DECIMAL(5,2),
+			ADD COLUMN IF NOT EXISTS computed_title TEXT,
+			ADD COLUMN IF NOT EXISTS computed_description TEXT,
+			ADD COLUMN IF NOT EXISTS calculation_details JSONB;
+
+			-- Add is_locked to calendar_events for lock day/week feature
+			ALTER TABLE calendar_events
+			ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT FALSE;
+
+			-- Junction table to track which events contribute to each time entry
+			CREATE TABLE IF NOT EXISTS time_entry_events (
+				time_entry_id UUID NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,
+				calendar_event_id UUID NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+				PRIMARY KEY (time_entry_id, calendar_event_id)
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_time_entry_events_entry_id ON time_entry_events(time_entry_id);
+			CREATE INDEX IF NOT EXISTS idx_time_entry_events_event_id ON time_entry_events(calendar_event_id);
+
+			-- Index for finding stale entries that need attention
+			CREATE INDEX IF NOT EXISTS idx_time_entries_is_stale ON time_entries(is_stale) WHERE is_stale = true;
+		`,
+	},
 }

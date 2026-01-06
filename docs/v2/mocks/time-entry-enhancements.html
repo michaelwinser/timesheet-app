@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Time Entry Enhancements - UI Mocks (Simplified)</title>
+  <style>
+    :root {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f8f9fa;
+      --bg-tertiary: #e9ecef;
+      --text-primary: #212529;
+      --text-secondary: #6c757d;
+      --text-muted: #adb5bd;
+      --border-color: #dee2e6;
+      --accent-blue: #4a90d9;
+      --accent-green: #28a745;
+      --accent-yellow: #ffc107;
+      --accent-orange: #fd7e14;
+      --accent-red: #dc3545;
+      --project-acme: #4a90d9;
+      --project-internal: #6c757d;
+      --project-training: #28a745;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--text-primary);
+      background: var(--bg-secondary);
+      padding: 20px;
+    }
+
+    .mock-container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .mock-section {
+      background: var(--bg-primary);
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 40px;
+      overflow: hidden;
+    }
+
+    .mock-header {
+      background: var(--bg-tertiary);
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .mock-header h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .mock-body {
+      padding: 20px;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--accent-blue);
+      color: white;
+    }
+
+    .btn-secondary {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--accent-blue);
+      padding: 4px 8px;
+    }
+
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+
+    /* Mock label */
+    .mock-label {
+      display: inline-block;
+      padding: 4px 8px;
+      background: #e9d5ff;
+      color: #7c3aed;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Week Header */
+    .week-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .week-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .week-title {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .week-actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .lock-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .lock-status.locked {
+      color: var(--accent-blue);
+    }
+
+    .lock-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    .lock-toggle:hover {
+      background: var(--bg-tertiary);
+    }
+
+    .lock-toggle.locked {
+      color: var(--accent-blue);
+    }
+
+    /* Time Entry List */
+    .time-entry-list {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .time-entry-item {
+      display: grid;
+      grid-template-columns: 120px 1fr 70px 40px;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border-color);
+      align-items: center;
+    }
+
+    .time-entry-item:last-child {
+      border-bottom: none;
+    }
+
+    .time-entry-date {
+      font-weight: 500;
+      font-size: 13px;
+    }
+
+    .time-entry-content {
+      min-width: 0;
+    }
+
+    .time-entry-project {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+
+    .project-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .time-entry-title {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .time-entry-description {
+      color: var(--text-secondary);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .time-entry-hours {
+      font-weight: 600;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .time-entry-status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Status Icons */
+    .status-icon {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: default;
+    }
+
+    .status-icon.pin {
+      color: var(--text-secondary);
+    }
+
+    .status-icon.lock {
+      color: var(--accent-blue);
+    }
+
+    .status-icon.invoiced {
+      color: var(--accent-green);
+    }
+
+    .status-icon.stale {
+      position: relative;
+      cursor: pointer;
+    }
+
+    .status-icon.stale::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 6px;
+      height: 6px;
+      background: var(--accent-orange);
+      border-radius: 3px;
+    }
+
+    /* Invoiced ribbon */
+    .time-entry-item.invoiced {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .invoiced-ribbon {
+      position: absolute;
+      top: 8px;
+      right: -24px;
+      background: var(--accent-green);
+      color: white;
+      font-size: 9px;
+      font-weight: 600;
+      padding: 2px 28px;
+      transform: rotate(45deg);
+      letter-spacing: 0.5px;
+    }
+
+    /* Overlap Warning */
+    .overlap-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: #fef3c7;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .overlap-row:last-child {
+      border-bottom: none;
+    }
+
+    /* Flash animation */
+    @keyframes flash-update {
+      0% { background-color: transparent; }
+      50% { background-color: #bfdbfe; }
+      100% { background-color: transparent; }
+    }
+
+    .time-entry-item.flash {
+      animation: flash-update 0.8s ease-out;
+    }
+
+    /* Time Entry Detail */
+    .time-entry-detail {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .detail-header {
+      padding: 16px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+
+    .detail-main {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .detail-hours {
+      font-size: 32px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .detail-info h3 {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 2px;
+    }
+
+    .detail-info p {
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    .detail-badges {
+      display: flex;
+      gap: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .badge.locked {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .badge.stale {
+      background: #fef3c7;
+      color: #92400e;
+    }
+
+    .badge.invoiced {
+      background: #d1fae5;
+      color: #065f46;
+    }
+
+    .detail-body {
+      padding: 16px;
+    }
+
+    .detail-section {
+      margin-bottom: 20px;
+    }
+
+    .detail-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .detail-section-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    /* Stale Alert */
+    .stale-alert {
+      background: #fef3c7;
+      border: 1px solid #fcd34d;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stale-alert-content {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .stale-alert-icon {
+      font-size: 20px;
+    }
+
+    .stale-alert-text {
+      font-size: 13px;
+    }
+
+    .stale-alert-text strong {
+      display: block;
+      margin-bottom: 2px;
+    }
+
+    .stale-alert-diff {
+      color: var(--text-secondary);
+    }
+
+    .stale-alert-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    /* Contributing Events */
+    .event-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+
+    .event-item:last-child {
+      margin-bottom: 0;
+    }
+
+    .event-title {
+      font-weight: 500;
+    }
+
+    .event-time {
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .event-duration {
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Calculation Breakdown */
+    .calc-breakdown {
+      background: var(--bg-secondary);
+      border-radius: 8px;
+      padding: 12px 16px;
+    }
+
+    .calc-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 13px;
+    }
+
+    .calc-row.total {
+      border-top: 1px solid var(--border-color);
+      margin-top: 8px;
+      padding-top: 8px;
+      font-weight: 600;
+    }
+
+    .calc-label {
+      color: var(--text-secondary);
+    }
+
+    .calc-value {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Legend */
+    .legend {
+      display: flex;
+      gap: 20px;
+      padding: 10px 16px;
+      background: var(--bg-secondary);
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .legend-icon {
+      width: 20px;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+    }
+
+    /* Tooltip simulation */
+    .tooltip-demo {
+      position: relative;
+      display: inline-block;
+    }
+
+    .tooltip-demo .tooltip {
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--text-primary);
+      color: white;
+      padding: 6px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .tooltip-demo .tooltip::after {
+      content: "";
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      border: 5px solid transparent;
+      border-top-color: var(--text-primary);
+    }
+
+    /* Notes */
+    .note {
+      background: #f0f9ff;
+      border-left: 3px solid var(--accent-blue);
+      padding: 12px 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 16px;
+    }
+
+    .note strong {
+      color: var(--text-primary);
+    }
+  </style>
+</head>
+<body>
+  <div class="mock-container">
+
+    <h1 style="margin-bottom: 8px;">Time Entry Enhancements - UI Mocks</h1>
+    <p style="color: var(--text-secondary); margin-bottom: 40px;">Simplified protection model: Unlocked → Pinned/Locked → Invoiced</p>
+
+    <!-- MOCK 1: Week View with Lock -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 1: Week View with Time Entries</h2>
+        <span class="mock-label">Main View</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="week-header">
+          <div class="week-nav">
+            <button class="btn btn-secondary btn-sm">←</button>
+            <span class="week-title">Jan 6 – 12, 2025</span>
+            <button class="btn btn-secondary btn-sm">→</button>
+            <button class="btn btn-ghost btn-sm">Today</button>
+          </div>
+          <div class="week-actions">
+            <button class="lock-toggle">🔓 Lock week</button>
+          </div>
+        </div>
+
+        <p style="color: var(--text-muted); margin-bottom: 16px; font-style: italic; font-size: 13px;">[Calendar grid here]</p>
+
+        <div class="legend">
+          <div class="legend-item">
+            <span class="legend-icon">📌</span>
+            <span>Pinned (edited)</span>
+          </div>
+          <div class="legend-item">
+            <span class="legend-icon">🔒</span>
+            <span>Locked</span>
+          </div>
+          <div class="legend-item">
+            <span style="position: relative; display: inline-block;">🔒<span style="position: absolute; top: 0; right: 0; width: 5px; height: 5px; background: #fd7e14; border-radius: 50%;"></span></span>
+            <span>Stale</span>
+          </div>
+          <div class="legend-item">
+            <span style="font-size: 10px; background: #28a745; color: white; padding: 1px 4px; border-radius: 2px;">INV</span>
+            <span>Invoiced</span>
+          </div>
+        </div>
+
+        <div class="time-entry-list">
+          <!-- Unlocked entry -->
+          <div class="time-entry-item">
+            <div class="time-entry-date">Mon, Jan 6</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-acme);"></span>
+                <span class="time-entry-title">Weekly Sync +2 more</span>
+              </div>
+              <div class="time-entry-description">Weekly Sync, Code Review, Design Discussion</div>
+            </div>
+            <div class="time-entry-hours">4.0h</div>
+            <div class="time-entry-status">
+              <!-- No icon = unlocked -->
+            </div>
+          </div>
+
+          <!-- Pinned entry (user edited) -->
+          <div class="time-entry-item">
+            <div class="time-entry-date">Mon, Jan 6</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-internal);"></span>
+                <span class="time-entry-title">Team meetings</span>
+              </div>
+              <div class="time-entry-description">Standup, 1:1 with Sarah</div>
+            </div>
+            <div class="time-entry-hours">1.0h</div>
+            <div class="time-entry-status">
+              <span class="status-icon pin" title="Pinned (you edited this)">📌</span>
+            </div>
+          </div>
+
+          <!-- Locked entry -->
+          <div class="time-entry-item">
+            <div class="time-entry-date">Tue, Jan 7</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-acme);"></span>
+                <span class="time-entry-title">Sprint Planning</span>
+              </div>
+              <div class="time-entry-description">Sprint Planning, Backlog Grooming</div>
+            </div>
+            <div class="time-entry-hours">3.5h</div>
+            <div class="time-entry-status">
+              <span class="status-icon lock" title="Locked">🔒</span>
+            </div>
+          </div>
+
+          <!-- Locked + Stale entry -->
+          <div class="time-entry-item">
+            <div class="time-entry-date">Tue, Jan 7</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-internal);"></span>
+                <span class="time-entry-title">Internal work</span>
+              </div>
+              <div class="time-entry-description">Admin, Email</div>
+            </div>
+            <div class="time-entry-hours">1.5h</div>
+            <div class="time-entry-status">
+              <div class="tooltip-demo">
+                <span class="status-icon lock stale" title="Stale - click to refresh">🔒</span>
+                <div class="tooltip">1.5h → 2.0h</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cross-project overlap warning -->
+          <div class="overlap-row">
+            <span>⚠️</span>
+            <span><strong>25m overlap</strong> between Acme Corp and Internal on Tue, Jan 7</span>
+            <span style="margin-left: auto;">
+              <button class="btn btn-ghost btn-sm">Ignore</button>
+              <button class="btn btn-secondary btn-sm">Fix</button>
+            </span>
+          </div>
+
+          <!-- Invoiced entry -->
+          <div class="time-entry-item invoiced">
+            <div class="invoiced-ribbon">INVOICED</div>
+            <div class="time-entry-date">Wed, Jan 8</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-training);"></span>
+                <span class="time-entry-title">Go Workshop</span>
+              </div>
+              <div class="time-entry-description">Go Workshop (full day)</div>
+            </div>
+            <div class="time-entry-hours">8.0h</div>
+            <div class="time-entry-status"></div>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Interaction:</strong> Unlocked entries update automatically. Protected entries (📌🔒) stay frozen but show an orange dot when stale. Click to refresh.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 2: Week View (Locked) -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 2: Week View (Locked State)</h2>
+        <span class="mock-label">After clicking "Lock Week"</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="week-header">
+          <div class="week-nav">
+            <button class="btn btn-secondary btn-sm">←</button>
+            <span class="week-title">Jan 6 – 12, 2025</span>
+            <button class="btn btn-secondary btn-sm">→</button>
+            <button class="btn btn-ghost btn-sm">Today</button>
+          </div>
+          <div class="week-actions">
+            <button class="lock-toggle locked">🔒 Unlock week</button>
+          </div>
+        </div>
+
+        <p style="color: var(--text-muted); margin-bottom: 16px; font-style: italic; font-size: 13px;">[Calendar grid here]</p>
+
+        <div class="time-entry-list">
+          <div class="time-entry-item">
+            <div class="time-entry-date">Mon, Jan 6</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-acme);"></span>
+                <span class="time-entry-title">Weekly Sync +2 more</span>
+              </div>
+              <div class="time-entry-description">Weekly Sync, Code Review, Design Discussion</div>
+            </div>
+            <div class="time-entry-hours">4.0h</div>
+            <div class="time-entry-status">
+              <span class="status-icon lock">🔒</span>
+            </div>
+          </div>
+
+          <div class="time-entry-item">
+            <div class="time-entry-date">Mon, Jan 6</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-internal);"></span>
+                <span class="time-entry-title">Team meetings</span>
+              </div>
+              <div class="time-entry-description">Standup, 1:1 with Sarah</div>
+            </div>
+            <div class="time-entry-hours">1.0h</div>
+            <div class="time-entry-status">
+              <span class="status-icon lock">🔒</span>
+            </div>
+          </div>
+
+          <div class="time-entry-item">
+            <div class="time-entry-date">Tue, Jan 7</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-acme);"></span>
+                <span class="time-entry-title">Sprint Planning</span>
+              </div>
+              <div class="time-entry-description">Sprint Planning, Backlog Grooming</div>
+            </div>
+            <div class="time-entry-hours">3.5h</div>
+            <div class="time-entry-status">
+              <span class="status-icon lock">🔒</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Locked week:</strong> All entries show the lock icon. Events are also locked, so classification rules won't change them. Ready for invoicing.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 3: Time Entry Detail (Stale) -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 3: Time Entry Detail (Stale)</h2>
+        <span class="mock-label">Expanded view with refresh option</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="time-entry-detail">
+          <div class="detail-header">
+            <div class="detail-main">
+              <div class="detail-hours">1.5h</div>
+              <div class="detail-info">
+                <h3><span class="project-dot" style="background: var(--project-internal); display: inline-block; margin-right: 6px;"></span>Internal</h3>
+                <p>Tuesday, January 7, 2025</p>
+              </div>
+            </div>
+            <div class="detail-badges">
+              <span class="badge locked">🔒 Locked</span>
+              <span class="badge stale">⚠️ Stale</span>
+            </div>
+          </div>
+
+          <div class="detail-body">
+
+            <div class="stale-alert">
+              <div class="stale-alert-content">
+                <span class="stale-alert-icon">⚠️</span>
+                <div class="stale-alert-text">
+                  <strong>Computed value has changed</strong>
+                  <span class="stale-alert-diff">Current: 1.5h → Computed: 2.0h (+30m)</span>
+                </div>
+              </div>
+              <div class="stale-alert-actions">
+                <button class="btn btn-primary btn-sm">↻ Refresh</button>
+                <button class="btn btn-ghost btn-sm">Unlock</button>
+              </div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-section-title">Title</div>
+              <div style="padding: 8px 12px; background: var(--bg-secondary); border-radius: 6px;">
+                Internal work
+              </div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-section-title">Description</div>
+              <div style="padding: 8px 12px; background: var(--bg-secondary); border-radius: 6px;">
+                Admin, Email
+              </div>
+              <div style="font-size: 12px; color: var(--text-secondary); margin-top: 6px;">
+                Computed: "Admin, Email, Slack catchup"
+              </div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-section-title">Contributing Events (3)</div>
+              <div class="event-item">
+                <div>
+                  <div class="event-title">Admin</div>
+                  <div class="event-time">9:00am – 9:45am</div>
+                </div>
+                <span class="event-duration">45m</span>
+              </div>
+              <div class="event-item">
+                <div>
+                  <div class="event-title">Email</div>
+                  <div class="event-time">9:30am – 10:15am</div>
+                </div>
+                <span class="event-duration">45m</span>
+              </div>
+              <div class="event-item" style="border: 1px dashed var(--accent-blue);">
+                <div>
+                  <div class="event-title">Slack catchup <span style="color: var(--accent-blue); font-size: 11px;">(new)</span></div>
+                  <div class="event-time">10:00am – 10:30am</div>
+                </div>
+                <span class="event-duration">30m</span>
+              </div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-section-title">Calculation</div>
+              <div class="calc-breakdown">
+                <div class="calc-row">
+                  <span class="calc-label">Admin</span>
+                  <span class="calc-value">45m</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Email</span>
+                  <span class="calc-value">45m</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Slack catchup (new)</span>
+                  <span class="calc-value">30m</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Overlap (Admin ∩ Email)</span>
+                  <span class="calc-value">-15m</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Overlap (Email ∩ Slack)</span>
+                  <span class="calc-value">-15m</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Union total</span>
+                  <span class="calc-value">90m</span>
+                </div>
+                <div class="calc-row">
+                  <span class="calc-label">Rounding</span>
+                  <span class="calc-value">+0m</span>
+                </div>
+                <div class="calc-row total">
+                  <span class="calc-label">Computed hours</span>
+                  <span class="calc-value">2.0h</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Refresh action:</strong> Click "Refresh" to accept the computed value (2.0h). Entry stays locked. Click "Unlock" to return to auto-update mode.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 4: Classification Flash Feedback -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 4: Classification Flash Feedback</h2>
+        <span class="mock-label">Real-time update</span>
+      </div>
+      <div class="mock-body">
+
+        <p style="color: var(--text-secondary); margin-bottom: 16px;">
+          When user classifies an event, the affected time entry flashes briefly. No modal, just visual feedback.
+        </p>
+
+        <div class="time-entry-list">
+          <div class="time-entry-item">
+            <div class="time-entry-date">Mon, Jan 6</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-acme);"></span>
+                <span class="time-entry-title">Weekly Sync +2 more</span>
+              </div>
+              <div class="time-entry-description">Weekly Sync, Code Review, Design Discussion</div>
+            </div>
+            <div class="time-entry-hours">4.0h</div>
+            <div class="time-entry-status"></div>
+          </div>
+
+          <div class="time-entry-item flash" style="animation: flash-update 1.5s ease-out infinite;">
+            <div class="time-entry-date">Mon, Jan 6</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-internal);"></span>
+                <span class="time-entry-title">Team meetings <span style="color: var(--accent-blue);">+Planning</span></span>
+              </div>
+              <div class="time-entry-description">Standup, 1:1 with Sarah, Planning</div>
+            </div>
+            <div class="time-entry-hours" style="color: var(--accent-blue);">1.5h <span style="font-size: 11px;">↑</span></div>
+            <div class="time-entry-status"></div>
+          </div>
+
+          <div class="time-entry-item">
+            <div class="time-entry-date">Tue, Jan 7</div>
+            <div class="time-entry-content">
+              <div class="time-entry-project">
+                <span class="project-dot" style="background: var(--project-acme);"></span>
+                <span class="time-entry-title">Sprint Planning</span>
+              </div>
+              <div class="time-entry-description">Sprint Planning, Backlog Grooming</div>
+            </div>
+            <div class="time-entry-hours">3.5h</div>
+            <div class="time-entry-status"></div>
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Flash animation:</strong> The "Internal" entry flashed because user just classified an event to Internal. Hours changed 1.0h → 1.5h and "Planning" was added.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 5: Invoiced Entry (Informational Stale) -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Mock 5: Invoiced Entry (Immutable)</h2>
+        <span class="mock-label">Cannot change, informational only</span>
+      </div>
+      <div class="mock-body">
+
+        <div class="time-entry-detail" style="position: relative; overflow: hidden;">
+          <div class="invoiced-ribbon">INVOICED</div>
+          <div class="detail-header">
+            <div class="detail-main">
+              <div class="detail-hours">8.0h</div>
+              <div class="detail-info">
+                <h3><span class="project-dot" style="background: var(--project-training); display: inline-block; margin-right: 6px;"></span>Training</h3>
+                <p>Wednesday, January 8, 2025</p>
+              </div>
+            </div>
+            <div class="detail-badges">
+              <span class="badge stale">Stale</span>
+            </div>
+          </div>
+
+          <div class="detail-body">
+
+            <div class="stale-alert" style="background: #f3f4f6; border-color: #d1d5db;">
+              <div class="stale-alert-content">
+                <span class="stale-alert-icon" style="opacity: 0.5;">ℹ️</span>
+                <div class="stale-alert-text">
+                  <strong>Source event changed</strong>
+                  <span class="stale-alert-diff">Computed would be 7.5h, but this entry is invoiced and cannot be changed.</span>
+                </div>
+              </div>
+              <div class="stale-alert-actions">
+                <span style="font-size: 12px; color: var(--text-secondary);">Invoice #2025-003</span>
+              </div>
+            </div>
+
+            <div class="detail-section">
+              <div class="detail-section-title">Contributing Events</div>
+              <div class="event-item">
+                <div>
+                  <div class="event-title">Go Workshop</div>
+                  <div class="event-time">9:00am – 5:00pm <span style="color: var(--accent-orange);">(was 5:30pm)</span></div>
+                </div>
+                <span class="event-duration">8h → 7.5h</span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="note">
+          <strong>Invoiced = immutable:</strong> The event was shortened in the calendar, but the invoiced entry cannot change. Shown for awareness only.
+        </div>
+
+      </div>
+    </div>
+
+    <!-- MOCK 6: Summary of States -->
+    <div class="mock-section">
+      <div class="mock-header">
+        <h2>Summary: Protection States</h2>
+        <span class="mock-label">Reference</span>
+      </div>
+      <div class="mock-body">
+
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead>
+            <tr style="background: var(--bg-secondary);">
+              <th style="padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color);">State</th>
+              <th style="padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color);">Indicator</th>
+              <th style="padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color);">How it happens</th>
+              <th style="padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color);">Auto-update?</th>
+              <th style="padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color);">If stale</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);"><strong>Unlocked</strong></td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">(none)</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Default state</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">✓ Yes</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">N/A (always current)</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);"><strong>Pinned</strong></td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">📌</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">User edits hours/title/description</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">✗ No</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Orange dot on icon, click to refresh</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);"><strong>Locked</strong></td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">🔒</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">User clicks Lock day/week</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">✗ No</td>
+              <td style="padding: 10px; border-bottom: 1px solid var(--border-color);">Orange dot on icon, click to refresh</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px;"><strong>Invoiced</strong></td>
+              <td style="padding: 10px;"><span style="font-size: 9px; background: #28a745; color: white; padding: 1px 4px; border-radius: 2px;">INVOICED</span> ribbon</td>
+              <td style="padding: 10px;">Added to invoice</td>
+              <td style="padding: 10px;">✗ No</td>
+              <td style="padding: 10px;">Informational only, cannot change</td>
+            </tr>
+          </tbody>
+        </table>
+
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

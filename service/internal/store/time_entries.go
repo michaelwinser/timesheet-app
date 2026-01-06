@@ -22,14 +22,25 @@ type TimeEntry struct {
 	ProjectID    uuid.UUID
 	Date         time.Time
 	Hours        float64
+	Title        *string
 	Description  *string
 	Source       string
 	InvoiceID    *uuid.UUID
 	HasUserEdits bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// Protection model fields
+	IsPinned bool
+	IsLocked bool
+	IsStale  bool
+	// Computed fields (from analyzer)
+	ComputedHours       *float64
+	ComputedTitle       *string
+	ComputedDescription *string
+	CalculationDetails  []byte // JSONB stored as bytes
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 	// Joined data
-	Project *Project
+	Project            *Project
+	ContributingEvents []uuid.UUID // From junction table
 }
 
 // TimeEntryStore provides PostgreSQL-backed time entry storage
@@ -81,12 +92,16 @@ func (s *TimeEntryStore) Create(ctx context.Context, userID, projectID uuid.UUID
 func (s *TimeEntryStore) GetByID(ctx context.Context, userID, entryID uuid.UUID) (*TimeEntry, error) {
 	entry := &TimeEntry{}
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, project_id, date, hours, description, source, invoice_id, has_user_edits, created_at, updated_at
+		SELECT id, user_id, project_id, date, hours, title, description, source, invoice_id, has_user_edits,
+		       is_pinned, is_locked, is_stale, computed_hours, computed_title, computed_description,
+		       calculation_details, created_at, updated_at
 		FROM time_entries WHERE id = $1 AND user_id = $2
 	`, entryID, userID).Scan(
 		&entry.ID, &entry.UserID, &entry.ProjectID, &entry.Date, &entry.Hours,
-		&entry.Description, &entry.Source, &entry.InvoiceID, &entry.HasUserEdits,
-		&entry.CreatedAt, &entry.UpdatedAt,
+		&entry.Title, &entry.Description, &entry.Source, &entry.InvoiceID, &entry.HasUserEdits,
+		&entry.IsPinned, &entry.IsLocked, &entry.IsStale,
+		&entry.ComputedHours, &entry.ComputedTitle, &entry.ComputedDescription,
+		&entry.CalculationDetails, &entry.CreatedAt, &entry.UpdatedAt,
 	)
 
 	if err != nil {
@@ -102,12 +117,16 @@ func (s *TimeEntryStore) GetByID(ctx context.Context, userID, entryID uuid.UUID)
 func (s *TimeEntryStore) GetByProjectAndDate(ctx context.Context, userID, projectID uuid.UUID, date time.Time) (*TimeEntry, error) {
 	entry := &TimeEntry{}
 	err := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, project_id, date, hours, description, source, invoice_id, has_user_edits, created_at, updated_at
+		SELECT id, user_id, project_id, date, hours, title, description, source, invoice_id, has_user_edits,
+		       is_pinned, is_locked, is_stale, computed_hours, computed_title, computed_description,
+		       calculation_details, created_at, updated_at
 		FROM time_entries WHERE user_id = $1 AND project_id = $2 AND date = $3
 	`, userID, projectID, date).Scan(
 		&entry.ID, &entry.UserID, &entry.ProjectID, &entry.Date, &entry.Hours,
-		&entry.Description, &entry.Source, &entry.InvoiceID, &entry.HasUserEdits,
-		&entry.CreatedAt, &entry.UpdatedAt,
+		&entry.Title, &entry.Description, &entry.Source, &entry.InvoiceID, &entry.HasUserEdits,
+		&entry.IsPinned, &entry.IsLocked, &entry.IsStale,
+		&entry.ComputedHours, &entry.ComputedTitle, &entry.ComputedDescription,
+		&entry.CalculationDetails, &entry.CreatedAt, &entry.UpdatedAt,
 	)
 
 	if err != nil {
@@ -122,8 +141,11 @@ func (s *TimeEntryStore) GetByProjectAndDate(ctx context.Context, userID, projec
 // List retrieves time entries for a user with optional filters
 func (s *TimeEntryStore) List(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, projectID *uuid.UUID) ([]*TimeEntry, error) {
 	query := `
-		SELECT te.id, te.user_id, te.project_id, te.date, te.hours, te.description,
-		       te.source, te.invoice_id, te.has_user_edits, te.created_at, te.updated_at,
+		SELECT te.id, te.user_id, te.project_id, te.date, te.hours, te.title, te.description,
+		       te.source, te.invoice_id, te.has_user_edits,
+		       te.is_pinned, te.is_locked, te.is_stale,
+		       te.computed_hours, te.computed_title, te.computed_description, te.calculation_details,
+		       te.created_at, te.updated_at,
 		       p.id, p.user_id, p.name, p.short_code, p.color, p.is_billable, p.is_archived,
 		       p.is_hidden_by_default, p.does_not_accumulate_hours, p.created_at, p.updated_at
 		FROM time_entries te
@@ -160,8 +182,11 @@ func (s *TimeEntryStore) List(ctx context.Context, userID uuid.UUID, startDate, 
 	for rows.Next() {
 		e := &TimeEntry{Project: &Project{}}
 		err := rows.Scan(
-			&e.ID, &e.UserID, &e.ProjectID, &e.Date, &e.Hours, &e.Description,
-			&e.Source, &e.InvoiceID, &e.HasUserEdits, &e.CreatedAt, &e.UpdatedAt,
+			&e.ID, &e.UserID, &e.ProjectID, &e.Date, &e.Hours, &e.Title, &e.Description,
+			&e.Source, &e.InvoiceID, &e.HasUserEdits,
+			&e.IsPinned, &e.IsLocked, &e.IsStale,
+			&e.ComputedHours, &e.ComputedTitle, &e.ComputedDescription, &e.CalculationDetails,
+			&e.CreatedAt, &e.UpdatedAt,
 			&e.Project.ID, &e.Project.UserID, &e.Project.Name, &e.Project.ShortCode,
 			&e.Project.Color, &e.Project.IsBillable, &e.Project.IsArchived,
 			&e.Project.IsHiddenByDefault, &e.Project.DoesNotAccumulateHours,
@@ -277,4 +302,252 @@ func (s *TimeEntryStore) Delete(ctx context.Context, userID, entryID uuid.UUID) 
 	}
 
 	return nil
+}
+
+// --- Contributing Events (Junction Table) ---
+
+// SetContributingEvents replaces the contributing events for a time entry
+func (s *TimeEntryStore) SetContributingEvents(ctx context.Context, entryID uuid.UUID, eventIDs []uuid.UUID) error {
+	// Delete existing
+	_, err := s.pool.Exec(ctx,
+		"DELETE FROM time_entry_events WHERE time_entry_id = $1",
+		entryID,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Insert new
+	for _, eventID := range eventIDs {
+		_, err := s.pool.Exec(ctx,
+			"INSERT INTO time_entry_events (time_entry_id, calendar_event_id) VALUES ($1, $2)",
+			entryID, eventID,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// GetContributingEvents returns the event IDs that contribute to a time entry
+func (s *TimeEntryStore) GetContributingEvents(ctx context.Context, entryID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx,
+		"SELECT calendar_event_id FROM time_entry_events WHERE time_entry_id = $1",
+		entryID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var eventIDs []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		eventIDs = append(eventIDs, id)
+	}
+
+	return eventIDs, rows.Err()
+}
+
+// --- Protection Model ---
+
+// Pin marks a time entry as pinned (user has edited it)
+func (s *TimeEntryStore) Pin(ctx context.Context, userID, entryID uuid.UUID) error {
+	result, err := s.pool.Exec(ctx, `
+		UPDATE time_entries SET is_pinned = true, updated_at = $3
+		WHERE id = $1 AND user_id = $2
+	`, entryID, userID, time.Now().UTC())
+
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return ErrTimeEntryNotFound
+	}
+	return nil
+}
+
+// Unpin removes the pin from a time entry, returning it to auto-update mode
+func (s *TimeEntryStore) Unpin(ctx context.Context, userID, entryID uuid.UUID) error {
+	result, err := s.pool.Exec(ctx, `
+		UPDATE time_entries SET is_pinned = false, is_stale = false, updated_at = $3
+		WHERE id = $1 AND user_id = $2
+	`, entryID, userID, time.Now().UTC())
+
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return ErrTimeEntryNotFound
+	}
+	return nil
+}
+
+// Refresh accepts computed values for a protected time entry (stays protected)
+func (s *TimeEntryStore) Refresh(ctx context.Context, userID, entryID uuid.UUID) error {
+	result, err := s.pool.Exec(ctx, `
+		UPDATE time_entries
+		SET hours = COALESCE(computed_hours, hours),
+		    title = COALESCE(computed_title, title),
+		    description = COALESCE(computed_description, description),
+		    is_stale = false,
+		    updated_at = $3
+		WHERE id = $1 AND user_id = $2
+	`, entryID, userID, time.Now().UTC())
+
+	if err != nil {
+		return err
+	}
+	if result.RowsAffected() == 0 {
+		return ErrTimeEntryNotFound
+	}
+	return nil
+}
+
+// LockDay locks all time entries and classified events for a specific day
+func (s *TimeEntryStore) LockDay(ctx context.Context, userID uuid.UUID, date time.Time) error {
+	now := time.Now().UTC()
+
+	// Lock time entries
+	_, err := s.pool.Exec(ctx, `
+		UPDATE time_entries SET is_locked = true, updated_at = $3
+		WHERE user_id = $1 AND date = $2
+	`, userID, date, now)
+	if err != nil {
+		return err
+	}
+
+	// Lock calendar events for that day (classified events only)
+	nextDay := date.AddDate(0, 0, 1)
+	_, err = s.pool.Exec(ctx, `
+		UPDATE calendar_events SET is_locked = true, updated_at = $4
+		WHERE user_id = $1 AND start_time >= $2 AND start_time < $3
+		AND classification_status != 'pending'
+	`, userID, date, nextDay, now)
+
+	return err
+}
+
+// UnlockDay unlocks all time entries and events for a specific day
+func (s *TimeEntryStore) UnlockDay(ctx context.Context, userID uuid.UUID, date time.Time) error {
+	now := time.Now().UTC()
+
+	// Unlock time entries
+	_, err := s.pool.Exec(ctx, `
+		UPDATE time_entries SET is_locked = false, is_stale = false, updated_at = $3
+		WHERE user_id = $1 AND date = $2
+	`, userID, date, now)
+	if err != nil {
+		return err
+	}
+
+	// Unlock calendar events
+	nextDay := date.AddDate(0, 0, 1)
+	_, err = s.pool.Exec(ctx, `
+		UPDATE calendar_events SET is_locked = false, updated_at = $4
+		WHERE user_id = $1 AND start_time >= $2 AND start_time < $3
+	`, userID, date, nextDay, now)
+
+	return err
+}
+
+// --- Computed Fields Update ---
+
+// UpdateComputed updates the computed fields for a time entry.
+// If the entry is unlocked, it also updates the current values.
+// If protected (pinned/locked), it only updates computed fields and marks as stale if different.
+func (s *TimeEntryStore) UpdateComputed(ctx context.Context, userID uuid.UUID, entryID uuid.UUID, hours float64, title, description string, details []byte, eventIDs []uuid.UUID) error {
+	now := time.Now().UTC()
+
+	// Update computed fields and conditionally update current values
+	_, err := s.pool.Exec(ctx, `
+		UPDATE time_entries
+		SET computed_hours = $3,
+		    computed_title = $4,
+		    computed_description = $5,
+		    calculation_details = $6,
+		    -- Only update current values if not protected
+		    hours = CASE WHEN is_pinned OR is_locked OR invoice_id IS NOT NULL THEN hours ELSE $3 END,
+		    title = CASE WHEN is_pinned OR is_locked OR invoice_id IS NOT NULL THEN title ELSE $4 END,
+		    description = CASE WHEN is_pinned OR is_locked OR invoice_id IS NOT NULL THEN description ELSE $5 END,
+		    -- Mark as stale if protected and values differ
+		    is_stale = CASE
+		        WHEN invoice_id IS NOT NULL THEN (hours != $3 OR COALESCE(title, '') != $4 OR COALESCE(description, '') != $5)
+		        WHEN is_pinned OR is_locked THEN (hours != $3 OR COALESCE(title, '') != $4 OR COALESCE(description, '') != $5)
+		        ELSE false
+		    END,
+		    updated_at = $7
+		WHERE id = $1 AND user_id = $2
+	`, entryID, userID, hours, title, description, details, now)
+	if err != nil {
+		return err
+	}
+
+	// Update contributing events
+	return s.SetContributingEvents(ctx, entryID, eventIDs)
+}
+
+// UpsertFromComputed creates or updates a time entry from computed values.
+// Used by the analyzer when processing classified events.
+func (s *TimeEntryStore) UpsertFromComputed(ctx context.Context, userID, projectID uuid.UUID, date time.Time, hours float64, title, description string, details []byte, eventIDs []uuid.UUID) (*TimeEntry, error) {
+	entryID := uuid.New()
+	now := time.Now().UTC()
+
+	// Use upsert - only update if not protected
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO time_entries (
+			id, user_id, project_id, date, hours, title, description, source,
+			computed_hours, computed_title, computed_description, calculation_details,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, 'calendar', $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (user_id, project_id, date) DO UPDATE SET
+			computed_hours = EXCLUDED.computed_hours,
+			computed_title = EXCLUDED.computed_title,
+			computed_description = EXCLUDED.computed_description,
+			calculation_details = EXCLUDED.calculation_details,
+			-- Only update current values if not protected
+			hours = CASE
+				WHEN time_entries.is_pinned OR time_entries.is_locked OR time_entries.invoice_id IS NOT NULL
+				THEN time_entries.hours
+				ELSE EXCLUDED.hours
+			END,
+			title = CASE
+				WHEN time_entries.is_pinned OR time_entries.is_locked OR time_entries.invoice_id IS NOT NULL
+				THEN time_entries.title
+				ELSE EXCLUDED.title
+			END,
+			description = CASE
+				WHEN time_entries.is_pinned OR time_entries.is_locked OR time_entries.invoice_id IS NOT NULL
+				THEN time_entries.description
+				ELSE EXCLUDED.description
+			END,
+			-- Mark as stale if protected and values differ
+			is_stale = CASE
+				WHEN time_entries.invoice_id IS NOT NULL OR time_entries.is_pinned OR time_entries.is_locked
+				THEN (time_entries.hours != EXCLUDED.hours OR COALESCE(time_entries.title, '') != EXCLUDED.title OR COALESCE(time_entries.description, '') != EXCLUDED.description)
+				ELSE false
+			END,
+			updated_at = EXCLUDED.updated_at
+	`, entryID, userID, projectID, date, hours, title, description, details, now, now)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get the entry (might have been created or updated)
+	entry, err := s.GetByProjectAndDate(ctx, userID, projectID, date)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update contributing events
+	if err := s.SetContributingEvents(ctx, entry.ID, eventIDs); err != nil {
+		return nil, err
+	}
+
+	return entry, nil
 }

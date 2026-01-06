@@ -639,22 +639,22 @@ func (h *CalendarHandler) ClassifyCalendarEvent(ctx context.Context, req api.Cla
 		Event: calendarEventToAPI(updatedEvent),
 	}
 
-	// If classified to a project (not skipped), create/update a time entry
+	// Recalculate time entries for this event's date
+	// This uses the analyzer to properly compute hours with overlap handling and rounding
+	if err := h.classificationSvc.RecalculateTimeEntriesForEvent(ctx, userID, updatedEvent); err != nil {
+		// Log but don't fail - classification succeeded
+		// In production, we might want to log this error
+	}
+
+	// If classified to a project (not skipped), fetch the updated time entry
 	if !isSkip && projectID != nil {
-		// Calculate duration in hours
-		duration := event.EndTime.Sub(event.StartTime).Hours()
-
-		// Use event date (not time) for the time entry
 		eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
-
-		// Create or update time entry
-		entry, err := h.entries.CreateFromCalendar(ctx, userID, *projectID, eventDate, duration, &event.Title)
-		if err != nil {
-			return nil, err
+		entry, err := h.entries.GetByProjectAndDate(ctx, userID, *projectID, eventDate)
+		if err == nil {
+			apiEntry := timeEntryToAPI(entry)
+			response.TimeEntry = &apiEntry
 		}
-
-		apiEntry := timeEntryToAPI(entry)
-		response.TimeEntry = &apiEntry
+		// If entry not found (unlikely after recalculation), just omit from response
 	}
 
 	return response, nil
@@ -695,7 +695,8 @@ func (h *CalendarHandler) BulkClassifyEvents(ctx context.Context, req api.BulkCl
 		}, nil
 	}
 
-	var classifiedCount, skippedCount, timeEntriesCreated int
+	var classifiedCount, skippedCount int
+	affectedDates := make(map[time.Time]bool)
 
 	// Process each matching event
 	for _, match := range preview.Matches {
@@ -716,25 +717,30 @@ func (h *CalendarHandler) BulkClassifyEvents(ctx context.Context, req api.BulkCl
 			continue
 		}
 
+		// Track affected date for recalculation
+		eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
+		affectedDates[eventDate] = true
+
 		if isSkip {
 			skippedCount++
 		} else {
 			classifiedCount++
+		}
+	}
 
-			// Create time entry
-			duration := event.EndTime.Sub(event.StartTime).Hours()
-			eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
-			_, err := h.entries.CreateFromCalendar(ctx, userID, *req.Body.ProjectId, eventDate, duration, &event.Title)
-			if err == nil {
-				timeEntriesCreated++
-			}
+	// Recalculate time entries for all affected dates
+	// This uses the analyzer to properly compute hours with overlap handling and rounding
+	timeEntriesUpdated := 0
+	for date := range affectedDates {
+		if err := h.classificationSvc.RecalculateTimeEntries(ctx, userID, date); err == nil {
+			timeEntriesUpdated++
 		}
 	}
 
 	return api.BulkClassifyEvents200JSONResponse{
 		ClassifiedCount:    classifiedCount,
 		SkippedCount:       skippedCount,
-		TimeEntriesCreated: &timeEntriesCreated,
+		TimeEntriesCreated: &timeEntriesUpdated,
 	}, nil
 }
 

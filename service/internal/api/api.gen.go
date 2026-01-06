@@ -133,6 +133,26 @@ type BulkClassifyResponse struct {
 	TimeEntriesCreated *int `json:"time_entries_created,omitempty"`
 }
 
+// CalculationDetails Audit trail showing how hours were calculated
+type CalculationDetails struct {
+	Events *[]struct {
+		End        *string `json:"end,omitempty"`
+		Id         *string `json:"id,omitempty"`
+		IsAllDay   *bool   `json:"is_all_day,omitempty"`
+		RawMinutes *int    `json:"raw_minutes,omitempty"`
+		Start      *string `json:"start,omitempty"`
+		Title      *string `json:"title,omitempty"`
+	} `json:"events,omitempty"`
+	FinalMinutes    *int    `json:"final_minutes,omitempty"`
+	RoundingApplied *string `json:"rounding_applied,omitempty"`
+	TimeRanges      *[]struct {
+		End     *string `json:"end,omitempty"`
+		Minutes *int    `json:"minutes,omitempty"`
+		Start   *string `json:"start,omitempty"`
+	} `json:"time_ranges,omitempty"`
+	UnionMinutes *int `json:"union_minutes,omitempty"`
+}
+
 // Calendar defines model for Calendar.
 type Calendar struct {
 	// Color Calendar color (hex code)
@@ -433,7 +453,21 @@ type SyncResult struct {
 
 // TimeEntry defines model for TimeEntry.
 type TimeEntry struct {
-	CreatedAt time.Time `json:"created_at"`
+	// CalculationDetails Audit trail showing how hours were calculated
+	CalculationDetails *CalculationDetails `json:"calculation_details,omitempty"`
+
+	// ComputedDescription Generated description from events
+	ComputedDescription *string `json:"computed_description,omitempty"`
+
+	// ComputedHours Latest calculated hours from events
+	ComputedHours *float32 `json:"computed_hours,omitempty"`
+
+	// ComputedTitle Generated title from events
+	ComputedTitle *string `json:"computed_title,omitempty"`
+
+	// ContributingEvents Event IDs that contribute to this entry
+	ContributingEvents *[]openapi_types.UUID `json:"contributing_events,omitempty"`
+	CreatedAt          time.Time             `json:"created_at"`
 
 	// Date The calendar day for this entry
 	Date        openapi_types.Date `json:"date"`
@@ -446,11 +480,23 @@ type TimeEntry struct {
 
 	// InvoiceId If invoiced, the invoice ID
 	InvoiceId *openapi_types.UUID `json:"invoice_id"`
-	Project   *Project            `json:"project,omitempty"`
-	ProjectId openapi_types.UUID  `json:"project_id"`
+
+	// IsLocked Entry is locked (via Lock Day/Week)
+	IsLocked *bool `json:"is_locked,omitempty"`
+
+	// IsPinned Entry is pinned (user has edited it)
+	IsPinned *bool `json:"is_pinned,omitempty"`
+
+	// IsStale Computed values differ from current values
+	IsStale   *bool              `json:"is_stale,omitempty"`
+	Project   *Project           `json:"project,omitempty"`
+	ProjectId openapi_types.UUID `json:"project_id"`
 
 	// Source How this entry was created
-	Source    TimeEntrySource    `json:"source"`
+	Source TimeEntrySource `json:"source"`
+
+	// Title Short title (generated from events or user-provided)
+	Title     *string            `json:"title,omitempty"`
 	UpdatedAt *time.Time         `json:"updated_at,omitempty"`
 	UserId    openapi_types.UUID `json:"user_id"`
 }

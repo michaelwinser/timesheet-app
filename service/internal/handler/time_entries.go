@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -200,12 +201,38 @@ func timeEntryToAPI(e *store.TimeEntry) api.TimeEntry {
 		ProjectId:    e.ProjectID,
 		Date:         openapi_types.Date{Time: e.Date},
 		Hours:        float32(e.Hours),
+		Title:        e.Title,
 		Source:       api.TimeEntrySource(e.Source),
 		CreatedAt:    e.CreatedAt,
 		Description:  e.Description,
 		InvoiceId:    e.InvoiceID,
 		HasUserEdits: &e.HasUserEdits,
 		UpdatedAt:    &e.UpdatedAt,
+		// Protection model fields
+		IsPinned: &e.IsPinned,
+		IsLocked: &e.IsLocked,
+		IsStale:  &e.IsStale,
+	}
+
+	// Computed fields
+	if e.ComputedHours != nil {
+		hours := float32(*e.ComputedHours)
+		entry.ComputedHours = &hours
+	}
+	entry.ComputedTitle = e.ComputedTitle
+	entry.ComputedDescription = e.ComputedDescription
+
+	// Calculation details (stored as JSON bytes)
+	if len(e.CalculationDetails) > 0 {
+		var details api.CalculationDetails
+		if err := json.Unmarshal(e.CalculationDetails, &details); err == nil {
+			entry.CalculationDetails = &details
+		}
+	}
+
+	// Contributing events
+	if len(e.ContributingEvents) > 0 {
+		entry.ContributingEvents = &e.ContributingEvents
 	}
 
 	if e.Project != nil {
