@@ -173,17 +173,53 @@
 		};
 	}
 
-	// Get background color based on classification status
-	function getStatusBackground(status: string, needsReview: boolean = false): string {
-		if (status === 'classified' && needsReview) return 'bg-amber-50 dark:bg-amber-900/30';
+	// Get styling classes based on classification status (Google Calendar inspired)
+	function getStatusClasses(status: string, needsReview: boolean = false): string {
+		if (status === 'classified' && needsReview) {
+			// Needs verification: outlined style (border/text colored by project, handled via inline style)
+			return 'bg-white dark:bg-zinc-900 border-2 border-solid';
+		}
 		switch (status) {
 			case 'classified':
-				return 'bg-green-50 dark:bg-green-900/30';
+				// Confirmed: solid project color background (handled via inline style)
+				return 'border border-solid';
 			case 'skipped':
-				return 'bg-gray-100 dark:bg-gray-800';
+				return 'bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700';
 			default:
-				return 'bg-white dark:bg-gray-800';
+				// Pending: white/black with border
+				return 'bg-white dark:bg-zinc-900 border-2 border-solid border-black/30 dark:border-white/50';
 		}
+	}
+
+	// Get inline style for status-dependent coloring
+	function getStatusStyle(status: string, needsReview: boolean, projectColor: string | null): string {
+		if (status === 'classified' && !needsReview && projectColor) {
+			// Confirmed: solid project color background
+			return `background-color: ${projectColor}; border-color: ${projectColor};`;
+		}
+		if (status === 'classified' && needsReview && projectColor) {
+			// Needs verification: outlined style with project color border
+			return `border: 2px solid ${projectColor};`;
+		}
+		return '';
+	}
+
+	// Determine if text should be light (for dark backgrounds)
+	function shouldUseLightText(status: string, needsReview: boolean, projectColor: string | null): boolean {
+		if (status === 'classified' && !needsReview && projectColor) {
+			return isColorDark(projectColor);
+		}
+		return false;
+	}
+
+	// Check if a color is dark (needs light text)
+	function isColorDark(hexColor: string): boolean {
+		const hex = hexColor.replace('#', '');
+		const r = parseInt(hex.substr(0, 2), 16);
+		const g = parseInt(hex.substr(2, 2), 16);
+		const b = parseInt(hex.substr(4, 2), 16);
+		const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+		return luminance < 0.5;
 	}
 
 	// Format tooltip with confidence score
@@ -206,43 +242,52 @@
 		<div class="flex items-center gap-1 flex-wrap">
 			<span class="text-xs text-gray-400 dark:text-gray-500 w-12 text-right pr-2 flex-shrink-0">All day</span>
 			{#each allDayEvents as event (event.id)}
-				{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
 				{@const isPending = event.classification_status === 'pending'}
 				{@const isClassified = event.classification_status === 'classified'}
 				{@const isSkipped = event.classification_status === 'skipped'}
 				{@const needsReview = event.needs_review === true}
+				{@const projectColor = event.project?.color || null}
+				{@const statusClasses = getStatusClasses(event.classification_status, needsReview)}
+				{@const statusStyle = getStatusStyle(event.classification_status, needsReview, projectColor)}
+				{@const useLightText = shouldUseLightText(event.classification_status, needsReview, projectColor)}
+				{@const needsVerifyColor = isClassified && needsReview && projectColor ? projectColor : null}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {getStatusBackground(event.classification_status, needsReview)}"
-					style="border-left: 3px solid {calendarColor};"
+					class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"
+					style="{statusStyle}"
 					onmouseenter={(e) => onhover?.(event, e.currentTarget as HTMLElement)}
 					onmouseleave={() => onhover?.(null, null)}
 				>
-					<span class="truncate max-w-[120px] {isSkipped ? 'line-through text-gray-400' : ''}" title={event.title}>{event.title}</span>
-					{#if isClassified && event.project}
+					<span
+						class="truncate max-w-[120px] {isSkipped ? 'line-through text-gray-400' : useLightText ? 'text-white' : 'text-gray-900 dark:text-gray-100'}"
+						style={needsVerifyColor ? `color: ${needsVerifyColor}` : ''}
+						title={event.title}
+					>{event.title}</span>
+					{#if isClassified && !needsReview && event.project}
 						<span
-							class="w-2.5 h-2.5 rounded-full flex-shrink-0"
+							class="w-2.5 h-2.5 rounded-full flex-shrink-0 {useLightText ? 'border border-white/50' : ''}"
 							style="background-color: {event.project.color}"
 							title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
 						></span>
 					{:else if isSkipped}
-						<span class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
+						<span class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 dark:border-gray-500 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
 					{:else if isPending}
-						<!-- Quick classify buttons for pending all-day events -->
+						<!-- Quick classify buttons for pending all-day events with best-guess highlight -->
 						<div class="flex items-center gap-0.5 ml-1">
-							{#each activeProjects.slice(0, 3) as project}
+							{#each activeProjects.slice(0, 3) as project, i}
+								{@const isBestGuess = event.suggested_project_id === project.id || (!event.suggested_project_id && i === 0)}
 								<button
 									type="button"
-									class="w-2.5 h-2.5 rounded-full hover:ring-1 hover:ring-offset-1 ring-gray-400 transition-shadow"
+									class="w-2.5 h-2.5 rounded-full transition-shadow {isBestGuess ? 'ring-1 ring-offset-1 ring-offset-white dark:ring-offset-zinc-900 ring-black/40 dark:ring-white/60' : 'hover:ring-1 hover:ring-offset-1 ring-gray-400'}"
 									style="background-color: {project.color}"
-									title={project.name}
+									title="{project.name}{isBestGuess ? ' (suggested)' : ''}"
 									onclick={(e) => { e.stopPropagation(); onclassify?.(event.id, project.id); }}
 								></button>
 							{/each}
 						</div>
 						<button
 							type="button"
-							class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 flex items-center justify-center text-[5px] ml-1"
+							class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 dark:border-gray-500 text-gray-400 hover:border-gray-600 dark:hover:border-gray-300 flex items-center justify-center text-[5px] ml-1"
 							title="Skip - did not attend"
 							onclick={(e) => { e.stopPropagation(); onskip?.(event.id); }}
 						>✕</button>
@@ -289,30 +334,37 @@
 			{@const isClassified = event.classification_status === 'classified'}
 			{@const isSkipped = event.classification_status === 'skipped'}
 			{@const needsReview = event.needs_review === true}
-			{@const calendarColor = isSkipped ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
+			{@const projectColor = event.project?.color || null}
+			{@const statusClasses = getStatusClasses(event.classification_status, needsReview)}
+			{@const statusStyle = getStatusStyle(event.classification_status, needsReview, projectColor)}
+			{@const useLightText = shouldUseLightText(event.classification_status, needsReview, projectColor)}
+			{@const needsVerifyColor = isClassified && needsReview && projectColor ? projectColor : null}
 			{@const usePopup = !!onhover}
 			{@const eventHeight = parseFloat(style.height)}
 
 			<div
-				class="absolute rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs {getStatusBackground(event.classification_status, needsReview)} hover:shadow-md transition-shadow cursor-pointer"
+				class="absolute rounded-md overflow-hidden text-xs {statusClasses} hover:shadow-md transition-shadow cursor-pointer"
 				style="
 					top: {style.top};
 					height: {style.height};
 					left: {posStyle.left};
 					width: calc({posStyle.width} - 4px);
 					margin-left: 2px;
-					border-left: 3px solid {calendarColor};
+					{statusStyle}
 				"
 				onmouseenter={(e) => onhover?.(event, e.currentTarget as HTMLElement)}
 				onmouseleave={() => onhover?.(null, null)}
 			>
 				<div class="p-1.5 h-full flex flex-col">
-					<!-- Title row with project dot for classified -->
+					<!-- Title row with project dot for confirmed -->
 					<div class="flex items-start justify-between gap-1 min-w-0">
-						<span class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : 'text-gray-900 dark:text-gray-100'}">{event.title}</span>
-						{#if isClassified && event.project}
+						<span
+							class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : useLightText ? 'text-white' : 'text-gray-900 dark:text-gray-100'}"
+							style={needsVerifyColor ? `color: ${needsVerifyColor}` : ''}
+						>{event.title}</span>
+						{#if isClassified && !needsReview && event.project}
 							<span
-								class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5"
+								class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 {useLightText ? 'border border-white/50' : ''}"
 								style="background-color: {event.project.color}"
 								title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
 							></span>
@@ -325,19 +377,20 @@
 						{#if isPending && eventHeight >= 40}
 							<div class="mt-auto pt-1 flex items-center justify-between">
 								<div class="flex items-center gap-0.5">
-									{#each activeProjects.slice(0, 4) as project}
+									{#each activeProjects.slice(0, 4) as project, i}
+										{@const isBestGuess = event.suggested_project_id === project.id || (!event.suggested_project_id && i === 0)}
 										<button
 											type="button"
-											class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+											class="w-3.5 h-3.5 rounded-full transition-all {isBestGuess ? 'ring-2 ring-offset-1 ring-offset-white dark:ring-offset-zinc-900 ring-black/40 dark:ring-white/60' : 'hover:ring-2 hover:ring-offset-1 ring-gray-400'}"
 											style="background-color: {project.color}"
-											title={project.name}
+											title="{project.name}{isBestGuess ? ' (suggested)' : ''}"
 											onclick={(e) => { e.stopPropagation(); onclassify?.(event.id, project.id); }}
 										></button>
 									{/each}
 								</div>
 								<button
 									type="button"
-									class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[7px]"
+									class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 dark:border-gray-500 text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:hover:border-gray-300 dark:hover:text-gray-300 flex items-center justify-center text-[7px]"
 									title="Skip - did not attend"
 									onclick={(e) => { e.stopPropagation(); onskip?.(event.id); }}
 								>✕</button>
@@ -345,7 +398,7 @@
 						{:else if isSkipped}
 							<!-- Skip indicator in bottom right -->
 							<div class="mt-auto flex justify-end">
-								<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
+								<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 dark:border-gray-500 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
 							</div>
 						{/if}
 					{:else}
@@ -359,22 +412,23 @@
 						<!-- Classification UI -->
 						<div class="mt-auto pt-1">
 							{#if isPending || reclassifyingId === event.id}
-								<!-- Project color circles for quick classification -->
+								<!-- Project color circles for quick classification with best-guess highlight -->
 								<div class="flex items-center justify-between">
 									<div class="flex flex-wrap gap-1 items-center">
-										{#each activeProjects.slice(0, 4) as project}
+										{#each activeProjects.slice(0, 4) as project, i}
+											{@const isBestGuess = event.suggested_project_id === project.id || (!event.suggested_project_id && i === 0 && isPending)}
 											<button
 												type="button"
-												class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+												class="w-3.5 h-3.5 rounded-full transition-all {isBestGuess ? 'ring-2 ring-offset-1 ring-offset-white dark:ring-offset-zinc-900 ring-black/40 dark:ring-white/60' : 'hover:ring-2 hover:ring-offset-1 ring-gray-400'}"
 												style="background-color: {project.color}"
-												title={project.name}
+												title="{project.name}{isBestGuess ? ' (suggested)' : ''}"
 												onclick={() => { onclassify?.(event.id, project.id); reclassifyingId = null; }}
 											></button>
 										{/each}
 										{#if reclassifyingId === event.id}
 											<button
 												type="button"
-												class="text-[10px] text-gray-400 hover:text-gray-600"
+												class="text-[10px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
 												onclick={() => reclassifyingId = null}
 											>
 												Cancel
@@ -383,7 +437,7 @@
 									</div>
 									<button
 										type="button"
-										class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[7px]"
+										class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 dark:border-gray-500 text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:hover:border-gray-300 dark:hover:text-gray-300 flex items-center justify-center text-[7px]"
 										title="Skip - did not attend"
 										onclick={() => { onskip?.(event.id); reclassifyingId = null; }}
 									>✕</button>
@@ -391,13 +445,13 @@
 							{:else if isSkipped}
 								<!-- Skip indicator in bottom right -->
 								<div class="flex justify-end">
-									<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
+									<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 dark:border-gray-500 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
 								</div>
 							{:else if isClassified && event.project}
 								<!-- Classified - click to reclassify -->
 								<button
 									type="button"
-									class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+									class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow {useLightText ? 'ring-offset-current' : ''}"
 									style="background-color: {event.project.color}"
 									title="{event.project.name} - click to reclassify"
 									onclick={() => reclassifyingId = event.id}

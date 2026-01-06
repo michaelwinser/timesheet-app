@@ -124,6 +124,61 @@ func (s *Service) RecalculateForEvent(ctx context.Context, userID uuid.UUID, eve
 	return s.RecalculateForDate(ctx, userID, eventDate)
 }
 
+// ComputeForProjectAndDate computes time entry values for a specific project and date
+// without persisting them. Used for auto-populating create forms and refresh operations.
+// Returns nil if no classified events exist for the project on that date.
+func (s *Service) ComputeForProjectAndDate(ctx context.Context, userID, projectID uuid.UUID, date time.Time) (*analyzer.ComputedTimeEntry, error) {
+	// Get all classified events for this date and project
+	startOfDay := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+	endOfDay := startOfDay.AddDate(0, 0, 1)
+
+	// Get classified events only
+	classifiedStatus := store.StatusClassified
+	events, err := s.eventStore.List(ctx, userID, &startOfDay, &date, &classifiedStatus, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter to events for this specific project
+	var projectEvents []store.CalendarEvent
+	for _, e := range events {
+		if e.ProjectID != nil && *e.ProjectID == projectID && e.StartTime.Before(endOfDay) {
+			projectEvents = append(projectEvents, *e)
+		}
+	}
+
+	// If no events, return nil
+	if len(projectEvents) == 0 {
+		return nil, nil
+	}
+
+	// Convert to analyzer events
+	analyzerEvents := make([]analyzer.Event, 0, len(projectEvents))
+	for _, e := range projectEvents {
+		isAllDay := isAllDayEvent(e.StartTime, e.EndTime)
+		analyzerEvents = append(analyzerEvents, analyzer.Event{
+			ID:        e.ID,
+			ProjectID: *e.ProjectID,
+			Title:     e.Title,
+			StartTime: e.StartTime,
+			EndTime:   e.EndTime,
+			IsAllDay:  isAllDay,
+		})
+	}
+
+	// Compute time entries using the analyzer
+	computed := analyzer.Compute(startOfDay, analyzerEvents, s.roundingConfig)
+
+	// Find the entry for this project
+	for _, c := range computed {
+		if c.ProjectID == projectID {
+			return &c, nil
+		}
+	}
+
+	return nil, nil
+}
+
 // isAllDayEvent heuristically determines if an event is all-day.
 // All-day events typically span exactly 24 hours starting at midnight.
 func isAllDayEvent(start, end time.Time) bool {

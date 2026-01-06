@@ -409,6 +409,41 @@ func (s *TimeEntryStore) Refresh(ctx context.Context, userID, entryID uuid.UUID)
 	return nil
 }
 
+// ResetToComputed resets a time entry to computed values and unpins it.
+// This is used for the "Reset to Computed" feature.
+// It updates all fields and removes the pinned status, returning the entry to auto-update mode.
+// Preserves is_locked but clears is_stale and is_pinned.
+func (s *TimeEntryStore) ResetToComputed(ctx context.Context, userID, entryID uuid.UUID, hours float64, title, description string, details []byte, eventIDs []uuid.UUID) (*TimeEntry, error) {
+	now := time.Now().UTC()
+
+	// Update to computed values and unpin
+	_, err := s.pool.Exec(ctx, `
+		UPDATE time_entries
+		SET hours = $3,
+		    title = $4,
+		    description = $5,
+		    computed_hours = $3,
+		    computed_title = $4,
+		    computed_description = $5,
+		    calculation_details = $6,
+		    is_pinned = false,
+		    is_stale = false,
+		    updated_at = $7
+		WHERE id = $1 AND user_id = $2
+	`, entryID, userID, hours, title, description, details, now)
+	if err != nil {
+		return nil, err
+	}
+
+	// Update contributing events
+	if err := s.SetContributingEvents(ctx, entryID, eventIDs); err != nil {
+		return nil, err
+	}
+
+	// Fetch and return the updated entry
+	return s.GetByID(ctx, userID, entryID)
+}
+
 // LockDay locks all time entries and classified events for a specific day
 func (s *TimeEntryStore) LockDay(ctx context.Context, userID uuid.UUID, date time.Time) error {
 	now := time.Now().UTC()

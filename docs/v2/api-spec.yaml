@@ -25,6 +25,10 @@ tags:
     description: Calendar integration and event management
   - name: rules
     description: Classification rules for automatic event categorization
+  - name: billing
+    description: Billing periods and rate management
+  - name: invoices
+    description: Invoice generation and management
 
 paths:
   # Auth endpoints
@@ -505,6 +509,53 @@ paths:
                 $ref: '#/components/schemas/Error'
         '409':
           description: Cannot delete (entry is invoiced)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/time-entries/{id}/refresh:
+    post:
+      operationId: refreshTimeEntry
+      tags: [time-entries]
+      summary: Reset time entry to computed values from events
+      description: |
+        Resets the time entry to computed values from contributing calendar events.
+        - Updates hours, title, and description to computed values
+        - Removes is_pinned flag (returns to auto-update mode)
+        - Preserves is_locked flag
+        - Clears is_stale flag
+        - Cannot be used on invoiced entries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Time entry reset to computed values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TimeEntry'
+        '400':
+          description: Invalid request (e.g., entry is invoiced)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Time entry not found
           content:
             application/json:
               schema:
@@ -1210,6 +1261,534 @@ paths:
           content:
             application/json:
               schema:
+                $ref: '#/components/schemas/Error'
+
+  # Billing Period endpoints
+  /api/billing-periods:
+    get:
+      operationId: listBillingPeriods
+      tags: [billing]
+      summary: List billing periods for a project
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: List of billing periods
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BillingPeriod'
+        '400':
+
+          description: Invalid request
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createBillingPeriod
+      tags: [billing]
+      summary: Create a new billing period
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingPeriodCreate'
+      responses:
+        '201':
+          description: Billing period created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPeriod'
+        '400':
+
+          description: Invalid request
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Overlapping billing period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/billing-periods/{id}:
+    put:
+      operationId: updateBillingPeriod
+      tags: [billing]
+      summary: Update a billing period
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BillingPeriodUpdate'
+      responses:
+        '200':
+          description: Billing period updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPeriod'
+        '400':
+
+          description: Invalid request
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '404':
+
+          description: Not found
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Overlapping billing period
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: deleteBillingPeriod
+      tags: [billing]
+      summary: Delete a billing period
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Billing period deleted
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '404':
+
+          description: Not found
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+
+  # Invoice endpoints
+  /api/invoices:
+    get:
+      operationId: listInvoices
+      tags: [invoices]
+      summary: List invoices
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, sent, paid]
+      responses:
+        '200':
+          description: List of invoices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Invoice'
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createInvoice
+      tags: [invoices]
+      summary: Generate a new invoice
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvoiceCreate'
+      responses:
+        '201':
+          description: Invoice created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '400':
+          description: No billable entries found or invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [invoices]
+      summary: Get invoice details
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Invoice details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '404':
+
+          description: Not found
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: deleteInvoice
+      tags: [invoices]
+      summary: Delete a draft invoice
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Invoice deleted
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '404':
+
+          description: Not found
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Cannot delete non-draft invoice
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/{id}/status:
+    put:
+      operationId: updateInvoiceStatus
+      tags: [invoices]
+      summary: Change invoice status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [draft, sent, paid]
+      responses:
+        '200':
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '400':
+
+          description: Invalid request
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '404':
+
+          description: Not found
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/{id}/export/csv:
+    get:
+      operationId: exportInvoiceCSV
+      tags: [invoices]
+      summary: Export invoice as CSV
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '404':
+
+          description: Not found
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+
+  /api/invoices/{id}/export/sheets:
+    post:
+      operationId: exportInvoiceSheets
+      tags: [invoices]
+      summary: Export invoice to Google Sheets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Export successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  spreadsheet_id:
+                    type: string
+                  spreadsheet_url:
+                    type: string
+                  worksheet_id:
+                    type: integer
+        '401':
+
+          description: Not authenticated
+
+          content:
+
+            application/json:
+
+              schema:
+
+                $ref: '#/components/schemas/Error'
+        '404':
+
+          description: Not found
+
+          content:
+
+            application/json:
+
+              schema:
+
                 $ref: '#/components/schemas/Error'
 
 components:
@@ -2079,3 +2658,209 @@ components:
         needs_review:
           type: boolean
           description: True if confidence is between floor and ceiling thresholds
+
+    BillingPeriod:
+      type: object
+      required: [id, user_id, project_id, starts_on, hourly_rate, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        starts_on:
+          type: string
+          format: date
+          description: Start date of the billing period
+        ends_on:
+          type: string
+          format: date
+          nullable: true
+          description: End date of the billing period (null means ongoing)
+        hourly_rate:
+          type: number
+          format: float
+          minimum: 0
+          description: Hourly rate for this period
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BillingPeriodCreate:
+      type: object
+      required: [project_id, starts_on, hourly_rate]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        starts_on:
+          type: string
+          format: date
+          description: Start date in YYYY-MM-DD format
+        ends_on:
+          type: string
+          format: date
+          nullable: true
+          description: End date in YYYY-MM-DD format (omit or null for ongoing)
+        hourly_rate:
+          type: number
+          format: float
+          minimum: 0
+
+    BillingPeriodUpdate:
+      type: object
+      properties:
+        starts_on:
+          type: string
+          format: date
+        ends_on:
+          type: string
+          format: date
+          nullable: true
+          description: Set to empty string to clear (make ongoing)
+        hourly_rate:
+          type: number
+          format: float
+          minimum: 0
+
+    Invoice:
+      type: object
+      required: [id, user_id, project_id, invoice_number, period_start, period_end, invoice_date, status, total_hours, total_amount, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        project:
+          $ref: '#/components/schemas/Project'
+          description: Joined project data
+        billing_period_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Primary billing period for this invoice
+        invoice_number:
+          type: string
+          description: Auto-generated invoice number (PROJECT-YEAR-SEQ)
+          example: ACME-2026-001
+        period_start:
+          type: string
+          format: date
+          description: Start date of invoiced period
+        period_end:
+          type: string
+          format: date
+          description: End date of invoiced period
+        invoice_date:
+          type: string
+          format: date
+          description: Date invoice was created
+        status:
+          type: string
+          enum: [draft, sent, paid]
+          description: Invoice status
+        total_hours:
+          type: number
+          format: float
+          description: Total billable hours
+        total_amount:
+          type: number
+          format: float
+          description: Total invoice amount
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/InvoiceLineItem'
+          description: Invoice line items (included in detail view)
+        spreadsheet_id:
+          type: string
+          nullable: true
+          description: Google Sheets spreadsheet ID
+        spreadsheet_url:
+          type: string
+          nullable: true
+          description: Full URL to Google Sheets
+        worksheet_id:
+          type: integer
+          nullable: true
+          description: Sheet ID within the spreadsheet
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InvoiceLineItem:
+      type: object
+      required: [id, invoice_id, time_entry_id, date, description, hours, hourly_rate, amount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        invoice_id:
+          type: string
+          format: uuid
+        time_entry_id:
+          type: string
+          format: uuid
+        date:
+          type: string
+          format: date
+          description: Date of the work
+        description:
+          type: string
+          description: Work description from time entry
+        hours:
+          type: number
+          format: float
+          description: Hours worked
+        hourly_rate:
+          type: number
+          format: float
+          description: Rate at time of invoice creation (snapshot)
+        amount:
+          type: number
+          format: float
+          description: Calculated amount (hours * hourly_rate)
+
+    InvoiceCreate:
+      type: object
+      required: [project_id, period_start, period_end]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        period_start:
+          type: string
+          format: date
+          description: Start date for unbilled entries (YYYY-MM-DD)
+        period_end:
+          type: string
+          format: date
+          description: End date for unbilled entries (YYYY-MM-DD)
+        invoice_date:
+          type: string
+          format: date
+          description: Invoice date (defaults to today if omitted)
+
+    InvoiceStatusUpdate:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [draft, sent, paid]
+          description: New status for the invoice

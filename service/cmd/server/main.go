@@ -19,6 +19,7 @@ import (
 	"github.com/michaelw/timesheet-app/service/internal/google"
 	"github.com/michaelw/timesheet-app/service/internal/handler"
 	"github.com/michaelw/timesheet-app/service/internal/store"
+	"github.com/michaelw/timesheet-app/service/internal/timeentry"
 )
 
 func main() {
@@ -75,6 +76,15 @@ func main() {
 		log.Printf("Google Calendar integration not configured (missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)")
 	}
 
+	// Initialize Google Sheets service (uses same OAuth credentials as Calendar)
+	var sheetsService *google.SheetsService
+	if googleClientID != "" && googleClientSecret != "" {
+		sheetsService = google.NewSheetsService(googleClientID, googleClientSecret, googleRedirectURL)
+		log.Printf("Google Sheets integration enabled")
+	} else {
+		log.Printf("Google Sheets integration not configured (missing GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET)")
+	}
+
 	// Initialize stores
 	userStore := store.NewUserStore(db.Pool)
 	projectStore := store.NewProjectStore(db.Pool)
@@ -85,18 +95,22 @@ func main() {
 	classificationRuleStore := store.NewClassificationRuleStore(db.Pool)
 	apiKeyStore := store.NewAPIKeyStore(db.Pool)
 	mcpOAuthStore := store.NewMCPOAuthStore(db.Pool)
+	billingPeriodStore := store.NewBillingPeriodStore(db.Pool)
+	invoiceStore := store.NewInvoiceStore(db.Pool, timeEntryStore, billingPeriodStore, projectStore)
 
 	// Initialize services
 	jwtService := handler.NewJWTService(jwtSecret, jwtExpiration)
 	classificationService := classification.NewService(db.Pool, classificationRuleStore, calendarEventStore, timeEntryStore)
+	timeEntryService := timeentry.NewService(calendarEventStore, timeEntryStore)
 
 	// Initialize handlers
 	serverHandler := handler.NewServer(
 		userStore, projectStore, timeEntryStore,
 		calendarConnectionStore, calendarStore, calendarEventStore,
 		classificationRuleStore, apiKeyStore,
-		jwtService, googleService,
-		classificationService,
+		billingPeriodStore, invoiceStore,
+		jwtService, googleService, sheetsService,
+		classificationService, timeEntryService,
 	)
 
 	// Create router

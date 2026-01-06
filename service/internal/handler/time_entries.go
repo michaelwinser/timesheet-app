@@ -8,20 +8,23 @@ import (
 
 	"github.com/michaelw/timesheet-app/service/internal/api"
 	"github.com/michaelw/timesheet-app/service/internal/store"
+	"github.com/michaelw/timesheet-app/service/internal/timeentry"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // TimeEntryHandler implements the time entry endpoints
 type TimeEntryHandler struct {
-	entries  *store.TimeEntryStore
-	projects *store.ProjectStore
+	entries        *store.TimeEntryStore
+	projects       *store.ProjectStore
+	timeEntryService *timeentry.Service
 }
 
 // NewTimeEntryHandler creates a new time entry handler
-func NewTimeEntryHandler(entries *store.TimeEntryStore, projects *store.ProjectStore) *TimeEntryHandler {
+func NewTimeEntryHandler(entries *store.TimeEntryStore, projects *store.ProjectStore, timeEntryService *timeentry.Service) *TimeEntryHandler {
 	return &TimeEntryHandler{
-		entries:  entries,
-		projects: projects,
+		entries:        entries,
+		projects:       projects,
+		timeEntryService: timeEntryService,
 	}
 }
 
@@ -88,7 +91,27 @@ func (h *TimeEntryHandler) CreateTimeEntry(ctx context.Context, req api.CreateTi
 	}
 
 	date := req.Body.Date.Time
-	entry, err := h.entries.Create(ctx, userID, req.Body.ProjectId, date, float64(req.Body.Hours), req.Body.Description)
+
+	// If hours not provided, try to auto-populate from events
+	hours := float64(req.Body.Hours)
+	description := req.Body.Description
+
+	if req.Body.Hours == 0 {
+		// Try to get computed values
+		computed, err := h.timeEntryService.ComputeForProjectAndDate(ctx, userID, req.Body.ProjectId, date)
+		if err != nil {
+			return nil, err
+		}
+		if computed != nil {
+			// Use computed hours and description
+			hours = computed.Hours
+			if description == nil || *description == "" {
+				description = &computed.Description
+			}
+		}
+	}
+
+	entry, err := h.entries.Create(ctx, userID, req.Body.ProjectId, date, hours, description)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +214,80 @@ func (h *TimeEntryHandler) DeleteTimeEntry(ctx context.Context, req api.DeleteTi
 	}
 
 	return api.DeleteTimeEntry204Response{}, nil
+}
+
+// RefreshTimeEntry resets a time entry to computed values from events
+func (h *TimeEntryHandler) RefreshTimeEntry(ctx context.Context, req api.RefreshTimeEntryRequestObject) (api.RefreshTimeEntryResponseObject, error) {
+	userID, ok := UserIDFromContext(ctx)
+	if !ok {
+		return api.RefreshTimeEntry401JSONResponse{
+			Code:    "unauthorized",
+			Message: "Authentication required",
+		}, nil
+	}
+
+	// Get the existing entry to check if it's invoiced
+	entry, err := h.entries.GetByID(ctx, userID, req.Id)
+	if err != nil {
+		if errors.Is(err, store.ErrTimeEntryNotFound) {
+			return api.RefreshTimeEntry404JSONResponse{
+				Code:    "not_found",
+				Message: "Time entry not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	// Cannot refresh invoiced entries
+	if entry.InvoiceID != nil {
+		return api.RefreshTimeEntry400JSONResponse{
+			Code:    "invalid_operation",
+			Message: "Cannot refresh invoiced time entry",
+		}, nil
+	}
+
+	// Compute fresh values from events
+	computed, err := h.timeEntryService.ComputeForProjectAndDate(ctx, userID, entry.ProjectID, entry.Date)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no computed values (no events), return error
+	if computed == nil {
+		return api.RefreshTimeEntry400JSONResponse{
+			Code:    "no_events",
+			Message: "No classified events found for this date and project",
+		}, nil
+	}
+
+	// Marshal calculation details
+	detailsJSON, err := json.Marshal(computed.CalculationDetails)
+	if err != nil {
+		return nil, err
+	}
+
+	// Reset to computed values via store
+	refreshed, err := h.entries.ResetToComputed(
+		ctx,
+		userID,
+		req.Id,
+		computed.Hours,
+		computed.Title,
+		computed.Description,
+		detailsJSON,
+		computed.ContributingEvents,
+	)
+	if err != nil {
+		if errors.Is(err, store.ErrTimeEntryNotFound) {
+			return api.RefreshTimeEntry404JSONResponse{
+				Code:    "not_found",
+				Message: "Time entry not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	return api.RefreshTimeEntry200JSONResponse(timeEntryToAPI(refreshed)), nil
 }
 
 // timeEntryToAPI converts a store.TimeEntry to an api.TimeEntry

@@ -300,6 +300,150 @@ Add query term `orphaned:yes` / `orphaned:no` for finding orphaned events.
 
 ---
 
+## Deletion and Recovery
+
+Time entries are a **computed view** over classified events. When a user deletes an entry, we need to handle recovery gracefully without adding complexity.
+
+### Deletion Behavior
+
+**Hard delete, no confirmation:**
+- Clicking "Delete" immediately removes the time entry from the database
+- No confirmation modal - keeps the UI snappy
+- User loses any manual edits (hours, description), but this is minimal data
+
+**Rationale:**
+- Simple and predictable behavior
+- Accidental deletions are easily recoverable (see below)
+- Avoids modal fatigue
+- Invoiced entries already blocked from deletion (immutable)
+
+### Recovery Mechanism
+
+**"Create Time Entry" auto-populates from events:**
+
+When user creates a new time entry for a (date, project):
+1. System checks if classified events exist for that combination
+2. If events exist, form is pre-populated with computed values:
+   - Hours: Calculated from event time union
+   - Description: Generated from event titles
+3. If no events exist, form is blank for manual entry
+4. User can edit auto-populated values before creating
+
+**UI Feedback:**
+```
+┌─────────────────────────────────────────┐
+│ Create Time Entry                       │
+├─────────────────────────────────────────┤
+│ Project: [Acme Corp ▼]                  │
+│ Date:    [Jan 15, 2024]                 │
+│                                         │
+│ Hours: 4.5          (3 events)          │ ← Shows event count
+│ Description: Weekly Sync, Code Review   │
+│                                         │
+│ [Cancel] [Create]                       │
+└─────────────────────────────────────────┘
+```
+
+**No events case:**
+```
+┌─────────────────────────────────────────┐
+│ Create Time Entry                       │
+├─────────────────────────────────────────┤
+│ Project: [Acme Corp ▼]                  │
+│ Date:    [Jan 15, 2024]                 │
+│                                         │
+│ Hours: [     ]      (no events)         │ ← Empty, manual entry
+│ Description: [                        ] │
+│                                         │
+│ [Cancel] [Create]                       │
+└─────────────────────────────────────────┘
+```
+
+### Reset to Computed
+
+**Universal "undo my changes" button:**
+
+A "Reset to Computed" button appears on time entries to allow users to revert to system-calculated values. This handles multiple use cases:
+- Undo manual edits (pinned entries)
+- Accept new computed values (stale entries)
+- Reset individual entries in a locked period
+
+**Show button when:**
+- `is_pinned = true` (user manually edited) **OR**
+- `is_locked = true` (locked period, may want to reset individual entries) **OR**
+- `is_stale = true` (computed values differ from current)
+
+**Hide button when:**
+- `is_invoiced = true` (immutable, can't change)
+- Entry is unlocked AND not edited AND not stale (already auto-updating)
+
+**Button behavior:**
+```typescript
+// Clicking "Reset to Computed":
+- Updates hours, title, description to computed values
+- If was pinned: removes pin, returns to auto-update mode
+- If was locked: updates values but stays locked
+- If was stale: clears stale flag
+- Cannot be used on invoiced entries
+```
+
+### User Journeys
+
+**Journey 1: Accidental Deletion**
+```
+1. User deletes entry
+   → Entry removed immediately
+
+2. User realizes mistake
+   → Clicks "Create Time Entry" for that date/project
+
+3. Form auto-populates from events
+   → User reviews values
+
+4. User clicks "Create"
+   → Entry restored with computed values
+```
+
+**Journey 2: Bad Manual Edit**
+```
+1. User edits hours from 4.5h to 5.0h
+   → Entry becomes pinned (is_pinned = true)
+
+2. User realizes mistake
+   → Clicks "Reset to Computed"
+
+3. Entry reverts to 4.5h
+   → Pin removed, returns to auto-update mode
+```
+
+**Journey 3: Stale Locked Entry**
+```
+1. Week is locked, underlying events change
+   → Entry shows stale indicator
+
+2. User reviews computed value (4.75h vs current 4.5h)
+   → Clicks "Reset to Computed"
+
+3. Entry updates to 4.75h
+   → Stays locked, stale flag cleared
+```
+
+### API Endpoint
+
+**Refresh endpoint (rename to "Reset to Computed"):**
+```
+POST /api/time-entries/{id}/refresh
+
+Behavior:
+- Updates hours, title, description to computed values
+- Removes is_pinned flag (returns to auto-update)
+- Preserves is_locked flag
+- Clears is_stale flag
+- Returns 400 if entry is invoiced
+```
+
+---
+
 ## Title and Description Generation
 
 Time entries have both a **title** (short, user-facing) and **description** (detailed).

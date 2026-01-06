@@ -27,7 +27,14 @@ import type {
 	BulkClassifyResponse,
 	ApiKey,
 	ApiKeyCreate,
-	ApiKeyWithSecret
+	ApiKeyWithSecret,
+	BillingPeriod,
+	BillingPeriodCreate,
+	BillingPeriodUpdate,
+	Invoice,
+	InvoiceCreate,
+	InvoiceStatusUpdate,
+	InvoiceStatus
 } from './types';
 
 const API_BASE = '/api';
@@ -142,6 +149,10 @@ class ApiClient {
 		return this.request('DELETE', `/time-entries/${id}`);
 	}
 
+	async refreshTimeEntry(id: string): Promise<TimeEntry> {
+		return this.request('POST', `/time-entries/${id}/refresh`);
+	}
+
 	// Calendars
 	async googleAuthorize(): Promise<OAuthAuthorizeResponse> {
 		return this.request('GET', '/auth/google/authorize');
@@ -235,6 +246,74 @@ class ApiClient {
 
 	async deleteApiKey(id: string): Promise<void> {
 		return this.request('DELETE', `/api-keys/${id}`);
+	}
+
+	// Billing Periods
+	async listBillingPeriods(projectId: string): Promise<BillingPeriod[]> {
+		return this.request('GET', `/billing-periods?project_id=${projectId}`);
+	}
+
+	async createBillingPeriod(data: BillingPeriodCreate): Promise<BillingPeriod> {
+		return this.request('POST', '/billing-periods', data);
+	}
+
+	async updateBillingPeriod(id: string, data: BillingPeriodUpdate): Promise<BillingPeriod> {
+		return this.request('PUT', `/billing-periods/${id}`, data);
+	}
+
+	async deleteBillingPeriod(id: string): Promise<void> {
+		return this.request('DELETE', `/billing-periods/${id}`);
+	}
+
+	// Invoices
+	async listInvoices(params?: { projectId?: string; status?: InvoiceStatus }): Promise<Invoice[]> {
+		const query = new URLSearchParams();
+		if (params?.projectId) query.set('project_id', params.projectId);
+		if (params?.status) query.set('status', params.status);
+		const queryString = query.toString();
+		return this.request('GET', `/invoices${queryString ? `?${queryString}` : ''}`);
+	}
+
+	async getInvoice(id: string): Promise<Invoice> {
+		return this.request('GET', `/invoices/${id}`);
+	}
+
+	async createInvoice(data: InvoiceCreate): Promise<Invoice> {
+		return this.request('POST', '/invoices', data);
+	}
+
+	async deleteInvoice(id: string): Promise<void> {
+		return this.request('DELETE', `/invoices/${id}`);
+	}
+
+	async updateInvoiceStatus(id: string, data: InvoiceStatusUpdate): Promise<Invoice> {
+		return this.request('PUT', `/invoices/${id}/status`, data);
+	}
+
+	async exportInvoiceCSV(id: string): Promise<Blob> {
+		const headers: Record<string, string> = {};
+		if (this.token) {
+			headers['Authorization'] = `Bearer ${this.token}`;
+		}
+
+		const response = await fetch(`${API_BASE}/invoices/${id}/export/csv`, {
+			method: 'GET',
+			headers
+		});
+
+		if (!response.ok) {
+			const error: ApiError = await response.json().catch(() => ({
+				code: 'unknown',
+				message: response.statusText
+			}));
+			throw new ApiClientError(response.status, error);
+		}
+
+		return response.blob();
+	}
+
+	async exportInvoiceSheets(id: string): Promise<{ spreadsheet_id?: string; spreadsheet_url?: string; worksheet_id?: number }> {
+		return this.request('POST', `/invoices/${id}/export/sheets`);
 	}
 }
 

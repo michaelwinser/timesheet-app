@@ -31,6 +31,8 @@ type Project struct {
 	FingerprintDomains     []string
 	FingerprintEmails      []string
 	FingerprintKeywords    []string
+	SheetsSpreadsheetID    *string
+	SheetsSpreadsheetURL   *string
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 }
@@ -82,6 +84,7 @@ func (s *ProjectStore) GetByID(ctx context.Context, userID, projectID uuid.UUID)
 		SELECT id, user_id, name, short_code, client, color, is_billable, is_archived,
 		       is_hidden_by_default, does_not_accumulate_hours,
 		       fingerprint_domains, fingerprint_emails, fingerprint_keywords,
+		       sheets_spreadsheet_id, sheets_spreadsheet_url,
 		       created_at, updated_at
 		FROM projects WHERE id = $1 AND user_id = $2
 	`, projectID, userID).Scan(
@@ -89,6 +92,7 @@ func (s *ProjectStore) GetByID(ctx context.Context, userID, projectID uuid.UUID)
 		&project.IsBillable, &project.IsArchived, &project.IsHiddenByDefault,
 		&project.DoesNotAccumulateHours,
 		&project.FingerprintDomains, &project.FingerprintEmails, &project.FingerprintKeywords,
+		&project.SheetsSpreadsheetID, &project.SheetsSpreadsheetURL,
 		&project.CreatedAt, &project.UpdatedAt,
 	)
 
@@ -107,6 +111,7 @@ func (s *ProjectStore) List(ctx context.Context, userID uuid.UUID, includeArchiv
 		SELECT id, user_id, name, short_code, client, color, is_billable, is_archived,
 		       is_hidden_by_default, does_not_accumulate_hours,
 		       fingerprint_domains, fingerprint_emails, fingerprint_keywords,
+		       sheets_spreadsheet_id, sheets_spreadsheet_url,
 		       created_at, updated_at
 		FROM projects WHERE user_id = $1
 	`
@@ -129,6 +134,7 @@ func (s *ProjectStore) List(ctx context.Context, userID uuid.UUID, includeArchiv
 			&p.IsBillable, &p.IsArchived, &p.IsHiddenByDefault,
 			&p.DoesNotAccumulateHours,
 			&p.FingerprintDomains, &p.FingerprintEmails, &p.FingerprintKeywords,
+			&p.SheetsSpreadsheetID, &p.SheetsSpreadsheetURL,
 			&p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {

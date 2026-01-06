@@ -54,11 +54,16 @@
 >
 	<!-- Invoiced corner ribbon -->
 	{#if isInvoiced}
-		<div class="absolute top-0 right-0 overflow-hidden w-16 h-16">
-			<div class="absolute transform rotate-45 bg-green-500 text-white text-[10px] font-bold py-0.5 right-[-35px] top-[10px] w-[100px] text-center shadow">
+		<a
+			href="/invoices/{entry.invoice_id}"
+			class="absolute top-0 right-0 overflow-hidden w-16 h-16 group"
+			title="View invoice"
+			onclick={(e) => e.stopPropagation()}
+		>
+			<div class="absolute transform rotate-45 bg-green-500 group-hover:bg-green-600 text-white text-[10px] font-bold py-0.5 right-[-35px] top-[10px] w-[100px] text-center shadow transition-colors">
 				INVOICED
 			</div>
-		</div>
+		</a>
 	{/if}
 
 	{#if editing}
@@ -129,12 +134,12 @@
 						</svg>
 					</span>
 				{/if}
-				<!-- Stale indicator with refresh button -->
-				{#if isStale && !isInvoiced}
+				<!-- Reset to Computed button (for any edited/locked/stale entry) -->
+				{#if (isPinned || isLocked || isStale) && !isInvoiced && entry.computed_hours}
 					<button
 						type="button"
-						class="text-orange-500 hover:text-orange-600"
-						title="Click to refresh ({entry.computed_hours}h computed)"
+						class="{isStale ? 'text-orange-500 hover:text-orange-600' : 'text-gray-400 hover:text-blue-600 dark:hover:text-blue-400'}"
+						title="{isStale ? `Reset to computed (${entry.computed_hours}h)` : 'Reset to computed values'}"
 						onclick={(e) => { e.stopPropagation(); onrefresh?.(); }}
 					>
 						<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

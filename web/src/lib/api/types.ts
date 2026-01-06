@@ -306,3 +306,74 @@ export interface ApiKeyCreate {
 export interface ApiKeyWithSecret extends ApiKey {
 	key: string;
 }
+
+// Billing Periods
+export interface BillingPeriod {
+	id: string;
+	user_id: string;
+	project_id: string;
+	starts_on: string;
+	ends_on?: string | null;
+	hourly_rate: number;
+	created_at: string;
+	updated_at?: string;
+}
+
+export interface BillingPeriodCreate {
+	project_id: string;
+	starts_on: string;
+	ends_on?: string;
+	hourly_rate: number;
+}
+
+export interface BillingPeriodUpdate {
+	starts_on?: string;
+	ends_on?: string;
+	hourly_rate?: number;
+}
+
+// Invoices
+export type InvoiceStatus = 'draft' | 'sent' | 'paid';
+
+export interface InvoiceLineItem {
+	id: string;
+	invoice_id: string;
+	time_entry_id: string;
+	date: string;
+	description: string;
+	hours: number;
+	hourly_rate: number;
+	amount: number;
+}
+
+export interface Invoice {
+	id: string;
+	user_id: string;
+	project_id: string;
+	billing_period_id?: string | null;
+	invoice_number: string;
+	period_start: string;
+	period_end: string;
+	invoice_date: string;
+	status: InvoiceStatus;
+	total_hours: number;
+	total_amount: number;
+	project?: Project;
+	line_items?: InvoiceLineItem[];
+	spreadsheet_id?: string | null;
+	spreadsheet_url?: string | null;
+	worksheet_id?: number | null;
+	created_at: string;
+	updated_at?: string;
+}
+
+export interface InvoiceCreate {
+	project_id: string;
+	period_start: string;
+	period_end: string;
+	invoice_date?: string;
+}
+
+export interface InvoiceStatusUpdate {
+	status: InvoiceStatus;
+}

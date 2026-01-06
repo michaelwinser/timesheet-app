@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -40,6 +41,13 @@ const (
 	CalendarEventClassificationStatusSkipped    CalendarEventClassificationStatus = "skipped"
 )
 
+// Defines values for InvoiceStatus.
+const (
+	InvoiceStatusDraft InvoiceStatus = "draft"
+	InvoiceStatusPaid  InvoiceStatus = "paid"
+	InvoiceStatusSent  InvoiceStatus = "sent"
+)
+
 // Defines values for TimeEntrySource.
 const (
 	TimeEntrySourceCalendar TimeEntrySource = "calendar"
@@ -52,6 +60,20 @@ const (
 	ListCalendarEventsParamsClassificationStatusClassified ListCalendarEventsParamsClassificationStatus = "classified"
 	ListCalendarEventsParamsClassificationStatusPending    ListCalendarEventsParamsClassificationStatus = "pending"
 	ListCalendarEventsParamsClassificationStatusSkipped    ListCalendarEventsParamsClassificationStatus = "skipped"
+)
+
+// Defines values for ListInvoicesParamsStatus.
+const (
+	ListInvoicesParamsStatusDraft ListInvoicesParamsStatus = "draft"
+	ListInvoicesParamsStatusPaid  ListInvoicesParamsStatus = "paid"
+	ListInvoicesParamsStatusSent  ListInvoicesParamsStatus = "sent"
+)
+
+// Defines values for UpdateInvoiceStatusJSONBodyStatus.
+const (
+	Draft UpdateInvoiceStatusJSONBodyStatus = "draft"
+	Paid  UpdateInvoiceStatusJSONBodyStatus = "paid"
+	Sent  UpdateInvoiceStatusJSONBodyStatus = "sent"
 )
 
 // ApiKey defines model for ApiKey.
@@ -107,6 +129,43 @@ type ApplyRulesResponse struct {
 type AuthResponse struct {
 	Token string `json:"token"`
 	User  User   `json:"user"`
+}
+
+// BillingPeriod defines model for BillingPeriod.
+type BillingPeriod struct {
+	CreatedAt time.Time `json:"created_at"`
+
+	// EndsOn End date of the billing period (null means ongoing)
+	EndsOn *openapi_types.Date `json:"ends_on"`
+
+	// HourlyRate Hourly rate for this period
+	HourlyRate float32            `json:"hourly_rate"`
+	Id         openapi_types.UUID `json:"id"`
+	ProjectId  openapi_types.UUID `json:"project_id"`
+
+	// StartsOn Start date of the billing period
+	StartsOn  openapi_types.Date `json:"starts_on"`
+	UpdatedAt *time.Time         `json:"updated_at,omitempty"`
+	UserId    openapi_types.UUID `json:"user_id"`
+}
+
+// BillingPeriodCreate defines model for BillingPeriodCreate.
+type BillingPeriodCreate struct {
+	// EndsOn End date in YYYY-MM-DD format (omit or null for ongoing)
+	EndsOn     *openapi_types.Date `json:"ends_on"`
+	HourlyRate float32             `json:"hourly_rate"`
+	ProjectId  openapi_types.UUID  `json:"project_id"`
+
+	// StartsOn Start date in YYYY-MM-DD format
+	StartsOn openapi_types.Date `json:"starts_on"`
+}
+
+// BillingPeriodUpdate defines model for BillingPeriodUpdate.
+type BillingPeriodUpdate struct {
+	// EndsOn Set to empty string to clear (make ongoing)
+	EndsOn     *openapi_types.Date `json:"ends_on"`
+	HourlyRate *float32            `json:"hourly_rate,omitempty"`
+	StartsOn   *openapi_types.Date `json:"starts_on,omitempty"`
 }
 
 // BulkClassifyRequest defines model for BulkClassifyRequest.
@@ -290,6 +349,88 @@ type Error struct {
 	Code    string                  `json:"code"`
 	Details *map[string]interface{} `json:"details,omitempty"`
 	Message string                  `json:"message"`
+}
+
+// Invoice defines model for Invoice.
+type Invoice struct {
+	// BillingPeriodId Primary billing period for this invoice
+	BillingPeriodId *openapi_types.UUID `json:"billing_period_id"`
+	CreatedAt       time.Time           `json:"created_at"`
+	Id              openapi_types.UUID  `json:"id"`
+
+	// InvoiceDate Date invoice was created
+	InvoiceDate openapi_types.Date `json:"invoice_date"`
+
+	// InvoiceNumber Auto-generated invoice number (PROJECT-YEAR-SEQ)
+	InvoiceNumber string `json:"invoice_number"`
+
+	// LineItems Invoice line items (included in detail view)
+	LineItems *[]InvoiceLineItem `json:"line_items,omitempty"`
+
+	// PeriodEnd End date of invoiced period
+	PeriodEnd openapi_types.Date `json:"period_end"`
+
+	// PeriodStart Start date of invoiced period
+	PeriodStart openapi_types.Date `json:"period_start"`
+	Project     *Project           `json:"project,omitempty"`
+	ProjectId   openapi_types.UUID `json:"project_id"`
+
+	// SpreadsheetId Google Sheets spreadsheet ID
+	SpreadsheetId *string `json:"spreadsheet_id"`
+
+	// SpreadsheetUrl Full URL to Google Sheets
+	SpreadsheetUrl *string `json:"spreadsheet_url"`
+
+	// Status Invoice status
+	Status InvoiceStatus `json:"status"`
+
+	// TotalAmount Total invoice amount
+	TotalAmount float32 `json:"total_amount"`
+
+	// TotalHours Total billable hours
+	TotalHours float32            `json:"total_hours"`
+	UpdatedAt  *time.Time         `json:"updated_at,omitempty"`
+	UserId     openapi_types.UUID `json:"user_id"`
+
+	// WorksheetId Sheet ID within the spreadsheet
+	WorksheetId *int `json:"worksheet_id"`
+}
+
+// InvoiceStatus Invoice status
+type InvoiceStatus string
+
+// InvoiceCreate defines model for InvoiceCreate.
+type InvoiceCreate struct {
+	// InvoiceDate Invoice date (defaults to today if omitted)
+	InvoiceDate *openapi_types.Date `json:"invoice_date,omitempty"`
+
+	// PeriodEnd End date for unbilled entries (YYYY-MM-DD)
+	PeriodEnd openapi_types.Date `json:"period_end"`
+
+	// PeriodStart Start date for unbilled entries (YYYY-MM-DD)
+	PeriodStart openapi_types.Date `json:"period_start"`
+	ProjectId   openapi_types.UUID `json:"project_id"`
+}
+
+// InvoiceLineItem defines model for InvoiceLineItem.
+type InvoiceLineItem struct {
+	// Amount Calculated amount (hours * hourly_rate)
+	Amount float32 `json:"amount"`
+
+	// Date Date of the work
+	Date openapi_types.Date `json:"date"`
+
+	// Description Work description from time entry
+	Description string `json:"description"`
+
+	// HourlyRate Rate at time of invoice creation (snapshot)
+	HourlyRate float32 `json:"hourly_rate"`
+
+	// Hours Hours worked
+	Hours       float32            `json:"hours"`
+	Id          openapi_types.UUID `json:"id"`
+	InvoiceId   openapi_types.UUID `json:"invoice_id"`
+	TimeEntryId openapi_types.UUID `json:"time_entry_id"`
 }
 
 // LoginRequest defines model for LoginRequest.
@@ -541,6 +682,11 @@ type GoogleCallbackParams struct {
 	State string `form:"state" json:"state"`
 }
 
+// ListBillingPeriodsParams defines parameters for ListBillingPeriods.
+type ListBillingPeriodsParams struct {
+	ProjectId openapi_types.UUID `form:"project_id" json:"project_id"`
+}
+
 // ListCalendarEventsParams defines parameters for ListCalendarEvents.
 type ListCalendarEventsParams struct {
 	StartDate            *openapi_types.Date                           `form:"start_date,omitempty" json:"start_date,omitempty"`
@@ -560,6 +706,23 @@ type SyncCalendarParams struct {
 	// EndDate End date for on-demand sync (defaults to 30 days from now)
 	EndDate *openapi_types.Date `form:"end_date,omitempty" json:"end_date,omitempty"`
 }
+
+// ListInvoicesParams defines parameters for ListInvoices.
+type ListInvoicesParams struct {
+	ProjectId *openapi_types.UUID       `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Status    *ListInvoicesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+}
+
+// ListInvoicesParamsStatus defines parameters for ListInvoices.
+type ListInvoicesParamsStatus string
+
+// UpdateInvoiceStatusJSONBody defines parameters for UpdateInvoiceStatus.
+type UpdateInvoiceStatusJSONBody struct {
+	Status UpdateInvoiceStatusJSONBodyStatus `json:"status"`
+}
+
+// UpdateInvoiceStatusJSONBodyStatus defines parameters for UpdateInvoiceStatus.
+type UpdateInvoiceStatusJSONBodyStatus string
 
 // ListProjectsParams defines parameters for ListProjects.
 type ListProjectsParams struct {
@@ -594,6 +757,12 @@ type LoginJSONRequestBody = LoginRequest
 // SignupJSONRequestBody defines body for Signup for application/json ContentType.
 type SignupJSONRequestBody = SignupRequest
 
+// CreateBillingPeriodJSONRequestBody defines body for CreateBillingPeriod for application/json ContentType.
+type CreateBillingPeriodJSONRequestBody = BillingPeriodCreate
+
+// UpdateBillingPeriodJSONRequestBody defines body for UpdateBillingPeriod for application/json ContentType.
+type UpdateBillingPeriodJSONRequestBody = BillingPeriodUpdate
+
 // BulkClassifyEventsJSONRequestBody defines body for BulkClassifyEvents for application/json ContentType.
 type BulkClassifyEventsJSONRequestBody = BulkClassifyRequest
 
@@ -602,6 +771,12 @@ type ClassifyCalendarEventJSONRequestBody = ClassifyEventRequest
 
 // UpdateCalendarSourcesJSONRequestBody defines body for UpdateCalendarSources for application/json ContentType.
 type UpdateCalendarSourcesJSONRequestBody = UpdateCalendarSourcesRequest
+
+// CreateInvoiceJSONRequestBody defines body for CreateInvoice for application/json ContentType.
+type CreateInvoiceJSONRequestBody = InvoiceCreate
+
+// UpdateInvoiceStatusJSONRequestBody defines body for UpdateInvoiceStatus for application/json ContentType.
+type UpdateInvoiceStatusJSONRequestBody UpdateInvoiceStatusJSONBody
 
 // CreateProjectJSONRequestBody defines body for CreateProject for application/json ContentType.
 type CreateProjectJSONRequestBody = ProjectCreate
@@ -656,6 +831,18 @@ type ServerInterface interface {
 	// Create a new user account
 	// (POST /api/auth/signup)
 	Signup(w http.ResponseWriter, r *http.Request)
+	// List billing periods for a project
+	// (GET /api/billing-periods)
+	ListBillingPeriods(w http.ResponseWriter, r *http.Request, params ListBillingPeriodsParams)
+	// Create a new billing period
+	// (POST /api/billing-periods)
+	CreateBillingPeriod(w http.ResponseWriter, r *http.Request)
+	// Delete a billing period
+	// (DELETE /api/billing-periods/{id})
+	DeleteBillingPeriod(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Update a billing period
+	// (PUT /api/billing-periods/{id})
+	UpdateBillingPeriod(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List calendar events with filters
 	// (GET /api/calendar-events)
 	ListCalendarEvents(w http.ResponseWriter, r *http.Request, params ListCalendarEventsParams)
@@ -680,6 +867,27 @@ type ServerInterface interface {
 	// Trigger sync for a calendar connection
 	// (POST /api/calendars/{id}/sync)
 	SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params SyncCalendarParams)
+	// List invoices
+	// (GET /api/invoices)
+	ListInvoices(w http.ResponseWriter, r *http.Request, params ListInvoicesParams)
+	// Generate a new invoice
+	// (POST /api/invoices)
+	CreateInvoice(w http.ResponseWriter, r *http.Request)
+	// Delete a draft invoice
+	// (DELETE /api/invoices/{id})
+	DeleteInvoice(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Get invoice details
+	// (GET /api/invoices/{id})
+	GetInvoice(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Export invoice as CSV
+	// (GET /api/invoices/{id}/export/csv)
+	ExportInvoiceCSV(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Export invoice to Google Sheets
+	// (POST /api/invoices/{id}/export/sheets)
+	ExportInvoiceSheets(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Change invoice status
+	// (PUT /api/invoices/{id}/status)
+	UpdateInvoiceStatus(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List all projects
 	// (GET /api/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request, params ListProjectsParams)
@@ -731,6 +939,9 @@ type ServerInterface interface {
 	// Update a time entry
 	// (PUT /api/time-entries/{id})
 	UpdateTimeEntry(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Reset time entry to computed values from events
+	// (POST /api/time-entries/{id}/refresh)
+	RefreshTimeEntry(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -791,6 +1002,30 @@ func (_ Unimplemented) Signup(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// List billing periods for a project
+// (GET /api/billing-periods)
+func (_ Unimplemented) ListBillingPeriods(w http.ResponseWriter, r *http.Request, params ListBillingPeriodsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create a new billing period
+// (POST /api/billing-periods)
+func (_ Unimplemented) CreateBillingPeriod(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a billing period
+// (DELETE /api/billing-periods/{id})
+func (_ Unimplemented) DeleteBillingPeriod(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update a billing period
+// (PUT /api/billing-periods/{id})
+func (_ Unimplemented) UpdateBillingPeriod(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // List calendar events with filters
 // (GET /api/calendar-events)
 func (_ Unimplemented) ListCalendarEvents(w http.ResponseWriter, r *http.Request, params ListCalendarEventsParams) {
@@ -836,6 +1071,48 @@ func (_ Unimplemented) UpdateCalendarSources(w http.ResponseWriter, r *http.Requ
 // Trigger sync for a calendar connection
 // (POST /api/calendars/{id}/sync)
 func (_ Unimplemented) SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params SyncCalendarParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List invoices
+// (GET /api/invoices)
+func (_ Unimplemented) ListInvoices(w http.ResponseWriter, r *http.Request, params ListInvoicesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Generate a new invoice
+// (POST /api/invoices)
+func (_ Unimplemented) CreateInvoice(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a draft invoice
+// (DELETE /api/invoices/{id})
+func (_ Unimplemented) DeleteInvoice(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get invoice details
+// (GET /api/invoices/{id})
+func (_ Unimplemented) GetInvoice(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Export invoice as CSV
+// (GET /api/invoices/{id}/export/csv)
+func (_ Unimplemented) ExportInvoiceCSV(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Export invoice to Google Sheets
+// (POST /api/invoices/{id}/export/sheets)
+func (_ Unimplemented) ExportInvoiceSheets(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Change invoice status
+// (PUT /api/invoices/{id}/status)
+func (_ Unimplemented) UpdateInvoiceStatus(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -938,6 +1215,12 @@ func (_ Unimplemented) GetTimeEntry(w http.ResponseWriter, r *http.Request, id o
 // Update a time entry
 // (PUT /api/time-entries/{id})
 func (_ Unimplemented) UpdateTimeEntry(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Reset time entry to computed values from events
+// (POST /api/time-entries/{id}/refresh)
+func (_ Unimplemented) RefreshTimeEntry(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1155,6 +1438,128 @@ func (siw *ServerInterfaceWrapper) Signup(w http.ResponseWriter, r *http.Request
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.Signup(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListBillingPeriods operation middleware
+func (siw *ServerInterfaceWrapper) ListBillingPeriods(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListBillingPeriodsParams
+
+	// ------------- Required query parameter "project_id" -------------
+
+	if paramValue := r.URL.Query().Get("project_id"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "project_id"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListBillingPeriods(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateBillingPeriod operation middleware
+func (siw *ServerInterfaceWrapper) CreateBillingPeriod(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateBillingPeriod(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteBillingPeriod operation middleware
+func (siw *ServerInterfaceWrapper) DeleteBillingPeriod(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteBillingPeriod(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateBillingPeriod operation middleware
+func (siw *ServerInterfaceWrapper) UpdateBillingPeriod(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateBillingPeriod(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1426,6 +1831,222 @@ func (siw *ServerInterfaceWrapper) SyncCalendar(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SyncCalendar(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListInvoices operation middleware
+func (siw *ServerInterfaceWrapper) ListInvoices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListInvoicesParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListInvoices(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateInvoice operation middleware
+func (siw *ServerInterfaceWrapper) CreateInvoice(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateInvoice(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteInvoice operation middleware
+func (siw *ServerInterfaceWrapper) DeleteInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteInvoice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetInvoice operation middleware
+func (siw *ServerInterfaceWrapper) GetInvoice(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetInvoice(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportInvoiceCSV operation middleware
+func (siw *ServerInterfaceWrapper) ExportInvoiceCSV(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportInvoiceCSV(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportInvoiceSheets operation middleware
+func (siw *ServerInterfaceWrapper) ExportInvoiceSheets(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportInvoiceSheets(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateInvoiceStatus operation middleware
+func (siw *ServerInterfaceWrapper) UpdateInvoiceStatus(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateInvoiceStatus(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1929,6 +2550,37 @@ func (siw *ServerInterfaceWrapper) UpdateTimeEntry(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// RefreshTimeEntry operation middleware
+func (siw *ServerInterfaceWrapper) RefreshTimeEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RefreshTimeEntry(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -2070,6 +2722,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/auth/signup", wrapper.Signup)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/billing-periods", wrapper.ListBillingPeriods)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/billing-periods", wrapper.CreateBillingPeriod)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/billing-periods/{id}", wrapper.DeleteBillingPeriod)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/billing-periods/{id}", wrapper.UpdateBillingPeriod)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/calendar-events", wrapper.ListCalendarEvents)
 	})
 	r.Group(func(r chi.Router) {
@@ -2092,6 +2756,27 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/calendars/{id}/sync", wrapper.SyncCalendar)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/invoices", wrapper.ListInvoices)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/invoices", wrapper.CreateInvoice)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/invoices/{id}", wrapper.DeleteInvoice)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/invoices/{id}", wrapper.GetInvoice)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/invoices/{id}/export/csv", wrapper.ExportInvoiceCSV)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/invoices/{id}/export/sheets", wrapper.ExportInvoiceSheets)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/invoices/{id}/status", wrapper.UpdateInvoiceStatus)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/projects", wrapper.ListProjects)
@@ -2143,6 +2828,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/api/time-entries/{id}", wrapper.UpdateTimeEntry)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/time-entries/{id}/refresh", wrapper.RefreshTimeEntry)
 	})
 
 	return r
@@ -2430,6 +3118,173 @@ func (response Signup409JSONResponse) VisitSignupResponse(w http.ResponseWriter)
 	return json.NewEncoder(w).Encode(response)
 }
 
+type ListBillingPeriodsRequestObject struct {
+	Params ListBillingPeriodsParams
+}
+
+type ListBillingPeriodsResponseObject interface {
+	VisitListBillingPeriodsResponse(w http.ResponseWriter) error
+}
+
+type ListBillingPeriods200JSONResponse []BillingPeriod
+
+func (response ListBillingPeriods200JSONResponse) VisitListBillingPeriodsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListBillingPeriods400JSONResponse Error
+
+func (response ListBillingPeriods400JSONResponse) VisitListBillingPeriodsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListBillingPeriods401JSONResponse Error
+
+func (response ListBillingPeriods401JSONResponse) VisitListBillingPeriodsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateBillingPeriodRequestObject struct {
+	Body *CreateBillingPeriodJSONRequestBody
+}
+
+type CreateBillingPeriodResponseObject interface {
+	VisitCreateBillingPeriodResponse(w http.ResponseWriter) error
+}
+
+type CreateBillingPeriod201JSONResponse BillingPeriod
+
+func (response CreateBillingPeriod201JSONResponse) VisitCreateBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateBillingPeriod400JSONResponse Error
+
+func (response CreateBillingPeriod400JSONResponse) VisitCreateBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateBillingPeriod401JSONResponse Error
+
+func (response CreateBillingPeriod401JSONResponse) VisitCreateBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateBillingPeriod409JSONResponse Error
+
+func (response CreateBillingPeriod409JSONResponse) VisitCreateBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteBillingPeriodRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteBillingPeriodResponseObject interface {
+	VisitDeleteBillingPeriodResponse(w http.ResponseWriter) error
+}
+
+type DeleteBillingPeriod204Response struct {
+}
+
+func (response DeleteBillingPeriod204Response) VisitDeleteBillingPeriodResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteBillingPeriod401JSONResponse Error
+
+func (response DeleteBillingPeriod401JSONResponse) VisitDeleteBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteBillingPeriod404JSONResponse Error
+
+func (response DeleteBillingPeriod404JSONResponse) VisitDeleteBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateBillingPeriodRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateBillingPeriodJSONRequestBody
+}
+
+type UpdateBillingPeriodResponseObject interface {
+	VisitUpdateBillingPeriodResponse(w http.ResponseWriter) error
+}
+
+type UpdateBillingPeriod200JSONResponse BillingPeriod
+
+func (response UpdateBillingPeriod200JSONResponse) VisitUpdateBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateBillingPeriod400JSONResponse Error
+
+func (response UpdateBillingPeriod400JSONResponse) VisitUpdateBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateBillingPeriod401JSONResponse Error
+
+func (response UpdateBillingPeriod401JSONResponse) VisitUpdateBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateBillingPeriod404JSONResponse Error
+
+func (response UpdateBillingPeriod404JSONResponse) VisitUpdateBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateBillingPeriod409JSONResponse Error
+
+func (response UpdateBillingPeriod409JSONResponse) VisitUpdateBillingPeriodResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type ListCalendarEventsRequestObject struct {
 	Params ListCalendarEventsParams
 }
@@ -2696,6 +3551,274 @@ func (response SyncCalendar401JSONResponse) VisitSyncCalendarResponse(w http.Res
 type SyncCalendar404JSONResponse Error
 
 func (response SyncCalendar404JSONResponse) VisitSyncCalendarResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListInvoicesRequestObject struct {
+	Params ListInvoicesParams
+}
+
+type ListInvoicesResponseObject interface {
+	VisitListInvoicesResponse(w http.ResponseWriter) error
+}
+
+type ListInvoices200JSONResponse []Invoice
+
+func (response ListInvoices200JSONResponse) VisitListInvoicesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListInvoices401JSONResponse Error
+
+func (response ListInvoices401JSONResponse) VisitListInvoicesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateInvoiceRequestObject struct {
+	Body *CreateInvoiceJSONRequestBody
+}
+
+type CreateInvoiceResponseObject interface {
+	VisitCreateInvoiceResponse(w http.ResponseWriter) error
+}
+
+type CreateInvoice201JSONResponse Invoice
+
+func (response CreateInvoice201JSONResponse) VisitCreateInvoiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateInvoice400JSONResponse Error
+
+func (response CreateInvoice400JSONResponse) VisitCreateInvoiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateInvoice401JSONResponse Error
+
+func (response CreateInvoice401JSONResponse) VisitCreateInvoiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteInvoiceRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteInvoiceResponseObject interface {
+	VisitDeleteInvoiceResponse(w http.ResponseWriter) error
+}
+
+type DeleteInvoice204Response struct {
+}
+
+func (response DeleteInvoice204Response) VisitDeleteInvoiceResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteInvoice401JSONResponse Error
+
+func (response DeleteInvoice401JSONResponse) VisitDeleteInvoiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteInvoice404JSONResponse Error
+
+func (response DeleteInvoice404JSONResponse) VisitDeleteInvoiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteInvoice409JSONResponse Error
+
+func (response DeleteInvoice409JSONResponse) VisitDeleteInvoiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetInvoiceRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type GetInvoiceResponseObject interface {
+	VisitGetInvoiceResponse(w http.ResponseWriter) error
+}
+
+type GetInvoice200JSONResponse Invoice
+
+func (response GetInvoice200JSONResponse) VisitGetInvoiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetInvoice401JSONResponse Error
+
+func (response GetInvoice401JSONResponse) VisitGetInvoiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type GetInvoice404JSONResponse Error
+
+func (response GetInvoice404JSONResponse) VisitGetInvoiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportInvoiceCSVRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type ExportInvoiceCSVResponseObject interface {
+	VisitExportInvoiceCSVResponse(w http.ResponseWriter) error
+}
+
+type ExportInvoiceCSV200TextcsvResponse struct {
+	Body          io.Reader
+	ContentLength int64
+}
+
+func (response ExportInvoiceCSV200TextcsvResponse) VisitExportInvoiceCSVResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/csv")
+	if response.ContentLength != 0 {
+		w.Header().Set("Content-Length", fmt.Sprint(response.ContentLength))
+	}
+	w.WriteHeader(200)
+
+	if closer, ok := response.Body.(io.ReadCloser); ok {
+		defer closer.Close()
+	}
+	_, err := io.Copy(w, response.Body)
+	return err
+}
+
+type ExportInvoiceCSV401JSONResponse Error
+
+func (response ExportInvoiceCSV401JSONResponse) VisitExportInvoiceCSVResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportInvoiceCSV404JSONResponse Error
+
+func (response ExportInvoiceCSV404JSONResponse) VisitExportInvoiceCSVResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportInvoiceSheetsRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type ExportInvoiceSheetsResponseObject interface {
+	VisitExportInvoiceSheetsResponse(w http.ResponseWriter) error
+}
+
+type ExportInvoiceSheets200JSONResponse struct {
+	SpreadsheetId  *string `json:"spreadsheet_id,omitempty"`
+	SpreadsheetUrl *string `json:"spreadsheet_url,omitempty"`
+	WorksheetId    *int    `json:"worksheet_id,omitempty"`
+}
+
+func (response ExportInvoiceSheets200JSONResponse) VisitExportInvoiceSheetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportInvoiceSheets401JSONResponse Error
+
+func (response ExportInvoiceSheets401JSONResponse) VisitExportInvoiceSheetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportInvoiceSheets404JSONResponse Error
+
+func (response ExportInvoiceSheets404JSONResponse) VisitExportInvoiceSheetsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateInvoiceStatusRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateInvoiceStatusJSONRequestBody
+}
+
+type UpdateInvoiceStatusResponseObject interface {
+	VisitUpdateInvoiceStatusResponse(w http.ResponseWriter) error
+}
+
+type UpdateInvoiceStatus200JSONResponse Invoice
+
+func (response UpdateInvoiceStatus200JSONResponse) VisitUpdateInvoiceStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateInvoiceStatus400JSONResponse Error
+
+func (response UpdateInvoiceStatus400JSONResponse) VisitUpdateInvoiceStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateInvoiceStatus401JSONResponse Error
+
+func (response UpdateInvoiceStatus401JSONResponse) VisitUpdateInvoiceStatusResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateInvoiceStatus404JSONResponse Error
+
+func (response UpdateInvoiceStatus404JSONResponse) VisitUpdateInvoiceStatusResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -3324,6 +4447,50 @@ func (response UpdateTimeEntry409JSONResponse) VisitUpdateTimeEntryResponse(w ht
 	return json.NewEncoder(w).Encode(response)
 }
 
+type RefreshTimeEntryRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type RefreshTimeEntryResponseObject interface {
+	VisitRefreshTimeEntryResponse(w http.ResponseWriter) error
+}
+
+type RefreshTimeEntry200JSONResponse TimeEntry
+
+func (response RefreshTimeEntry200JSONResponse) VisitRefreshTimeEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RefreshTimeEntry400JSONResponse Error
+
+func (response RefreshTimeEntry400JSONResponse) VisitRefreshTimeEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RefreshTimeEntry401JSONResponse Error
+
+func (response RefreshTimeEntry401JSONResponse) VisitRefreshTimeEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RefreshTimeEntry404JSONResponse Error
+
+func (response RefreshTimeEntry404JSONResponse) VisitRefreshTimeEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// List user's API keys
@@ -3353,6 +4520,18 @@ type StrictServerInterface interface {
 	// Create a new user account
 	// (POST /api/auth/signup)
 	Signup(ctx context.Context, request SignupRequestObject) (SignupResponseObject, error)
+	// List billing periods for a project
+	// (GET /api/billing-periods)
+	ListBillingPeriods(ctx context.Context, request ListBillingPeriodsRequestObject) (ListBillingPeriodsResponseObject, error)
+	// Create a new billing period
+	// (POST /api/billing-periods)
+	CreateBillingPeriod(ctx context.Context, request CreateBillingPeriodRequestObject) (CreateBillingPeriodResponseObject, error)
+	// Delete a billing period
+	// (DELETE /api/billing-periods/{id})
+	DeleteBillingPeriod(ctx context.Context, request DeleteBillingPeriodRequestObject) (DeleteBillingPeriodResponseObject, error)
+	// Update a billing period
+	// (PUT /api/billing-periods/{id})
+	UpdateBillingPeriod(ctx context.Context, request UpdateBillingPeriodRequestObject) (UpdateBillingPeriodResponseObject, error)
 	// List calendar events with filters
 	// (GET /api/calendar-events)
 	ListCalendarEvents(ctx context.Context, request ListCalendarEventsRequestObject) (ListCalendarEventsResponseObject, error)
@@ -3377,6 +4556,27 @@ type StrictServerInterface interface {
 	// Trigger sync for a calendar connection
 	// (POST /api/calendars/{id}/sync)
 	SyncCalendar(ctx context.Context, request SyncCalendarRequestObject) (SyncCalendarResponseObject, error)
+	// List invoices
+	// (GET /api/invoices)
+	ListInvoices(ctx context.Context, request ListInvoicesRequestObject) (ListInvoicesResponseObject, error)
+	// Generate a new invoice
+	// (POST /api/invoices)
+	CreateInvoice(ctx context.Context, request CreateInvoiceRequestObject) (CreateInvoiceResponseObject, error)
+	// Delete a draft invoice
+	// (DELETE /api/invoices/{id})
+	DeleteInvoice(ctx context.Context, request DeleteInvoiceRequestObject) (DeleteInvoiceResponseObject, error)
+	// Get invoice details
+	// (GET /api/invoices/{id})
+	GetInvoice(ctx context.Context, request GetInvoiceRequestObject) (GetInvoiceResponseObject, error)
+	// Export invoice as CSV
+	// (GET /api/invoices/{id}/export/csv)
+	ExportInvoiceCSV(ctx context.Context, request ExportInvoiceCSVRequestObject) (ExportInvoiceCSVResponseObject, error)
+	// Export invoice to Google Sheets
+	// (POST /api/invoices/{id}/export/sheets)
+	ExportInvoiceSheets(ctx context.Context, request ExportInvoiceSheetsRequestObject) (ExportInvoiceSheetsResponseObject, error)
+	// Change invoice status
+	// (PUT /api/invoices/{id}/status)
+	UpdateInvoiceStatus(ctx context.Context, request UpdateInvoiceStatusRequestObject) (UpdateInvoiceStatusResponseObject, error)
 	// List all projects
 	// (GET /api/projects)
 	ListProjects(ctx context.Context, request ListProjectsRequestObject) (ListProjectsResponseObject, error)
@@ -3428,6 +4628,9 @@ type StrictServerInterface interface {
 	// Update a time entry
 	// (PUT /api/time-entries/{id})
 	UpdateTimeEntry(ctx context.Context, request UpdateTimeEntryRequestObject) (UpdateTimeEntryResponseObject, error)
+	// Reset time entry to computed values from events
+	// (POST /api/time-entries/{id}/refresh)
+	RefreshTimeEntry(ctx context.Context, request RefreshTimeEntryRequestObject) (RefreshTimeEntryResponseObject, error)
 }
 
 type StrictHandlerFunc = strictnethttp.StrictHTTPHandlerFunc
@@ -3700,6 +4903,122 @@ func (sh *strictHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ListBillingPeriods operation middleware
+func (sh *strictHandler) ListBillingPeriods(w http.ResponseWriter, r *http.Request, params ListBillingPeriodsParams) {
+	var request ListBillingPeriodsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListBillingPeriods(ctx, request.(ListBillingPeriodsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListBillingPeriods")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListBillingPeriodsResponseObject); ok {
+		if err := validResponse.VisitListBillingPeriodsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateBillingPeriod operation middleware
+func (sh *strictHandler) CreateBillingPeriod(w http.ResponseWriter, r *http.Request) {
+	var request CreateBillingPeriodRequestObject
+
+	var body CreateBillingPeriodJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateBillingPeriod(ctx, request.(CreateBillingPeriodRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateBillingPeriod")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateBillingPeriodResponseObject); ok {
+		if err := validResponse.VisitCreateBillingPeriodResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteBillingPeriod operation middleware
+func (sh *strictHandler) DeleteBillingPeriod(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteBillingPeriodRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteBillingPeriod(ctx, request.(DeleteBillingPeriodRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteBillingPeriod")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteBillingPeriodResponseObject); ok {
+		if err := validResponse.VisitDeleteBillingPeriodResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateBillingPeriod operation middleware
+func (sh *strictHandler) UpdateBillingPeriod(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateBillingPeriodRequestObject
+
+	request.Id = id
+
+	var body UpdateBillingPeriodJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateBillingPeriod(ctx, request.(UpdateBillingPeriodRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateBillingPeriod")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateBillingPeriodResponseObject); ok {
+		if err := validResponse.VisitUpdateBillingPeriodResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // ListCalendarEvents operation middleware
 func (sh *strictHandler) ListCalendarEvents(w http.ResponseWriter, r *http.Request, params ListCalendarEventsParams) {
 	var request ListCalendarEventsRequestObject
@@ -3919,6 +5238,200 @@ func (sh *strictHandler) SyncCalendar(w http.ResponseWriter, r *http.Request, id
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SyncCalendarResponseObject); ok {
 		if err := validResponse.VisitSyncCalendarResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListInvoices operation middleware
+func (sh *strictHandler) ListInvoices(w http.ResponseWriter, r *http.Request, params ListInvoicesParams) {
+	var request ListInvoicesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListInvoices(ctx, request.(ListInvoicesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListInvoices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListInvoicesResponseObject); ok {
+		if err := validResponse.VisitListInvoicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateInvoice operation middleware
+func (sh *strictHandler) CreateInvoice(w http.ResponseWriter, r *http.Request) {
+	var request CreateInvoiceRequestObject
+
+	var body CreateInvoiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateInvoice(ctx, request.(CreateInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateInvoiceResponseObject); ok {
+		if err := validResponse.VisitCreateInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteInvoice operation middleware
+func (sh *strictHandler) DeleteInvoice(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteInvoiceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteInvoice(ctx, request.(DeleteInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteInvoiceResponseObject); ok {
+		if err := validResponse.VisitDeleteInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetInvoice operation middleware
+func (sh *strictHandler) GetInvoice(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request GetInvoiceRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetInvoice(ctx, request.(GetInvoiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetInvoice")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetInvoiceResponseObject); ok {
+		if err := validResponse.VisitGetInvoiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportInvoiceCSV operation middleware
+func (sh *strictHandler) ExportInvoiceCSV(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ExportInvoiceCSVRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportInvoiceCSV(ctx, request.(ExportInvoiceCSVRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportInvoiceCSV")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportInvoiceCSVResponseObject); ok {
+		if err := validResponse.VisitExportInvoiceCSVResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportInvoiceSheets operation middleware
+func (sh *strictHandler) ExportInvoiceSheets(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ExportInvoiceSheetsRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportInvoiceSheets(ctx, request.(ExportInvoiceSheetsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportInvoiceSheets")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportInvoiceSheetsResponseObject); ok {
+		if err := validResponse.VisitExportInvoiceSheetsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateInvoiceStatus operation middleware
+func (sh *strictHandler) UpdateInvoiceStatus(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateInvoiceStatusRequestObject
+
+	request.Id = id
+
+	var body UpdateInvoiceStatusJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateInvoiceStatus(ctx, request.(UpdateInvoiceStatusRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateInvoiceStatus")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateInvoiceStatusResponseObject); ok {
+		if err := validResponse.VisitUpdateInvoiceStatusResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -4407,6 +5920,32 @@ func (sh *strictHandler) UpdateTimeEntry(w http.ResponseWriter, r *http.Request,
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateTimeEntryResponseObject); ok {
 		if err := validResponse.VisitUpdateTimeEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RefreshTimeEntry operation middleware
+func (sh *strictHandler) RefreshTimeEntry(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request RefreshTimeEntryRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RefreshTimeEntry(ctx, request.(RefreshTimeEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RefreshTimeEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RefreshTimeEntryResponseObject); ok {
+		if err := validResponse.VisitRefreshTimeEntryResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
