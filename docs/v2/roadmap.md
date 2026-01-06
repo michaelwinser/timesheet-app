@@ -39,14 +39,16 @@ The **MCP Server** enables AI-assisted workflows, avoiding complex UI for bulk o
 |-----------|--------|-------|
 | **MCP Server** | Done | Full tool suite for AI-assisted workflows |
 | **Time Entry Enhancements** | Done | Analyzer, protection model, calculation details |
+| **Billing & Invoicing** | Done | Billing periods, invoice generation, CSV/Sheets export |
 
 ### Not Yet Implemented
 
 | Feature | Priority | Complexity | Reference |
 |---------|----------|------------|-----------|
-| Billing Periods | Medium | Low | [ADR-002](decisions/002-billing-periods.md) |
-| Invoicing | Medium | Medium | [prd-invoicing.md](../prd-invoicing.md) |
-| Google Sheets Export | Low | Low | [prd-project-spreadsheets.md](../prd-project-spreadsheets.md) |
+| Scoring Classification | High | Medium | [ADR-003](decisions/003-scoring-classification.md) |
+| Review Indicators | Medium | Low | Phase 1.4 in roadmap |
+| Project Fingerprints | Medium | Low | Phase 1.5 in roadmap |
+| Search/Classification UI | Medium | Medium | Phase 1.6 in roadmap |
 
 ---
 
@@ -186,9 +188,13 @@ Time entries become a **computed view** over classified events, updating automat
 
 ---
 
-### Phase 3: Billing & Invoicing
+### Phase 3: Billing & Invoicing (Complete)
 
-Enable invoicing for billable projects.
+**Status**: Done.
+
+**PRD**: [prd-invoicing.md](../prd-invoicing.md)
+
+**Mocks**: [mocks/billing-invoicing.html](mocks/billing-invoicing.html)
 
 **Deliverables**:
 
@@ -200,7 +206,7 @@ Enable invoicing for billable projects.
 2. **Invoice Generation**
    - Create invoice from uninvoiced entries in date range
    - Calculate totals using applicable rates
-   - Sequential invoice numbering
+   - Sequential invoice numbering (PROJECT-YEAR-SEQ)
 
 3. **Invoice Status Flow**
    - Draft (editable) → Sent (locked) → Paid (archived)
@@ -208,9 +214,7 @@ Enable invoicing for billable projects.
 
 4. **Invoice Export**
    - CSV download
-   - Google Sheets export (optional, Phase 4)
-
-**Reference**: [prd-invoicing.md](../prd-invoicing.md)
+   - Google Sheets export (living document model)
 
 ---
 
@@ -286,6 +290,7 @@ Not currently planned, but architecture supports:
 | [prd-time-entry-enhancements.md](prd-time-entry-enhancements.md) | Phase 2: Time entry calculation and protection |
 | **v2 Mocks** | |
 | [mocks/time-entry-enhancements.html](mocks/time-entry-enhancements.html) | Phase 2: UI wireframes |
+| [mocks/billing-invoicing.html](mocks/billing-invoicing.html) | Phase 3: Billing & invoicing UI |
 | **v2 Architecture** | |
 | [architecture.md](architecture.md) | Layer definitions, naming conventions |
 | [domain-glossary.md](domain-glossary.md) | Entity definitions, operations |
@@ -315,6 +320,8 @@ Not currently planned, but architecture supports:
 
 | Date | Change |
 |------|--------|
+| 2026-01-06 | Phase 3 (Billing & Invoicing) complete |
+| 2026-01-05 | Phase 3 HTML mocks created; ready for implementation |
 | 2026-01-05 | Phase 2 implementation complete |
 | 2026-01-05 | Phase 2 requirements complete; PRD and mocks ready for implementation |
 | 2026-01-05 | Marked Phase 4 (MCP Server) as complete |
