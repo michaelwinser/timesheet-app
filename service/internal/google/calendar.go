@@ -8,6 +8,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/calendar/v3"
+	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 )
 
@@ -23,7 +24,7 @@ func NewCalendarService(clientID, clientSecret, redirectURL string) *CalendarSer
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
 			RedirectURL:  redirectURL,
-			Scopes:       []string{calendar.CalendarReadonlyScope},
+			Scopes:       []string{calendar.CalendarReadonlyScope, drive.DriveFileScope},
 			Endpoint:     google.Endpoint,
 		},
 	}
