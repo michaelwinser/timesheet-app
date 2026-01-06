@@ -302,6 +302,7 @@ func (h *InvoiceHandler) ExportInvoiceSheets(ctx context.Context, req api.Export
 	}
 
 	// Get OAuth credentials from calendar connection
+	// First get list to find connection ID, then get full connection with credentials
 	conns, err := h.calendars.List(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -312,7 +313,11 @@ func (h *InvoiceHandler) ExportInvoiceSheets(ctx context.Context, req api.Export
 			Message: "No Google Calendar connection found. Please connect your calendar first.",
 		}, nil
 	}
-	conn := conns[0]
+	// Get full connection with credentials (List doesn't include credentials for security)
+	conn, err := h.calendars.GetByID(ctx, userID, conns[0].ID)
+	if err != nil {
+		return nil, err
+	}
 
 	// Create OAuth token
 	token := h.sheets.TokenFromConnection(conn)
