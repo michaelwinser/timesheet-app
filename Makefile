@@ -20,7 +20,7 @@ help:
 	@echo "Database:"
 	@echo "  make db-up       Start PostgreSQL only"
 	@echo "  make db-reset    Reset database (WARNING: deletes data)"
-	@echo "  make db-clear-time-data  Clear events, time entries, invoices (keeps projects/rules)"
+	@echo "  make db-clear-time-data  Clear events, time entries, invoices and trigger full re-sync"
 	@echo "  make db-clear-entries  Delete all time entries"
 	@echo "  make db-clear-classifications  Reset all events to pending"
 	@echo "  make psql        Connect to PostgreSQL shell"
@@ -109,8 +109,13 @@ db-clear-time-data:
 	docker compose exec postgres psql -U timesheet -d timesheet_v2 -c "\
 		DELETE FROM invoices; \
 		DELETE FROM time_entries; \
-		DELETE FROM calendar_events;"
-	@echo "Done! All events, time entries, and invoices deleted."
+		DELETE FROM calendar_events; \
+		UPDATE calendars SET \
+			sync_token = NULL, \
+			last_synced_at = NULL, \
+			min_synced_date = NULL, \
+			max_synced_date = NULL;"
+	@echo "Done! All events, time entries, and invoices deleted. Calendars will re-sync."
 
 psql:
 	docker compose exec postgres psql -U timesheet -d timesheet_v2
