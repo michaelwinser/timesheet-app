@@ -4,6 +4,7 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // EventProperties provides access to event properties for rule evaluation
@@ -54,10 +55,10 @@ func Evaluate(node QueryNode, props *EventProperties) bool {
 func evaluateCondition(cond *ConditionNode, props *EventProperties) bool {
 	switch cond.Property {
 	case "title":
-		return containsIgnoreCase(props.Title, cond.Value)
+		return containsWordIgnoreCase(props.Title, cond.Value)
 
 	case "description":
-		return containsIgnoreCase(props.Description, cond.Value)
+		return containsWordIgnoreCase(props.Description, cond.Value)
 
 	case "attendees":
 		// Match if any attendee contains the value
@@ -125,19 +126,19 @@ func evaluateCondition(cond *ConditionNode, props *EventProperties) bool {
 		return isAllDay == wantAllDay
 
 	case "calendar":
-		// Match against calendar name
-		return containsIgnoreCase(props.CalendarName, cond.Value)
+		// Match against calendar name (word boundary)
+		return containsWordIgnoreCase(props.CalendarName, cond.Value)
 
 	case "text":
-		// Text search across title, description, and attendees
-		if containsIgnoreCase(props.Title, cond.Value) {
+		// Text search across title, description, and attendees (word boundary)
+		if containsWordIgnoreCase(props.Title, cond.Value) {
 			return true
 		}
-		if containsIgnoreCase(props.Description, cond.Value) {
+		if containsWordIgnoreCase(props.Description, cond.Value) {
 			return true
 		}
 		for _, attendee := range props.Attendees {
-			if containsIgnoreCase(attendee, cond.Value) {
+			if containsWordIgnoreCase(attendee, cond.Value) {
 				return true
 			}
 		}
@@ -152,6 +153,59 @@ func evaluateCondition(cond *ConditionNode, props *EventProperties) bool {
 // containsIgnoreCase checks if s contains substr (case-insensitive)
 func containsIgnoreCase(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
+}
+
+// containsWordIgnoreCase checks if s contains word as a complete word (case-insensitive).
+// A word boundary is any non-alphanumeric character or start/end of string.
+// This prevents "AC" from matching inside "Jack" while still matching "AC 123" or "fly AC".
+//
+// For multi-word phrases (containing spaces), falls back to substring matching since
+// phrases like "out of office" are specific enough to not cause false positives.
+func containsWordIgnoreCase(s, word string) bool {
+	sLower := strings.ToLower(s)
+	wordLower := strings.ToLower(word)
+
+	// Multi-word phrases: use substring matching (they're specific enough)
+	if strings.Contains(wordLower, " ") {
+		return strings.Contains(sLower, wordLower)
+	}
+
+	// Single words: require word boundary matching
+	// Tokenize the string into words
+	words := tokenize(sLower)
+
+	// Check if any word matches exactly
+	for _, w := range words {
+		if w == wordLower {
+			return true
+		}
+	}
+	return false
+}
+
+// tokenize splits a string into words, treating any non-alphanumeric character as a delimiter.
+// Returns lowercase words.
+func tokenize(s string) []string {
+	var words []string
+	var current strings.Builder
+
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			current.WriteRune(r)
+		} else {
+			if current.Len() > 0 {
+				words = append(words, current.String())
+				current.Reset()
+			}
+		}
+	}
+
+	// Don't forget the last word
+	if current.Len() > 0 {
+		words = append(words, current.String())
+	}
+
+	return words
 }
 
 // extractDomain extracts the domain from an email address
@@ -323,18 +377,18 @@ func evaluateExtendedCondition(cond *ConditionNode, props *ExtendedEventProperti
 		if strings.EqualFold(cond.Value, "unclassified") {
 			return props.ProjectID == nil || !props.IsClassified
 		}
-		// Match against project name
+		// Match against project name (word boundary)
 		if props.ProjectName == nil {
 			return false
 		}
-		return containsIgnoreCase(*props.ProjectName, cond.Value)
+		return containsWordIgnoreCase(*props.ProjectName, cond.Value)
 
 	case "client":
-		// Match against client name
+		// Match against client name (word boundary)
 		if props.ClientName == nil {
 			return false
 		}
-		return containsIgnoreCase(*props.ClientName, cond.Value)
+		return containsWordIgnoreCase(*props.ClientName, cond.Value)
 
 	case "confidence":
 		// confidence:high, confidence:medium, confidence:low
