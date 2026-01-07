@@ -4,3 +4,4 @@ export { default as ProjectListItem } from './ProjectListItem.svelte';
 export { default as CalendarEventCard } from './CalendarEventCard.svelte';
 export { default as TimeGrid } from './TimeGrid.svelte';
 export { default as EventPopup } from './EventPopup.svelte';
+export { default as GoToDateModal } from './GoToDateModal.svelte';

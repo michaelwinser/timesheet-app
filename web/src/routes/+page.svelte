@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import AppShell from '$lib/components/AppShell.svelte';
 	import { Button, Modal, Input } from '$lib/components/primitives';
-	import { ProjectChip, TimeEntryCard, CalendarEventCard, TimeGrid, EventPopup } from '$lib/components/widgets';
+	import { ProjectChip, TimeEntryCard, CalendarEventCard, TimeGrid, EventPopup, GoToDateModal } from '$lib/components/widgets';
 	import { api } from '$lib/api/client';
 	import type { Project, TimeEntry, CalendarEvent, CalendarConnection } from '$lib/api/types';
 	import { getProjectTextColors, getVerificationTextColor } from '$lib/utils/colors';
@@ -38,6 +38,29 @@
 
 	// Track date ranges that have been synced on-demand
 	let syncedDateRanges = $state<Set<string>>(new Set());
+
+	// Go to date modal
+	let showGoToDateModal = $state(false);
+
+	// Global keyboard shortcuts
+	function handleGlobalKeydown(e: KeyboardEvent) {
+		// Ignore if typing in an input/textarea or if modal is open
+		const target = e.target as HTMLElement;
+		if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+			return;
+		}
+
+		// 'g' opens go-to-date modal
+		if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+			e.preventDefault();
+			showGoToDateModal = true;
+		}
+	}
+
+	function handleGoToDate(date: Date) {
+		currentDate = date;
+		updateUrl(currentDate, scopeMode, displayMode);
+	}
 
 	// Get date from URL or default to today
 	function getDateFromUrl(): Date {
@@ -940,6 +963,8 @@
 <svelte:head>
 	<title>{scopeMode === 'day' ? 'Day' : scopeMode === 'week' ? 'Week' : 'Full Week'} View - Timesheet</title>
 </svelte:head>
+
+<svelte:window onkeydown={handleGlobalKeydown} />
 
 <AppShell wide>
 	<!-- Consolidated Header -->
@@ -1863,3 +1888,10 @@
 		</form>
 	</Modal>
 </AppShell>
+
+<!-- Go to Date Modal (opened with 'g' key) -->
+<GoToDateModal
+	bind:open={showGoToDateModal}
+	referenceDate={currentDate}
+	onselect={handleGoToDate}
+/>
