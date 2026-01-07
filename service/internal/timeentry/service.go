@@ -13,10 +13,23 @@ import (
 	"github.com/michaelw/timesheet-app/service/internal/store"
 )
 
+// EventStore defines the interface for calendar event storage operations.
+type EventStore interface {
+	List(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, status *store.ClassificationStatus, connectionID *uuid.UUID) ([]*store.CalendarEvent, error)
+}
+
+// TimeEntryStore defines the interface for time entry storage operations.
+type TimeEntryStore interface {
+	List(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, projectID *uuid.UUID) ([]*store.TimeEntry, error)
+	UpsertFromComputed(ctx context.Context, userID, projectID uuid.UUID, date time.Time, hours float64, title, description string, details []byte, eventIDs []uuid.UUID) (*store.TimeEntry, error)
+	UpdateComputed(ctx context.Context, userID uuid.UUID, entryID uuid.UUID, hours float64, title, description string, details []byte, eventIDs []uuid.UUID) error
+	Delete(ctx context.Context, userID, entryID uuid.UUID) error
+}
+
 // Service orchestrates time entry computation and persistence.
 type Service struct {
-	eventStore     *store.CalendarEventStore
-	timeEntryStore *store.TimeEntryStore
+	eventStore     EventStore
+	timeEntryStore TimeEntryStore
 	roundingConfig analyzer.RoundingConfig
 }
 
@@ -68,8 +81,13 @@ func (s *Service) RecalculateForDate(ctx context.Context, userID uuid.UUID, date
 	// Compute time entries using the analyzer
 	computed := analyzer.Compute(startOfDay, analyzerEvents, s.roundingConfig)
 
+	// Track which projects have computed entries
+	computedProjects := make(map[uuid.UUID]bool)
+
 	// Upsert each computed entry
 	for _, c := range computed {
+		computedProjects[c.ProjectID] = true
+
 		details, err := json.Marshal(c.CalculationDetails)
 		if err != nil {
 			return err
@@ -89,6 +107,35 @@ func (s *Service) RecalculateForDate(ctx context.Context, userID uuid.UUID, date
 		if err != nil {
 			return err
 		}
+	}
+
+	// Clean up entries for projects that no longer have classified events
+	// Get existing entries for this date
+	existingEntries, err := s.timeEntryStore.List(ctx, userID, &startOfDay, &startOfDay, nil)
+	if err != nil {
+		return err
+	}
+
+	for _, entry := range existingEntries {
+		// Skip if this project has computed entries
+		if computedProjects[entry.ProjectID] {
+			continue
+		}
+
+		// Skip if entry is protected (pinned, locked, or invoiced)
+		if entry.IsPinned || entry.IsLocked || entry.InvoiceID != nil {
+			// Update computed fields to show 0 hours and mark stale
+			emptyDetails, _ := json.Marshal(map[string]interface{}{
+				"events":        []interface{}{},
+				"union_minutes": 0,
+				"final_minutes": 0,
+			})
+			_ = s.timeEntryStore.UpdateComputed(ctx, userID, entry.ID, 0, "", "", emptyDetails, []uuid.UUID{})
+			continue
+		}
+
+		// Delete unprotected entries that no longer have events
+		_ = s.timeEntryStore.Delete(ctx, userID, entry.ID)
 	}
 
 	return nil
