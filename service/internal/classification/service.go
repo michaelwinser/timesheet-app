@@ -535,3 +535,35 @@ func (s *Service) RecalculateTimeEntries(ctx context.Context, userID uuid.UUID, 
 func (s *Service) RecalculateTimeEntriesForEvent(ctx context.Context, userID uuid.UUID, event *store.CalendarEvent) error {
 	return s.timeEntryService.RecalculateForEvent(ctx, userID, event)
 }
+
+// ExplainEventClassification evaluates all rules against an event and returns
+// detailed information showing which rules matched and how scores were calculated.
+// This is useful for debugging classification decisions.
+func (s *Service) ExplainEventClassification(ctx context.Context, userID uuid.UUID, eventID uuid.UUID, targets []Target) (*ExplainResult, error) {
+	// Get the event
+	event, err := s.eventStore.GetByID(ctx, userID, eventID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get all enabled rules for the user
+	storeRules, err := s.ruleStore.List(ctx, userID, false)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert to library types
+	rules := storeRulesToLibraryRules(storeRules)
+	item := eventToItem(event)
+
+	// Build a map for rule names (queries) by ID
+	ruleQueries := make(map[string]string)
+	for _, r := range storeRules {
+		ruleQueries[r.ID.String()] = r.Query
+	}
+
+	// Use pure classifier explain function
+	result := ExplainClassification(rules, targets, item, DefaultConfig())
+
+	return result, nil
+}

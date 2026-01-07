@@ -440,3 +440,180 @@ func PreviewRules(query string, items []Item) ([]string, error) {
 
 	return matchingIDs, nil
 }
+
+// RuleEvaluation represents the result of evaluating a single rule against an item
+type RuleEvaluation struct {
+	RuleID     string
+	Query      string
+	TargetID   string
+	TargetName string      // Populated by caller
+	Weight     float64
+	Source     MatchSource // rule or fingerprint
+	Matched    bool
+}
+
+// TargetScore represents the accumulated score for a classification target
+type TargetScore struct {
+	TargetID         string
+	TargetName       string  // Populated by caller
+	TotalWeight      float64
+	RuleWeight       float64 // Weight from explicit rules
+	FingerprintWeight float64 // Weight from fingerprint matches
+	IsWinner         bool
+}
+
+// ExplainResult contains detailed information about how an item was classified
+type ExplainResult struct {
+	ItemID           string
+	Evaluations      []RuleEvaluation // All rules evaluated (matched and unmatched)
+	TargetScores     []TargetScore    // Scores by target
+	TotalWeight      float64          // Sum of all matching rule weights
+	WinnerTargetID   string
+	WinnerConfidence float64
+	NeedsReview      bool
+	MatchSource      MatchSource // Primary source of winning classification
+	Outcome          string      // Human-readable outcome description
+}
+
+// ExplainClassification evaluates all rules against a single item and returns
+// detailed information about the classification decision. Unlike Classify, this
+// shows ALL rules including those that didn't match.
+func ExplainClassification(rules []Rule, targets []Target, item Item, config Config) *ExplainResult {
+	// Generate rules from target attributes
+	allRules, fingerprintRuleIDs := generateTargetRules(targets)
+	allRules = append(allRules, rules...)
+
+	// Build target name map
+	targetNames := make(map[string]string)
+	for _, t := range targets {
+		if name, ok := t.Attributes["name"].(string); ok {
+			targetNames[t.ID] = name
+		}
+	}
+
+	// Convert item attributes to EventProperties for evaluation
+	props := itemToProperties(item)
+
+	// Evaluate all rules
+	evaluations := make([]RuleEvaluation, 0, len(allRules))
+	scores := make(map[string]float64)
+	var totalWeight float64
+
+	// Track fingerprint vs rule weight per target
+	fingerprintWeight := make(map[string]float64)
+	ruleWeight := make(map[string]float64)
+
+	for _, rule := range allRules {
+		ast, err := Parse(rule.Query)
+		if err != nil {
+			// Include invalid rules as non-matching
+			evaluations = append(evaluations, RuleEvaluation{
+				RuleID:     rule.ID,
+				Query:      rule.Query,
+				TargetID:   rule.TargetID,
+				TargetName: targetNames[rule.TargetID],
+				Weight:     rule.Weight,
+				Source:     MatchSourceRule,
+				Matched:    false,
+			})
+			continue
+		}
+
+		matched := Evaluate(ast, props)
+		source := MatchSourceRule
+		if fingerprintRuleIDs[rule.ID] {
+			source = MatchSourceFingerprint
+		}
+
+		evaluations = append(evaluations, RuleEvaluation{
+			RuleID:     rule.ID,
+			Query:      rule.Query,
+			TargetID:   rule.TargetID,
+			TargetName: targetNames[rule.TargetID],
+			Weight:     rule.Weight,
+			Source:     source,
+			Matched:    matched,
+		})
+
+		if matched {
+			scores[rule.TargetID] += rule.Weight
+			totalWeight += rule.Weight
+
+			if source == MatchSourceFingerprint {
+				fingerprintWeight[rule.TargetID] += rule.Weight
+			} else {
+				ruleWeight[rule.TargetID] += rule.Weight
+			}
+		}
+	}
+
+	// Build target scores
+	targetScores := make([]TargetScore, 0)
+	for targetID, score := range scores {
+		targetScores = append(targetScores, TargetScore{
+			TargetID:         targetID,
+			TargetName:       targetNames[targetID],
+			TotalWeight:      score,
+			RuleWeight:       ruleWeight[targetID],
+			FingerprintWeight: fingerprintWeight[targetID],
+		})
+	}
+
+	// Find the winner
+	var winnerID string
+	var winnerScore float64
+	for targetID, score := range scores {
+		if score > winnerScore {
+			winnerID = targetID
+			winnerScore = score
+		}
+	}
+
+	// Mark winner in scores
+	for i := range targetScores {
+		if targetScores[i].TargetID == winnerID {
+			targetScores[i].IsWinner = true
+		}
+	}
+
+	// Determine primary match source for the winner
+	matchSource := MatchSourceRule
+	if fingerprintWeight[winnerID] > ruleWeight[winnerID] {
+		matchSource = MatchSourceFingerprint
+	}
+
+	// Calculate confidence
+	var confidence float64
+	if totalWeight > 0 {
+		confidence = winnerScore / totalWeight
+		if confidence > 1.0 {
+			confidence = 1.0
+		}
+	}
+
+	// Determine outcome
+	var outcome string
+	needsReview := false
+	if len(scores) == 0 {
+		outcome = "No rules matched - event would remain unclassified"
+	} else if confidence < config.ConfidenceFloor {
+		outcome = fmt.Sprintf("Confidence %.0f%% below threshold %.0f%% - would not classify", confidence*100, config.ConfidenceFloor*100)
+	} else if confidence < config.ConfidenceCeiling {
+		needsReview = true
+		outcome = fmt.Sprintf("Classified to %s with %.0f%% confidence (needs review)", targetNames[winnerID], confidence*100)
+	} else {
+		outcome = fmt.Sprintf("Classified to %s with %.0f%% confidence (auto-approved)", targetNames[winnerID], confidence*100)
+	}
+
+	return &ExplainResult{
+		ItemID:           item.ID,
+		Evaluations:      evaluations,
+		TargetScores:     targetScores,
+		TotalWeight:      totalWeight,
+		WinnerTargetID:   winnerID,
+		WinnerConfidence: confidence,
+		NeedsReview:      needsReview,
+		MatchSource:      matchSource,
+		Outcome:          outcome,
+	}
+}

@@ -313,6 +313,20 @@ func (h *MCPHandler) initTools() {
 				},
 			},
 		},
+		{
+			Name:        "explain_classification",
+			Description: "Explain how an event was (or would be) classified. Shows all rules evaluated, which matched, score breakdown by project, and the final decision. Useful for debugging why an event was classified to a particular project.",
+			InputSchema: map[string]any{
+				"type":     "object",
+				"required": []string{"event_id"},
+				"properties": map[string]any{
+					"event_id": map[string]any{
+						"type":        "string",
+						"description": "The calendar event ID to explain classification for",
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -361,6 +375,8 @@ func (h *MCPHandler) callTool(ctx context.Context, userID uuid.UUID, name string
 		return h.bulkClassify(ctx, userID, args)
 	case "apply_rules":
 		return h.applyRules(ctx, userID, args)
+	case "explain_classification":
+		return h.explainClassification(ctx, userID, args)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", name)
 	}
@@ -1103,6 +1119,161 @@ func (h *MCPHandler) applyRules(ctx context.Context, userID uuid.UUID, args map[
 			}
 			sb.WriteString(fmt.Sprintf("- %s → %s (%.0f%% confidence)%s\n", c.EventID, projectName, c.Confidence*100, review))
 		}
+	}
+
+	return map[string]any{
+		"content": []map[string]any{
+			{"type": "text", "text": sb.String()},
+		},
+	}, nil
+}
+
+func (h *MCPHandler) explainClassification(ctx context.Context, userID uuid.UUID, args map[string]any) (any, error) {
+	eventIDStr, ok := args["event_id"].(string)
+	if !ok || eventIDStr == "" {
+		return nil, fmt.Errorf("event_id is required")
+	}
+
+	eventID, err := uuid.Parse(eventIDStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid event_id: %w", err)
+	}
+
+	// Get the event first to show its details
+	event, err := h.calendarEvents.GetByID(ctx, userID, eventID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get event: %w", err)
+	}
+
+	// Get projects to build targets with names
+	projects, err := h.projects.List(ctx, userID, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list projects: %w", err)
+	}
+
+	// Build targets from projects (including fingerprints and names)
+	projectNames := make(map[string]string)
+	targets := make([]classification.Target, 0, len(projects))
+	for _, p := range projects {
+		attrs := make(map[string]any)
+		attrs["name"] = p.Name
+		projectNames[p.ID.String()] = p.Name
+		if p.FingerprintDomains != nil {
+			attrs["domains"] = p.FingerprintDomains
+		}
+		if p.FingerprintEmails != nil {
+			attrs["emails"] = p.FingerprintEmails
+		}
+		if p.FingerprintKeywords != nil {
+			attrs["keywords"] = p.FingerprintKeywords
+		}
+		target := classification.Target{
+			ID:         p.ID.String(),
+			Attributes: attrs,
+		}
+		targets = append(targets, target)
+	}
+
+	// Get explain result
+	result, err := h.classificationSvc.ExplainEventClassification(ctx, userID, eventID, targets)
+	if err != nil {
+		return nil, fmt.Errorf("failed to explain classification: %w", err)
+	}
+
+	// Build markdown output
+	var sb strings.Builder
+	sb.WriteString("# Classification Explanation\n\n")
+
+	// Event details
+	sb.WriteString("## Event\n\n")
+	sb.WriteString(fmt.Sprintf("- **Title**: %s\n", event.Title))
+	sb.WriteString(fmt.Sprintf("- **Date**: %s\n", event.StartTime.Format("2006-01-02 15:04")))
+	if len(event.Attendees) > 0 {
+		sb.WriteString(fmt.Sprintf("- **Attendees**: %s\n", strings.Join(event.Attendees, ", ")))
+	}
+	if event.ClassificationStatus == store.StatusClassified && event.ProjectID != nil {
+		currentProject := projectNames[event.ProjectID.String()]
+		if currentProject == "" {
+			currentProject = event.ProjectID.String()
+		}
+		sb.WriteString(fmt.Sprintf("- **Current classification**: %s\n", currentProject))
+	} else {
+		sb.WriteString(fmt.Sprintf("- **Current status**: %s\n", event.ClassificationStatus))
+	}
+	sb.WriteString("\n")
+
+	// Outcome summary
+	sb.WriteString("## Result\n\n")
+	sb.WriteString(fmt.Sprintf("**%s**\n\n", result.Outcome))
+
+	// Target scores (projects that received votes)
+	if len(result.TargetScores) > 0 {
+		sb.WriteString("## Score by Project\n\n")
+		sb.WriteString("| Project | Total | Rules | Fingerprints | Winner |\n")
+		sb.WriteString("|---------|-------|-------|--------------|--------|\n")
+		for _, ts := range result.TargetScores {
+			name := projectNames[ts.TargetID]
+			if name == "" {
+				name = ts.TargetID
+			}
+			winner := ""
+			if ts.IsWinner {
+				winner = "✓"
+			}
+			sb.WriteString(fmt.Sprintf("| %s | %.1f | %.1f | %.1f | %s |\n",
+				name, ts.TotalWeight, ts.RuleWeight, ts.FingerprintWeight, winner))
+		}
+		sb.WriteString(fmt.Sprintf("\n**Total weight**: %.1f | **Confidence**: %.0f%%\n\n",
+			result.TotalWeight, result.WinnerConfidence*100))
+	}
+
+	// Matching rules
+	var matchingRules []classification.RuleEvaluation
+	var nonMatchingRules []classification.RuleEvaluation
+	for _, e := range result.Evaluations {
+		if e.Matched {
+			matchingRules = append(matchingRules, e)
+		} else {
+			nonMatchingRules = append(nonMatchingRules, e)
+		}
+	}
+
+	if len(matchingRules) > 0 {
+		sb.WriteString("## Matching Rules\n\n")
+		sb.WriteString("| Query | Project | Weight | Source |\n")
+		sb.WriteString("|-------|---------|--------|--------|\n")
+		for _, e := range matchingRules {
+			name := projectNames[e.TargetID]
+			if name == "" {
+				name = e.TargetID
+			}
+			sb.WriteString(fmt.Sprintf("| `%s` | %s | %.1f | %s |\n",
+				e.Query, name, e.Weight, e.Source))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Non-matching rules (collapsed by default - just show count)
+	if len(nonMatchingRules) > 0 {
+		sb.WriteString(fmt.Sprintf("## Non-Matching Rules (%d)\n\n", len(nonMatchingRules)))
+		// Show first few for context
+		shown := 0
+		sb.WriteString("| Query | Project | Source |\n")
+		sb.WriteString("|-------|---------|--------|\n")
+		for _, e := range nonMatchingRules {
+			if shown >= 10 {
+				sb.WriteString(fmt.Sprintf("\n*... and %d more non-matching rules*\n", len(nonMatchingRules)-shown))
+				break
+			}
+			name := projectNames[e.TargetID]
+			if name == "" {
+				name = e.TargetID
+			}
+			sb.WriteString(fmt.Sprintf("| `%s` | %s | %s |\n",
+				e.Query, name, e.Source))
+			shown++
+		}
+		sb.WriteString("\n")
 	}
 
 	return map[string]any{
