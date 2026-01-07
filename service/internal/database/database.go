@@ -94,11 +94,25 @@ type migration struct {
 	sql     string
 }
 
+// Consolidated schema as of 2026-01-07
+// Previous migrations 1-19 have been collapsed into this single initial schema.
 var migrations = []migration{
 	{
 		version: 1,
 		sql: `
-			CREATE TABLE IF NOT EXISTS users (
+			-- =============================================================================
+			-- ENUMS
+			-- =============================================================================
+
+			CREATE TYPE classification_status AS ENUM ('pending', 'classified');
+			CREATE TYPE classification_source AS ENUM ('rule', 'fingerprint', 'manual', 'llm');
+			CREATE TYPE invoice_status AS ENUM ('draft', 'sent', 'paid');
+
+			-- =============================================================================
+			-- USERS
+			-- =============================================================================
+
+			CREATE TABLE users (
 				id UUID PRIMARY KEY,
 				email TEXT NOT NULL UNIQUE,
 				name TEXT NOT NULL,
@@ -107,87 +121,146 @@ var migrations = []migration{
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
-		`,
-	},
-	{
-		version: 2,
-		sql: `
-			CREATE TABLE IF NOT EXISTS projects (
+			CREATE INDEX idx_users_email ON users(email);
+
+			-- =============================================================================
+			-- PROJECTS
+			-- =============================================================================
+
+			CREATE TABLE projects (
 				id UUID PRIMARY KEY,
 				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				name TEXT NOT NULL,
 				short_code TEXT,
+				client TEXT,
 				color TEXT NOT NULL DEFAULT '#6B7280',
 				is_billable BOOLEAN NOT NULL DEFAULT true,
 				is_archived BOOLEAN NOT NULL DEFAULT false,
 				is_hidden_by_default BOOLEAN NOT NULL DEFAULT false,
 				does_not_accumulate_hours BOOLEAN NOT NULL DEFAULT false,
+				-- Fingerprint fields for auto-classification
+				fingerprint_domains TEXT[] DEFAULT '{}',
+				fingerprint_emails TEXT[] DEFAULT '{}',
+				fingerprint_keywords TEXT[] DEFAULT '{}',
+				-- Google Sheets integration
+				sheets_spreadsheet_id TEXT,
+				sheets_spreadsheet_url TEXT,
 				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_projects_user_id ON projects(user_id);
-		`,
-	},
-	{
-		version: 3,
-		sql: `
-			CREATE TABLE IF NOT EXISTS time_entries (
+			CREATE INDEX idx_projects_user_id ON projects(user_id);
+
+			-- =============================================================================
+			-- TIME ENTRIES
+			-- =============================================================================
+
+			CREATE TABLE time_entries (
 				id UUID PRIMARY KEY,
 				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
 				date DATE NOT NULL,
 				hours DECIMAL(5,2) NOT NULL DEFAULT 0,
+				title TEXT,
 				description TEXT,
 				source TEXT NOT NULL DEFAULT 'manual',
 				invoice_id UUID,
 				has_user_edits BOOLEAN NOT NULL DEFAULT false,
+				-- Protection model
+				is_pinned BOOLEAN NOT NULL DEFAULT false,
+				is_locked BOOLEAN NOT NULL DEFAULT false,
+				is_stale BOOLEAN NOT NULL DEFAULT false,
+				-- Computed fields from calendar events
+				computed_hours DECIMAL(5,2),
+				computed_title TEXT,
+				computed_description TEXT,
+				calculation_details JSONB,
 				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				UNIQUE(user_id, project_id, date)
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_time_entries_user_id ON time_entries(user_id);
-			CREATE INDEX IF NOT EXISTS idx_time_entries_project_id ON time_entries(project_id);
-			CREATE INDEX IF NOT EXISTS idx_time_entries_date ON time_entries(date);
-		`,
-	},
-	{
-		version: 4,
-		sql: `
-			CREATE TABLE IF NOT EXISTS calendar_connections (
+			CREATE INDEX idx_time_entries_user_id ON time_entries(user_id);
+			CREATE INDEX idx_time_entries_project_id ON time_entries(project_id);
+			CREATE INDEX idx_time_entries_date ON time_entries(date);
+			CREATE INDEX idx_time_entries_is_stale ON time_entries(is_stale) WHERE is_stale = true;
+			CREATE INDEX idx_time_entries_invoice_id ON time_entries(invoice_id) WHERE invoice_id IS NOT NULL;
+
+			-- =============================================================================
+			-- CALENDAR CONNECTIONS
+			-- =============================================================================
+
+			CREATE TABLE calendar_connections (
 				id UUID PRIMARY KEY,
 				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				provider TEXT NOT NULL DEFAULT 'google',
 				credentials_encrypted BYTEA NOT NULL,
+				sync_token TEXT,
 				last_synced_at TIMESTAMPTZ,
 				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				UNIQUE(user_id, provider)
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_calendar_connections_user_id ON calendar_connections(user_id);
-		`,
-	},
-	{
-		version: 5,
-		sql: `
-			DO $$ BEGIN
-				CREATE TYPE classification_status AS ENUM ('pending', 'classified', 'skipped');
-			EXCEPTION
-				WHEN duplicate_object THEN null;
-			END $$;
+			CREATE INDEX idx_calendar_connections_user_id ON calendar_connections(user_id);
 
-			DO $$ BEGIN
-				CREATE TYPE classification_source AS ENUM ('rule', 'fingerprint', 'manual', 'llm');
-			EXCEPTION
-				WHEN duplicate_object THEN null;
-			END $$;
+			-- =============================================================================
+			-- CALENDARS
+			-- =============================================================================
 
-			CREATE TABLE IF NOT EXISTS calendar_events (
+			CREATE TABLE calendars (
 				id UUID PRIMARY KEY,
 				connection_id UUID NOT NULL REFERENCES calendar_connections(id) ON DELETE CASCADE,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				external_id TEXT NOT NULL,
+				name TEXT NOT NULL,
+				color TEXT,
+				is_primary BOOLEAN NOT NULL DEFAULT false,
+				is_selected BOOLEAN NOT NULL DEFAULT false,
+				sync_token TEXT,
+				last_synced_at TIMESTAMPTZ,
+				min_synced_date DATE,
+				max_synced_date DATE,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				UNIQUE(connection_id, external_id)
+			);
+
+			CREATE INDEX idx_calendars_connection_id ON calendars(connection_id);
+			CREATE INDEX idx_calendars_user_id ON calendars(user_id);
+
+			-- =============================================================================
+			-- CLASSIFICATION RULES
+			-- =============================================================================
+
+			CREATE TABLE classification_rules (
+				id UUID PRIMARY KEY,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				query TEXT NOT NULL,
+				project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+				attended BOOLEAN,
+				weight FLOAT NOT NULL DEFAULT 1.0,
+				is_enabled BOOLEAN NOT NULL DEFAULT true,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				-- Must target either project or attendance, not both
+				CONSTRAINT rule_has_target CHECK (
+					(project_id IS NOT NULL AND attended IS NULL) OR
+					(project_id IS NULL AND attended IS NOT NULL)
+				)
+			);
+
+			CREATE INDEX idx_classification_rules_user_id ON classification_rules(user_id);
+			CREATE INDEX idx_classification_rules_project_id ON classification_rules(project_id);
+
+			-- =============================================================================
+			-- CALENDAR EVENTS
+			-- =============================================================================
+
+			CREATE TABLE calendar_events (
+				id UUID PRIMARY KEY,
+				connection_id UUID NOT NULL REFERENCES calendar_connections(id) ON DELETE CASCADE,
+				calendar_id UUID REFERENCES calendars(id) ON DELETE CASCADE,
 				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				external_id TEXT NOT NULL,
 				title TEXT NOT NULL,
@@ -200,111 +273,32 @@ var migrations = []migration{
 				transparency TEXT,
 				is_orphaned BOOLEAN NOT NULL DEFAULT false,
 				is_suppressed BOOLEAN NOT NULL DEFAULT false,
+				is_locked BOOLEAN NOT NULL DEFAULT false,
+				is_skipped BOOLEAN NOT NULL DEFAULT false,
 				classification_status classification_status NOT NULL DEFAULT 'pending',
 				classification_source classification_source,
+				classification_confidence FLOAT,
+				classification_rule_id UUID REFERENCES classification_rules(id) ON DELETE SET NULL,
+				needs_review BOOLEAN NOT NULL DEFAULT false,
 				project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
 				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				UNIQUE(connection_id, external_id)
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_calendar_events_user_id ON calendar_events(user_id);
-			CREATE INDEX IF NOT EXISTS idx_calendar_events_connection_id ON calendar_events(connection_id);
-			CREATE INDEX IF NOT EXISTS idx_calendar_events_start_time ON calendar_events(start_time);
-			CREATE INDEX IF NOT EXISTS idx_calendar_events_classification ON calendar_events(classification_status);
-		`,
-	},
-	{
-		version: 6,
-		sql: `
-			ALTER TABLE calendar_connections
-			ADD COLUMN IF NOT EXISTS sync_token TEXT;
-		`,
-	},
-	{
-		version: 7,
-		sql: `
-			-- Create calendars table for multi-calendar support
-			CREATE TABLE IF NOT EXISTS calendars (
-				id UUID PRIMARY KEY,
-				connection_id UUID NOT NULL REFERENCES calendar_connections(id) ON DELETE CASCADE,
-				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-				external_id TEXT NOT NULL,
-				name TEXT NOT NULL,
-				color TEXT,
-				is_primary BOOLEAN NOT NULL DEFAULT false,
-				is_selected BOOLEAN NOT NULL DEFAULT false,
-				sync_token TEXT,
-				last_synced_at TIMESTAMPTZ,
-				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-				UNIQUE(connection_id, external_id)
-			);
+			CREATE INDEX idx_calendar_events_user_id ON calendar_events(user_id);
+			CREATE INDEX idx_calendar_events_connection_id ON calendar_events(connection_id);
+			CREATE INDEX idx_calendar_events_calendar_id ON calendar_events(calendar_id);
+			CREATE INDEX idx_calendar_events_start_time ON calendar_events(start_time);
+			CREATE INDEX idx_calendar_events_classification ON calendar_events(classification_status);
+			CREATE INDEX idx_calendar_events_needs_review ON calendar_events(needs_review) WHERE needs_review = true;
+			CREATE INDEX idx_calendar_events_is_skipped ON calendar_events(is_skipped) WHERE is_skipped = true;
 
-			CREATE INDEX IF NOT EXISTS idx_calendars_connection_id ON calendars(connection_id);
-			CREATE INDEX IF NOT EXISTS idx_calendars_user_id ON calendars(user_id);
+			-- =============================================================================
+			-- CLASSIFICATION OVERRIDES
+			-- =============================================================================
 
-			-- Add calendar_id to calendar_events (nullable for backward compatibility)
-			ALTER TABLE calendar_events
-			ADD COLUMN IF NOT EXISTS calendar_id UUID REFERENCES calendars(id) ON DELETE CASCADE;
-
-			CREATE INDEX IF NOT EXISTS idx_calendar_events_calendar_id ON calendar_events(calendar_id);
-
-			-- Migrate existing data: create "primary" calendar for each existing connection
-			-- and link existing events to it
-			INSERT INTO calendars (id, connection_id, user_id, external_id, name, is_primary, is_selected, sync_token, last_synced_at, created_at, updated_at)
-			SELECT
-				gen_random_uuid(),
-				cc.id,
-				cc.user_id,
-				'primary',
-				'Primary Calendar',
-				true,
-				true,
-				cc.sync_token,
-				cc.last_synced_at,
-				cc.created_at,
-				cc.updated_at
-			FROM calendar_connections cc
-			WHERE NOT EXISTS (
-				SELECT 1 FROM calendars c WHERE c.connection_id = cc.id AND c.external_id = 'primary'
-			);
-
-			-- Update existing events to reference the primary calendar
-			UPDATE calendar_events ce
-			SET calendar_id = c.id
-			FROM calendars c
-			WHERE ce.connection_id = c.connection_id
-			AND c.external_id = 'primary'
-			AND ce.calendar_id IS NULL;
-		`,
-	},
-	{
-		version: 8,
-		sql: `
-			-- Classification rules table
-			CREATE TABLE IF NOT EXISTS classification_rules (
-				id UUID PRIMARY KEY,
-				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-				query TEXT NOT NULL,
-				project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
-				attended BOOLEAN,
-				weight FLOAT NOT NULL DEFAULT 1.0,
-				is_enabled BOOLEAN NOT NULL DEFAULT true,
-				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-				-- Constraint: must target either project or attendance, not both
-				CONSTRAINT rule_has_target CHECK (
-					(project_id IS NOT NULL AND attended IS NULL) OR
-					(project_id IS NULL AND attended IS NOT NULL)
-				)
-			);
-
-			CREATE INDEX IF NOT EXISTS idx_classification_rules_user_id ON classification_rules(user_id);
-			CREATE INDEX IF NOT EXISTS idx_classification_rules_project_id ON classification_rules(project_id);
-
-			-- Classification overrides for reclassification feedback
-			CREATE TABLE IF NOT EXISTS classification_overrides (
+			CREATE TABLE classification_overrides (
 				id UUID PRIMARY KEY,
 				event_id UUID NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
 				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -315,50 +309,27 @@ var migrations = []migration{
 				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_classification_overrides_event_id ON classification_overrides(event_id);
-			CREATE INDEX IF NOT EXISTS idx_classification_overrides_user_id ON classification_overrides(user_id);
+			CREATE INDEX idx_classification_overrides_event_id ON classification_overrides(event_id);
+			CREATE INDEX idx_classification_overrides_user_id ON classification_overrides(user_id);
 
-			-- Add confidence and needs_review to calendar_events
-			ALTER TABLE calendar_events
-			ADD COLUMN IF NOT EXISTS classification_confidence FLOAT,
-			ADD COLUMN IF NOT EXISTS needs_review BOOLEAN NOT NULL DEFAULT false,
-			ADD COLUMN IF NOT EXISTS classification_rule_id UUID REFERENCES classification_rules(id) ON DELETE SET NULL;
+			-- =============================================================================
+			-- TIME ENTRY EVENTS (junction table)
+			-- =============================================================================
 
-			CREATE INDEX IF NOT EXISTS idx_calendar_events_needs_review ON calendar_events(needs_review) WHERE needs_review = true;
-		`,
-	},
-	{
-		version: 9,
-		sql: `
-			-- Add fingerprint fields to projects for auto-generating classification rules
-			ALTER TABLE projects
-			ADD COLUMN IF NOT EXISTS fingerprint_domains TEXT[] DEFAULT '{}',
-			ADD COLUMN IF NOT EXISTS fingerprint_emails TEXT[] DEFAULT '{}',
-			ADD COLUMN IF NOT EXISTS fingerprint_keywords TEXT[] DEFAULT '{}';
-		`,
-	},
-	{
-		version: 10,
-		sql: `
-			-- Add client field to projects for classification filtering
-			ALTER TABLE projects
-			ADD COLUMN IF NOT EXISTS client TEXT;
-		`,
-	},
-	{
-		version: 11,
-		sql: `
-			-- Track the synced date window per calendar for smarter sync and orphaning
-			ALTER TABLE calendars
-			ADD COLUMN IF NOT EXISTS min_synced_date DATE,
-			ADD COLUMN IF NOT EXISTS max_synced_date DATE;
-		`,
-	},
-	{
-		version: 12,
-		sql: `
-			-- API Keys for programmatic access (MCP, CLI, integrations)
-			CREATE TABLE IF NOT EXISTS api_keys (
+			CREATE TABLE time_entry_events (
+				time_entry_id UUID NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,
+				calendar_event_id UUID NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
+				PRIMARY KEY (time_entry_id, calendar_event_id)
+			);
+
+			CREATE INDEX idx_time_entry_events_entry_id ON time_entry_events(time_entry_id);
+			CREATE INDEX idx_time_entry_events_event_id ON time_entry_events(calendar_event_id);
+
+			-- =============================================================================
+			-- API KEYS
+			-- =============================================================================
+
+			CREATE TABLE api_keys (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				name VARCHAR(255) NOT NULL,
@@ -369,15 +340,14 @@ var migrations = []migration{
 				UNIQUE(user_id, name)
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON api_keys(key_hash);
-			CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);
-		`,
-	},
-	{
-		version: 13,
-		sql: `
-			-- MCP OAuth sessions for OAuth 2.1 flow
-			CREATE TABLE IF NOT EXISTS mcp_oauth_sessions (
+			CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
+			CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
+
+			-- =============================================================================
+			-- MCP OAUTH
+			-- =============================================================================
+
+			CREATE TABLE mcp_oauth_sessions (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 				state TEXT NOT NULL UNIQUE,
 				code_challenge TEXT NOT NULL,
@@ -390,11 +360,10 @@ var migrations = []migration{
 				expires_at TIMESTAMPTZ NOT NULL
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_mcp_oauth_sessions_state ON mcp_oauth_sessions(state);
-			CREATE INDEX IF NOT EXISTS idx_mcp_oauth_sessions_auth_code ON mcp_oauth_sessions(auth_code) WHERE auth_code IS NOT NULL;
+			CREATE INDEX idx_mcp_oauth_sessions_state ON mcp_oauth_sessions(state);
+			CREATE INDEX idx_mcp_oauth_sessions_auth_code ON mcp_oauth_sessions(auth_code) WHERE auth_code IS NOT NULL;
 
-			-- MCP access tokens issued via OAuth flow
-			CREATE TABLE IF NOT EXISTS mcp_access_tokens (
+			CREATE TABLE mcp_access_tokens (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				token_hash VARCHAR(64) NOT NULL,
@@ -404,49 +373,14 @@ var migrations = []migration{
 				last_used_at TIMESTAMPTZ
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_mcp_access_tokens_token_hash ON mcp_access_tokens(token_hash);
-			CREATE INDEX IF NOT EXISTS idx_mcp_access_tokens_user_id ON mcp_access_tokens(user_id);
-		`,
-	},
-	{
-		version: 14,
-		sql: `
-			-- Phase 2: Time Entry Enhancements
-			-- Add protection model and computed fields to time_entries
-			ALTER TABLE time_entries
-			ADD COLUMN IF NOT EXISTS title TEXT,
-			ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE,
-			ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT FALSE,
-			ADD COLUMN IF NOT EXISTS is_stale BOOLEAN NOT NULL DEFAULT FALSE,
-			ADD COLUMN IF NOT EXISTS computed_hours DECIMAL(5,2),
-			ADD COLUMN IF NOT EXISTS computed_title TEXT,
-			ADD COLUMN IF NOT EXISTS computed_description TEXT,
-			ADD COLUMN IF NOT EXISTS calculation_details JSONB;
+			CREATE INDEX idx_mcp_access_tokens_token_hash ON mcp_access_tokens(token_hash);
+			CREATE INDEX idx_mcp_access_tokens_user_id ON mcp_access_tokens(user_id);
 
-			-- Add is_locked to calendar_events for lock day/week feature
-			ALTER TABLE calendar_events
-			ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT FALSE;
+			-- =============================================================================
+			-- BILLING PERIODS
+			-- =============================================================================
 
-			-- Junction table to track which events contribute to each time entry
-			CREATE TABLE IF NOT EXISTS time_entry_events (
-				time_entry_id UUID NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,
-				calendar_event_id UUID NOT NULL REFERENCES calendar_events(id) ON DELETE CASCADE,
-				PRIMARY KEY (time_entry_id, calendar_event_id)
-			);
-
-			CREATE INDEX IF NOT EXISTS idx_time_entry_events_entry_id ON time_entry_events(time_entry_id);
-			CREATE INDEX IF NOT EXISTS idx_time_entry_events_event_id ON time_entry_events(calendar_event_id);
-
-			-- Index for finding stale entries that need attention
-			CREATE INDEX IF NOT EXISTS idx_time_entries_is_stale ON time_entries(is_stale) WHERE is_stale = true;
-		`,
-	},
-	{
-		version: 15,
-		sql: `
-			-- Phase 3: Billing Periods
-			-- Billing periods for rate management over time
-			CREATE TABLE IF NOT EXISTS billing_periods (
+			CREATE TABLE billing_periods (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -455,15 +389,14 @@ var migrations = []migration{
 				hourly_rate DECIMAL(10,2) NOT NULL,
 				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-				-- Constraint: periods for same project cannot overlap
 				CONSTRAINT billing_period_dates_valid CHECK (ends_on IS NULL OR ends_on >= starts_on)
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_billing_periods_user_id ON billing_periods(user_id);
-			CREATE INDEX IF NOT EXISTS idx_billing_periods_project_id ON billing_periods(project_id);
-			CREATE INDEX IF NOT EXISTS idx_billing_periods_dates ON billing_periods(project_id, starts_on, ends_on);
+			CREATE INDEX idx_billing_periods_user_id ON billing_periods(user_id);
+			CREATE INDEX idx_billing_periods_project_id ON billing_periods(project_id);
+			CREATE INDEX idx_billing_periods_dates ON billing_periods(project_id, starts_on, ends_on);
 
-			-- Function to check for overlapping periods
+			-- Trigger to prevent overlapping billing periods
 			CREATE OR REPLACE FUNCTION check_billing_period_overlap()
 			RETURNS TRIGGER AS $$
 			BEGIN
@@ -472,7 +405,6 @@ var migrations = []migration{
 					WHERE project_id = NEW.project_id
 					AND id != COALESCE(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid)
 					AND (
-						-- New period overlaps existing period
 						(NEW.starts_on, COALESCE(NEW.ends_on, '9999-12-31'::date)) OVERLAPS
 						(starts_on, COALESCE(ends_on, '9999-12-31'::date))
 					)
@@ -483,25 +415,15 @@ var migrations = []migration{
 			END;
 			$$ LANGUAGE plpgsql;
 
-			DROP TRIGGER IF EXISTS billing_period_overlap_check ON billing_periods;
 			CREATE TRIGGER billing_period_overlap_check
 			BEFORE INSERT OR UPDATE ON billing_periods
 			FOR EACH ROW EXECUTE FUNCTION check_billing_period_overlap();
-		`,
-	},
-	{
-		version: 16,
-		sql: `
-			-- Phase 3: Invoices
-			-- Invoice status enum
-			DO $$ BEGIN
-				CREATE TYPE invoice_status AS ENUM ('draft', 'sent', 'paid');
-			EXCEPTION
-				WHEN duplicate_object THEN null;
-			END $$;
 
-			-- Invoices table
-			CREATE TABLE IF NOT EXISTS invoices (
+			-- =============================================================================
+			-- INVOICES
+			-- =============================================================================
+
+			CREATE TABLE invoices (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 				project_id UUID NOT NULL REFERENCES projects(id) ON DELETE RESTRICT,
@@ -521,13 +443,16 @@ var migrations = []migration{
 				UNIQUE(user_id, invoice_number)
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
-			CREATE INDEX IF NOT EXISTS idx_invoices_project_id ON invoices(project_id);
-			CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
-			CREATE INDEX IF NOT EXISTS idx_invoices_number ON invoices(invoice_number);
+			CREATE INDEX idx_invoices_user_id ON invoices(user_id);
+			CREATE INDEX idx_invoices_project_id ON invoices(project_id);
+			CREATE INDEX idx_invoices_status ON invoices(status);
+			CREATE INDEX idx_invoices_number ON invoices(invoice_number);
 
-			-- Invoice line items table
-			CREATE TABLE IF NOT EXISTS invoice_line_items (
+			-- =============================================================================
+			-- INVOICE LINE ITEMS
+			-- =============================================================================
+
+			CREATE TABLE invoice_line_items (
 				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 				invoice_id UUID NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
 				time_entry_id UUID NOT NULL REFERENCES time_entries(id) ON DELETE RESTRICT,
@@ -540,60 +465,8 @@ var migrations = []migration{
 				UNIQUE(invoice_id, time_entry_id)
 			);
 
-			CREATE INDEX IF NOT EXISTS idx_invoice_line_items_invoice_id ON invoice_line_items(invoice_id);
-			CREATE INDEX IF NOT EXISTS idx_invoice_line_items_time_entry_id ON invoice_line_items(time_entry_id);
-
-			-- Add index to time_entries.invoice_id for faster lookups
-			CREATE INDEX IF NOT EXISTS idx_time_entries_invoice_id ON time_entries(invoice_id) WHERE invoice_id IS NOT NULL;
-		`,
-	},
-	{
-		version: 17,
-		sql: `
-			-- Phase 3: Project spreadsheet tracking
-			-- Add spreadsheet tracking columns to projects for "one spreadsheet per project" model
-			ALTER TABLE projects
-			ADD COLUMN IF NOT EXISTS sheets_spreadsheet_id TEXT,
-			ADD COLUMN IF NOT EXISTS sheets_spreadsheet_url TEXT;
-		`,
-	},
-	{
-		version: 18,
-		sql: `
-			-- Fix invoices table: add missing spreadsheet_url column and fix worksheet_id type
-			ALTER TABLE invoices
-			ADD COLUMN IF NOT EXISTS spreadsheet_url TEXT;
-
-			-- Change worksheet_id from TEXT to INTEGER
-			ALTER TABLE invoices
-			ALTER COLUMN worksheet_id TYPE INTEGER USING (NULLIF(worksheet_id, '')::INTEGER);
-		`,
-	},
-	{
-		version: 19,
-		sql: `
-			-- Skip Rules: Add is_skipped column and simplify classification_status enum
-			-- Assumes calendar_events table is empty (run make db-clear-time-data first)
-
-			-- Add is_skipped column
-			ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS is_skipped BOOLEAN NOT NULL DEFAULT false;
-
-			-- Create new enum without 'skipped' value
-			CREATE TYPE classification_status_new AS ENUM ('pending', 'classified');
-
-			-- Migrate column to new enum type
-			ALTER TABLE calendar_events
-				ALTER COLUMN classification_status DROP DEFAULT,
-				ALTER COLUMN classification_status TYPE classification_status_new
-					USING classification_status::text::classification_status_new,
-				ALTER COLUMN classification_status SET DEFAULT 'pending';
-
-			-- Replace old enum with new
-			DROP TYPE classification_status;
-			ALTER TYPE classification_status_new RENAME TO classification_status;
-
-			-- Index for finding skipped events
-			CREATE INDEX IF NOT EXISTS idx_calendar_events_is_skipped ON calendar_events(is_skipped) WHERE is_skipped = true;
+			CREATE INDEX idx_invoice_line_items_invoice_id ON invoice_line_items(invoice_id);
+			CREATE INDEX idx_invoice_line_items_time_entry_id ON invoice_line_items(time_entry_id);
 		`,
 	},
 }
