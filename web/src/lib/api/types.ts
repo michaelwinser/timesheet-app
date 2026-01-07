@@ -379,3 +379,48 @@ export interface InvoiceCreate {
 export interface InvoiceStatusUpdate {
 	status: InvoiceStatus;
 }
+
+// Configuration Import/Export
+export interface ProjectExport {
+	name: string;
+	short_code?: string;
+	client?: string;
+	color?: string;
+	is_billable?: boolean;
+	is_archived?: boolean;
+	is_hidden_by_default?: boolean;
+	does_not_accumulate_hours?: boolean;
+	fingerprint_domains?: string[];
+	fingerprint_emails?: string[];
+	fingerprint_keywords?: string[];
+}
+
+export interface RuleExport {
+	query: string;
+	project_name?: string;
+	skip?: boolean;
+	weight?: number;
+	is_enabled?: boolean;
+}
+
+export interface ConfigExport {
+	version: string;
+	exported_at: string;
+	projects: ProjectExport[];
+	rules: RuleExport[];
+}
+
+export interface ConfigImport {
+	version?: string;
+	projects: ProjectExport[];
+	rules: RuleExport[];
+}
+
+export interface ConfigImportResult {
+	projects_created: number;
+	projects_updated: number;
+	rules_created: number;
+	rules_updated: number;
+	rules_skipped?: number;
+	warnings?: string[];
+}

@@ -34,7 +34,10 @@ import type {
 	Invoice,
 	InvoiceCreate,
 	InvoiceStatusUpdate,
-	InvoiceStatus
+	InvoiceStatus,
+	ConfigExport,
+	ConfigImport,
+	ConfigImportResult
 } from './types';
 
 const API_BASE = '/api';
@@ -314,6 +317,16 @@ class ApiClient {
 
 	async exportInvoiceSheets(id: string): Promise<{ spreadsheet_id?: string; spreadsheet_url?: string; worksheet_id?: number }> {
 		return this.request('POST', `/invoices/${id}/export/sheets`);
+	}
+
+	// Configuration Export/Import
+	async exportConfig(includeArchived = false): Promise<ConfigExport> {
+		const query = includeArchived ? '?include_archived=true' : '';
+		return this.request('GET', `/config/export${query}`);
+	}
+
+	async importConfig(data: ConfigImport): Promise<ConfigImportResult> {
+		return this.request('POST', '/config/import', data);
 	}
 }
 
