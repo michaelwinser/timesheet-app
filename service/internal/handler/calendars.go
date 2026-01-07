@@ -853,9 +853,13 @@ func googleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUI
 		}
 	}
 
-	// Attendees
+	// Attendees - extract emails and find user's response status
 	for _, a := range ge.Attendees {
 		event.Attendees = append(event.Attendees, a.Email)
+		// If this is the current user (Self=true), capture their response status
+		if a.Self && a.ResponseStatus != "" {
+			event.ResponseStatus = &a.ResponseStatus
+		}
 	}
 
 	event.IsRecurring = ge.RecurringEventId != ""
