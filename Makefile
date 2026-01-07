@@ -2,7 +2,7 @@
 #
 # All commands use Docker for consistency.
 
-.PHONY: help up down logs ps build clean db-reset db-clear-entries psql generate test
+.PHONY: help up down logs ps build clean db-reset db-clear-entries db-clear-time-data psql generate test
 
 # Default target
 help:
@@ -20,6 +20,7 @@ help:
 	@echo "Database:"
 	@echo "  make db-up       Start PostgreSQL only"
 	@echo "  make db-reset    Reset database (WARNING: deletes data)"
+	@echo "  make db-clear-time-data  Clear events, time entries, invoices (keeps projects/rules)"
 	@echo "  make db-clear-entries  Delete all time entries"
 	@echo "  make db-clear-classifications  Reset all events to pending"
 	@echo "  make psql        Connect to PostgreSQL shell"
@@ -102,6 +103,14 @@ db-clear-classifications:
 			project_id = NULL, \
 			updated_at = NOW();"
 	@echo "Done! All events reset to pending."
+
+db-clear-time-data:
+	@echo "Clearing all time data (keeping projects and rules)..."
+	docker compose exec postgres psql -U timesheet -d timesheet_v2 -c "\
+		DELETE FROM invoices; \
+		DELETE FROM time_entries; \
+		DELETE FROM calendar_events;"
+	@echo "Done! All events, time entries, and invoices deleted."
 
 psql:
 	docker compose exec postgres psql -U timesheet -d timesheet_v2
