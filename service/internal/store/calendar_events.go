@@ -338,6 +338,128 @@ func (s *CalendarEventStore) CountByStatus(ctx context.Context, connectionID uui
 	return pending, classified, skipped, rows.Err()
 }
 
+// ListForReclassification returns classified events that are eligible for re-evaluation.
+// These are events classified by rule or fingerprint (not manual) that are not locked.
+// Per the PRD, unlocked items should update freely when rules/fingerprints change.
+func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time) ([]*CalendarEvent, error) {
+	query := `
+		SELECT ce.id, ce.connection_id, ce.calendar_id, ce.user_id, ce.external_id, ce.title, ce.description,
+		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.response_status,
+		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_locked, ce.classification_status,
+		       ce.classification_source, ce.classification_confidence, ce.needs_review,
+		       ce.project_id, ce.created_at, ce.updated_at,
+		       p.id, p.user_id, p.name, p.short_code, p.client, p.color, p.is_billable, p.is_archived,
+		       p.is_hidden_by_default, p.does_not_accumulate_hours, p.created_at, p.updated_at,
+		       c.external_id, c.name, c.color
+		FROM calendar_events ce
+		LEFT JOIN projects p ON ce.project_id = p.id
+		LEFT JOIN calendars c ON ce.calendar_id = c.id
+		WHERE ce.user_id = $1
+		  AND ce.is_orphaned = false
+		  AND ce.classification_status = 'classified'
+		  AND ce.classification_source IN ('rule', 'fingerprint')
+		  AND ce.is_locked = false
+	`
+	args := []interface{}{userID}
+	argNum := 2
+
+	if startDate != nil {
+		query += fmt.Sprintf(" AND ce.start_time >= $%d", argNum)
+		args = append(args, *startDate)
+		argNum++
+	}
+	if endDate != nil {
+		nextDay := endDate.AddDate(0, 0, 1)
+		query += fmt.Sprintf(" AND ce.start_time < $%d", argNum)
+		args = append(args, nextDay)
+	}
+
+	query += " ORDER BY ce.start_time ASC"
+
+	rows, err := s.pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []*CalendarEvent
+	for rows.Next() {
+		e := &CalendarEvent{}
+		var attendeesJSON []byte
+		var project Project
+		var projectID, projectUserID *uuid.UUID
+		var projectName, projectShortCode, projectClient, projectColor *string
+		var projectIsBillable, projectIsArchived, projectIsHiddenByDefault, projectDoesNotAccumulateHours *bool
+		var projectCreatedAt, projectUpdatedAt *time.Time
+		var calExternalID, calName, calColor *string
+
+		err := rows.Scan(
+			&e.ID, &e.ConnectionID, &e.CalendarID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
+			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
+			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.ClassificationStatus,
+			&e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
+			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
+			&projectID, &projectUserID, &projectName, &projectShortCode, &projectClient, &projectColor,
+			&projectIsBillable, &projectIsArchived, &projectIsHiddenByDefault, &projectDoesNotAccumulateHours,
+			&projectCreatedAt, &projectUpdatedAt,
+			&calExternalID, &calName, &calColor,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		if attendeesJSON != nil {
+			json.Unmarshal(attendeesJSON, &e.Attendees)
+		}
+
+		if projectID != nil {
+			project.ID = *projectID
+			if projectUserID != nil {
+				project.UserID = *projectUserID
+			}
+			if projectName != nil {
+				project.Name = *projectName
+			}
+			if projectShortCode != nil {
+				project.ShortCode = projectShortCode
+			}
+			if projectClient != nil {
+				project.Client = projectClient
+			}
+			if projectColor != nil {
+				project.Color = *projectColor
+			}
+			if projectIsBillable != nil {
+				project.IsBillable = *projectIsBillable
+			}
+			if projectIsArchived != nil {
+				project.IsArchived = *projectIsArchived
+			}
+			if projectIsHiddenByDefault != nil {
+				project.IsHiddenByDefault = *projectIsHiddenByDefault
+			}
+			if projectDoesNotAccumulateHours != nil {
+				project.DoesNotAccumulateHours = *projectDoesNotAccumulateHours
+			}
+			if projectCreatedAt != nil {
+				project.CreatedAt = *projectCreatedAt
+			}
+			if projectUpdatedAt != nil {
+				project.UpdatedAt = *projectUpdatedAt
+			}
+			e.Project = &project
+		}
+
+		if calName != nil {
+			e.CalendarName = calName
+		}
+
+		events = append(events, e)
+	}
+
+	return events, rows.Err()
+}
+
 // GetByID retrieves an event by ID
 func (s *CalendarEventStore) GetByID(ctx context.Context, userID, eventID uuid.UUID) (*CalendarEvent, error) {
 	e := &CalendarEvent{}

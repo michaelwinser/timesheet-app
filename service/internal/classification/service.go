@@ -241,16 +241,26 @@ type PreviewStats struct {
 	ManualConflicts int `json:"manual_conflicts"`
 }
 
-// ApplyRules runs classification on pending events.
+// ApplyRules runs classification on pending events and re-evaluates unlocked classified events.
+// Per the PRD, unlocked items (classified by rule/fingerprint, not manual) should update freely.
 // Targets represent classification destinations (e.g., projects) with their fingerprint attributes.
 // The caller is responsible for providing targets with appropriate attributes.
 func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Target, startDate, endDate *time.Time, dryRun bool) (*ApplyResult, error) {
 	// Get pending events
 	pendingStatus := store.StatusPending
-	events, err := s.eventStore.List(ctx, userID, startDate, endDate, &pendingStatus, nil)
+	pendingEvents, err := s.eventStore.List(ctx, userID, startDate, endDate, &pendingStatus, nil)
 	if err != nil {
 		return nil, err
 	}
+
+	// Get events eligible for reclassification (classified by rule/fingerprint, not locked)
+	reclassifyEvents, err := s.eventStore.ListForReclassification(ctx, userID, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+
+	// Combine both sets of events
+	events := append(pendingEvents, reclassifyEvents...)
 
 	// Get all enabled rules
 	storeRules, err := s.ruleStore.List(ctx, userID, false)
