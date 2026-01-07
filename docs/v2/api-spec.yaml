@@ -7,6 +7,29 @@ info:
 
     This is the source of truth for the API contract. All clients (Web, MCP, CLI)
     consume this spec. The Go service is generated from this spec using oapi-codegen.
+  x-mcp:
+    name: timesheet
+    version: 1.0.0
+    instructions: |
+      You are an AI assistant helping manage a timesheet application.
+
+      The user tracks their time across different projects. Calendar events are synced from
+      Google Calendar and need to be classified (assigned to projects or marked as skipped).
+
+      IMPORTANT: Before using search_events, create_rule, or preview_rule tools, first read the
+      timesheet://docs/query-syntax resource to understand the query language.
+
+      When helping the user:
+      1. Read timesheet://docs/query-syntax to learn the search syntax
+      2. List projects to understand available classification targets
+      3. Search for pending events to see what needs attention
+      4. Use preview_rule to test classification patterns
+      5. Create rules or use bulk_classify to classify events
+    resources:
+      - uri: "timesheet://docs/query-syntax"
+        name: "Query Syntax Reference"
+        description: "Complete reference for the Gmail-style query syntax used to search events and create classification rules"
+        mimeType: "text/markdown"
 
 servers:
   - url: http://localhost:8080
@@ -139,6 +162,9 @@ paths:
       tags: [projects]
       summary: List all projects
       description: Returns all projects for the authenticated user
+      x-mcp:
+        tool: list_projects
+        description: "List all projects. Use this first to understand available options for classification."
       security:
         - bearerAuth: []
       parameters:
@@ -147,7 +173,7 @@ paths:
           schema:
             type: boolean
             default: false
-          description: Include archived projects
+          description: Include archived/inactive projects
       responses:
         '200':
           description: List of projects
@@ -318,6 +344,16 @@ paths:
       tags: [time-entries]
       summary: List time entries
       description: Returns time entries for the authenticated user, optionally filtered
+      x-mcp:
+        tool: get_time_summary
+        description: "Get a summary of time entries grouped by project or date. Useful for analyzing time spent."
+        custom_handler: true  # Response is aggregated/formatted differently than REST
+        custom_params:
+          - name: group_by
+            type: string
+            description: "How to group: 'project' or 'date'"
+            enum: ["project", "date"]
+            default: "project"
       security:
         - bearerAuth: []
       parameters:
@@ -326,13 +362,13 @@ paths:
           schema:
             type: string
             format: date
-          description: Filter entries on or after this date
+          description: Start date (YYYY-MM-DD). Defaults to 7 days ago.
         - name: end_date
           in: query
           schema:
             type: string
             format: date
-          description: Filter entries on or before this date
+          description: End date (YYYY-MM-DD). Defaults to today.
         - name: project_id
           in: query
           schema:
@@ -360,6 +396,9 @@ paths:
       tags: [time-entries]
       summary: Create a new time entry
       description: Creates a manual time entry. If an entry exists for the same project/date, hours are added.
+      x-mcp:
+        tool: create_time_entry
+        description: "Create a manual time entry for work not captured by calendar events."
       security:
         - bearerAuth: []
       requestBody:
@@ -808,6 +847,29 @@ paths:
       operationId: listCalendarEvents
       tags: [calendars]
       summary: List calendar events with filters
+      x-mcp:
+        tools:
+          - tool: list_pending_events
+            description: "List calendar events that need classification (assignment to a project or skip)."
+            custom_handler: true
+            preset_params:
+              classification_status: pending
+            custom_params:
+              - name: limit
+                type: integer
+                description: "Maximum events to return"
+                default: 20
+          - tool: search_events
+            description: "Search calendar events using query syntax. Read the timesheet://docs/query-syntax resource first to understand the query language. Use this to find events by status, project, attendees, title, etc."
+            custom_handler: true
+            custom_params:
+              - name: query
+                type: string
+                description: "Query string using the search syntax (e.g., 'status:pending', 'domain:acme.com', 'title:standup'). See timesheet://docs/query-syntax resource."
+              - name: limit
+                type: integer
+                description: "Maximum events to return (default 50)"
+                default: 50
       security:
         - bearerAuth: []
       parameters:
@@ -816,11 +878,13 @@ paths:
           schema:
             type: string
             format: date
+          description: Start date (YYYY-MM-DD). Defaults to 30 days ago.
         - name: end_date
           in: query
           schema:
             type: string
             format: date
+          description: End date (YYYY-MM-DD). Defaults to today.
         - name: classification_status
           in: query
           schema:
@@ -852,6 +916,10 @@ paths:
       operationId: classifyCalendarEvent
       tags: [calendars]
       summary: Classify a calendar event (assign to project or skip)
+      x-mcp:
+        tool: classify_event
+        description: "Classify a calendar event by assigning it to a project or skipping it."
+        path_params_as_input: true  # event_id comes from path parameter 'id'
       security:
         - bearerAuth: []
       parameters:
@@ -861,6 +929,7 @@ paths:
           schema:
             type: string
             format: uuid
+          description: The calendar event ID to classify
       requestBody:
         required: true
         content:
@@ -893,6 +962,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /api/calendar-events/{id}/explain:
+    get:
+      operationId: explainEventClassification
+      tags: [calendars]
+      summary: Explain how an event was (or would be) classified
+      description: |
+        Shows all rules evaluated, which matched, score breakdown by project,
+        and the final decision. Useful for debugging classification rules.
+      x-mcp:
+        tool: explain_classification
+        description: "Explain how an event was (or would be) classified. Shows all rules evaluated, which matched, score breakdown by project, and the final decision. Useful for debugging why an event was classified to a particular project."
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The calendar event ID to explain classification for
+      responses:
+        '200':
+          description: Classification explanation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClassificationExplanation'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/calendar-events/bulk-classify:
     post:
       operationId: bulkClassifyEvents
@@ -901,6 +1011,9 @@ paths:
       description: |
         Classifies all events matching the given query to the specified project,
         or marks them as skipped. Creates time entries for classified events.
+      x-mcp:
+        tool: bulk_classify
+        description: "Classify multiple events matching a query to a project (or skip them). More efficient than classifying one by one."
       security:
         - bearerAuth: []
       requestBody:
@@ -935,6 +1048,9 @@ paths:
       operationId: listRules
       tags: [rules]
       summary: List all classification rules
+      x-mcp:
+        tool: list_rules
+        description: "List all classification rules. Rules automatically assign events to projects based on query patterns."
       security:
         - bearerAuth: []
       parameters:
@@ -964,6 +1080,9 @@ paths:
       operationId: createRule
       tags: [rules]
       summary: Create a new classification rule
+      x-mcp:
+        tool: create_rule
+        description: "Create a new classification rule. The rule will automatically classify matching events to the specified project. Read timesheet://docs/query-syntax first to understand query syntax."
       security:
         - bearerAuth: []
       requestBody:
@@ -1108,6 +1227,9 @@ paths:
       description: |
         Evaluates a query against existing events without creating a rule.
         Returns matching events and potential conflicts with existing classifications.
+      x-mcp:
+        tool: preview_rule
+        description: "Test a query against events to see what would match before creating a rule. Always use this before create_rule to verify the query works as expected."
       security:
         - bearerAuth: []
       requestBody:
@@ -1144,6 +1266,9 @@ paths:
       description: |
         Runs all enabled rules against pending (unclassified) events.
         Use dry_run=true to see what would be classified without making changes.
+      x-mcp:
+        tool: apply_rules
+        description: "Run all enabled classification rules against pending events. This applies rules to unclassified events and creates time entries."
       security:
         - bearerAuth: []
       requestBody:
@@ -2291,7 +2416,10 @@ components:
           type: boolean
         classification_status:
           type: string
-          enum: [pending, classified, skipped]
+          enum: [pending, classified]
+        is_skipped:
+          type: boolean
+          description: Whether this event is marked as skipped (excluded from time entries)
         classification_source:
           type: string
           enum: [rule, fingerprint, manual, llm]
@@ -2392,6 +2520,106 @@ components:
         time_entries_created:
           type: integer
           description: Number of time entries created
+
+    ClassificationExplanation:
+      type: object
+      required: [event, outcome, target_scores, rule_evaluations]
+      properties:
+        event:
+          $ref: '#/components/schemas/CalendarEvent'
+        outcome:
+          type: string
+          description: Human-readable summary of classification decision
+        would_be_skipped:
+          type: boolean
+          description: Whether skip rules would mark this event as skipped
+        skip_confidence:
+          type: number
+          format: float
+          description: Confidence of skip decision (0-1)
+        winner_project_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Project ID of the winning classification
+        winner_confidence:
+          type: number
+          format: float
+          description: Confidence of the winning classification (0-1)
+        total_weight:
+          type: number
+          format: float
+          description: Sum of all matching rule weights
+        target_scores:
+          type: array
+          items:
+            $ref: '#/components/schemas/TargetScore'
+          description: Score breakdown by project
+        rule_evaluations:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleEvaluation'
+          description: All project rules evaluated
+        skip_evaluations:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleEvaluation'
+          description: All skip rules evaluated
+
+    TargetScore:
+      type: object
+      required: [target_id, total_weight]
+      properties:
+        target_id:
+          type: string
+          format: uuid
+          description: Project ID
+        target_name:
+          type: string
+          description: Project name
+        total_weight:
+          type: number
+          format: float
+          description: Total accumulated weight for this project
+        rule_weight:
+          type: number
+          format: float
+          description: Weight from explicit user-defined rules
+        fingerprint_weight:
+          type: number
+          format: float
+          description: Weight from project fingerprint matches
+        is_winner:
+          type: boolean
+          description: Whether this project won the classification
+
+    RuleEvaluation:
+      type: object
+      required: [query, matched]
+      properties:
+        rule_id:
+          type: string
+          description: Rule identifier
+        query:
+          type: string
+          description: The rule query pattern
+        target_id:
+          type: string
+          description: Target project ID or "skip"
+        target_name:
+          type: string
+          description: Target project name
+        weight:
+          type: number
+          format: float
+          description: Rule weight
+        source:
+          type: string
+          enum: [rule, fingerprint]
+          description: Whether from explicit rule or fingerprint
+        matched:
+          type: boolean
+          description: Whether this rule matched the event
 
     Calendar:
       type: object

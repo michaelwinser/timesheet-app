@@ -38,7 +38,6 @@ const (
 const (
 	CalendarEventClassificationStatusClassified CalendarEventClassificationStatus = "classified"
 	CalendarEventClassificationStatusPending    CalendarEventClassificationStatus = "pending"
-	CalendarEventClassificationStatusSkipped    CalendarEventClassificationStatus = "skipped"
 )
 
 // Defines values for InvoiceStatus.
@@ -46,6 +45,12 @@ const (
 	InvoiceStatusDraft InvoiceStatus = "draft"
 	InvoiceStatusPaid  InvoiceStatus = "paid"
 	InvoiceStatusSent  InvoiceStatus = "sent"
+)
+
+// Defines values for RuleEvaluationSource.
+const (
+	RuleEvaluationSourceFingerprint RuleEvaluationSource = "fingerprint"
+	RuleEvaluationSourceRule        RuleEvaluationSource = "rule"
 )
 
 // Defines values for TimeEntrySource.
@@ -273,7 +278,10 @@ type CalendarEvent struct {
 	Id                       openapi_types.UUID                 `json:"id"`
 	IsOrphaned               *bool                              `json:"is_orphaned,omitempty"`
 	IsRecurring              *bool                              `json:"is_recurring,omitempty"`
-	IsSuppressed             *bool                              `json:"is_suppressed,omitempty"`
+
+	// IsSkipped Whether this event is marked as skipped (excluded from time entries)
+	IsSkipped    *bool `json:"is_skipped,omitempty"`
+	IsSuppressed *bool `json:"is_suppressed,omitempty"`
 
 	// NeedsReview True if event was auto-classified with medium confidence and should be reviewed
 	NeedsReview    *bool               `json:"needs_review,omitempty"`
@@ -292,6 +300,38 @@ type CalendarEventClassificationSource string
 
 // CalendarEventClassificationStatus defines model for CalendarEvent.ClassificationStatus.
 type CalendarEventClassificationStatus string
+
+// ClassificationExplanation defines model for ClassificationExplanation.
+type ClassificationExplanation struct {
+	Event CalendarEvent `json:"event"`
+
+	// Outcome Human-readable summary of classification decision
+	Outcome string `json:"outcome"`
+
+	// RuleEvaluations All project rules evaluated
+	RuleEvaluations []RuleEvaluation `json:"rule_evaluations"`
+
+	// SkipConfidence Confidence of skip decision (0-1)
+	SkipConfidence *float32 `json:"skip_confidence,omitempty"`
+
+	// SkipEvaluations All skip rules evaluated
+	SkipEvaluations *[]RuleEvaluation `json:"skip_evaluations,omitempty"`
+
+	// TargetScores Score breakdown by project
+	TargetScores []TargetScore `json:"target_scores"`
+
+	// TotalWeight Sum of all matching rule weights
+	TotalWeight *float32 `json:"total_weight,omitempty"`
+
+	// WinnerConfidence Confidence of the winning classification (0-1)
+	WinnerConfidence *float32 `json:"winner_confidence,omitempty"`
+
+	// WinnerProjectId Project ID of the winning classification
+	WinnerProjectId *openapi_types.UUID `json:"winner_project_id"`
+
+	// WouldBeSkipped Whether skip rules would mark this event as skipped
+	WouldBeSkipped *bool `json:"would_be_skipped,omitempty"`
+}
 
 // ClassificationRule defines model for ClassificationRule.
 type ClassificationRule struct {
@@ -547,6 +587,33 @@ type RuleCreate struct {
 	Weight *float32 `json:"weight,omitempty"`
 }
 
+// RuleEvaluation defines model for RuleEvaluation.
+type RuleEvaluation struct {
+	// Matched Whether this rule matched the event
+	Matched bool `json:"matched"`
+
+	// Query The rule query pattern
+	Query string `json:"query"`
+
+	// RuleId Rule identifier
+	RuleId *string `json:"rule_id,omitempty"`
+
+	// Source Whether from explicit rule or fingerprint
+	Source *RuleEvaluationSource `json:"source,omitempty"`
+
+	// TargetId Target project ID or "skip"
+	TargetId *string `json:"target_id,omitempty"`
+
+	// TargetName Target project name
+	TargetName *string `json:"target_name,omitempty"`
+
+	// Weight Rule weight
+	Weight *float32 `json:"weight,omitempty"`
+}
+
+// RuleEvaluationSource Whether from explicit rule or fingerprint
+type RuleEvaluationSource string
+
 // RulePreviewRequest defines model for RulePreviewRequest.
 type RulePreviewRequest struct {
 	// EndDate End of date range to search
@@ -590,6 +657,27 @@ type SyncResult struct {
 	EventsCreated  int `json:"events_created"`
 	EventsOrphaned int `json:"events_orphaned"`
 	EventsUpdated  int `json:"events_updated"`
+}
+
+// TargetScore defines model for TargetScore.
+type TargetScore struct {
+	// FingerprintWeight Weight from project fingerprint matches
+	FingerprintWeight *float32 `json:"fingerprint_weight,omitempty"`
+
+	// IsWinner Whether this project won the classification
+	IsWinner *bool `json:"is_winner,omitempty"`
+
+	// RuleWeight Weight from explicit user-defined rules
+	RuleWeight *float32 `json:"rule_weight,omitempty"`
+
+	// TargetId Project ID
+	TargetId openapi_types.UUID `json:"target_id"`
+
+	// TargetName Project name
+	TargetName *string `json:"target_name,omitempty"`
+
+	// TotalWeight Total accumulated weight for this project
+	TotalWeight float32 `json:"total_weight"`
 }
 
 // TimeEntry defines model for TimeEntry.
@@ -689,7 +777,10 @@ type ListBillingPeriodsParams struct {
 
 // ListCalendarEventsParams defines parameters for ListCalendarEvents.
 type ListCalendarEventsParams struct {
-	StartDate            *openapi_types.Date                           `form:"start_date,omitempty" json:"start_date,omitempty"`
+	// StartDate Start date (YYYY-MM-DD). Defaults to 30 days ago.
+	StartDate *openapi_types.Date `form:"start_date,omitempty" json:"start_date,omitempty"`
+
+	// EndDate End date (YYYY-MM-DD). Defaults to today.
 	EndDate              *openapi_types.Date                           `form:"end_date,omitempty" json:"end_date,omitempty"`
 	ClassificationStatus *ListCalendarEventsParamsClassificationStatus `form:"classification_status,omitempty" json:"classification_status,omitempty"`
 	ConnectionId         *openapi_types.UUID                           `form:"connection_id,omitempty" json:"connection_id,omitempty"`
@@ -726,7 +817,7 @@ type UpdateInvoiceStatusJSONBodyStatus string
 
 // ListProjectsParams defines parameters for ListProjects.
 type ListProjectsParams struct {
-	// IncludeArchived Include archived projects
+	// IncludeArchived Include archived/inactive projects
 	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
 }
 
@@ -738,10 +829,10 @@ type ListRulesParams struct {
 
 // ListTimeEntriesParams defines parameters for ListTimeEntries.
 type ListTimeEntriesParams struct {
-	// StartDate Filter entries on or after this date
+	// StartDate Start date (YYYY-MM-DD). Defaults to 7 days ago.
 	StartDate *openapi_types.Date `form:"start_date,omitempty" json:"start_date,omitempty"`
 
-	// EndDate Filter entries on or before this date
+	// EndDate End date (YYYY-MM-DD). Defaults to today.
 	EndDate *openapi_types.Date `form:"end_date,omitempty" json:"end_date,omitempty"`
 
 	// ProjectId Filter by project
@@ -852,6 +943,9 @@ type ServerInterface interface {
 	// Classify a calendar event (assign to project or skip)
 	// (PUT /api/calendar-events/{id}/classify)
 	ClassifyCalendarEvent(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Explain how an event was (or would be) classified
+	// (GET /api/calendar-events/{id}/explain)
+	ExplainEventClassification(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List user's calendar connections
 	// (GET /api/calendars)
 	ListCalendarConnections(w http.ResponseWriter, r *http.Request)
@@ -1041,6 +1135,12 @@ func (_ Unimplemented) BulkClassifyEvents(w http.ResponseWriter, r *http.Request
 // Classify a calendar event (assign to project or skip)
 // (PUT /api/calendar-events/{id}/classify)
 func (_ Unimplemented) ClassifyCalendarEvent(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Explain how an event was (or would be) classified
+// (GET /api/calendar-events/{id}/explain)
+func (_ Unimplemented) ExplainEventClassification(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1668,6 +1768,37 @@ func (siw *ServerInterfaceWrapper) ClassifyCalendarEvent(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ClassifyCalendarEvent(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExplainEventClassification operation middleware
+func (siw *ServerInterfaceWrapper) ExplainEventClassification(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExplainEventClassification(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2743,6 +2874,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Put(options.BaseURL+"/api/calendar-events/{id}/classify", wrapper.ClassifyCalendarEvent)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/calendar-events/{id}/explain", wrapper.ExplainEventClassification)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/calendars", wrapper.ListCalendarConnections)
 	})
 	r.Group(func(r chi.Router) {
@@ -3385,6 +3519,41 @@ func (response ClassifyCalendarEvent401JSONResponse) VisitClassifyCalendarEventR
 type ClassifyCalendarEvent404JSONResponse Error
 
 func (response ClassifyCalendarEvent404JSONResponse) VisitClassifyCalendarEventResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExplainEventClassificationRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type ExplainEventClassificationResponseObject interface {
+	VisitExplainEventClassificationResponse(w http.ResponseWriter) error
+}
+
+type ExplainEventClassification200JSONResponse ClassificationExplanation
+
+func (response ExplainEventClassification200JSONResponse) VisitExplainEventClassificationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExplainEventClassification401JSONResponse Error
+
+func (response ExplainEventClassification401JSONResponse) VisitExplainEventClassificationResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExplainEventClassification404JSONResponse Error
+
+func (response ExplainEventClassification404JSONResponse) VisitExplainEventClassificationResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
 
@@ -4541,6 +4710,9 @@ type StrictServerInterface interface {
 	// Classify a calendar event (assign to project or skip)
 	// (PUT /api/calendar-events/{id}/classify)
 	ClassifyCalendarEvent(ctx context.Context, request ClassifyCalendarEventRequestObject) (ClassifyCalendarEventResponseObject, error)
+	// Explain how an event was (or would be) classified
+	// (GET /api/calendar-events/{id}/explain)
+	ExplainEventClassification(ctx context.Context, request ExplainEventClassificationRequestObject) (ExplainEventClassificationResponseObject, error)
 	// List user's calendar connections
 	// (GET /api/calendars)
 	ListCalendarConnections(ctx context.Context, request ListCalendarConnectionsRequestObject) (ListCalendarConnectionsResponseObject, error)
@@ -5102,6 +5274,32 @@ func (sh *strictHandler) ClassifyCalendarEvent(w http.ResponseWriter, r *http.Re
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ClassifyCalendarEventResponseObject); ok {
 		if err := validResponse.VisitClassifyCalendarEventResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExplainEventClassification operation middleware
+func (sh *strictHandler) ExplainEventClassification(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request ExplainEventClassificationRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExplainEventClassification(ctx, request.(ExplainEventClassificationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExplainEventClassification")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExplainEventClassificationResponseObject); ok {
+		if err := validResponse.VisitExplainEventClassificationResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

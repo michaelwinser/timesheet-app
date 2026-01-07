@@ -744,6 +744,163 @@ func (h *CalendarHandler) BulkClassifyEvents(ctx context.Context, req api.BulkCl
 	}, nil
 }
 
+// ExplainEventClassification explains how an event was or would be classified
+func (h *CalendarHandler) ExplainEventClassification(ctx context.Context, req api.ExplainEventClassificationRequestObject) (api.ExplainEventClassificationResponseObject, error) {
+	userID, ok := UserIDFromContext(ctx)
+	if !ok {
+		return api.ExplainEventClassification401JSONResponse{
+			Code:    "unauthorized",
+			Message: "Authentication required",
+		}, nil
+	}
+
+	// Get the event
+	event, err := h.events.GetByID(ctx, userID, req.Id)
+	if err != nil {
+		if errors.Is(err, store.ErrCalendarEventNotFound) {
+			return api.ExplainEventClassification404JSONResponse{
+				Code:    "not_found",
+				Message: "Calendar event not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	// Get projects to build targets (including name for display)
+	projects, err := h.projects.List(ctx, userID, false)
+	if err != nil {
+		return nil, err
+	}
+
+	targets := projectsToTargetsWithNames(projects)
+
+	// Get explain result from classification service
+	result, err := h.classificationSvc.ExplainEventClassification(ctx, userID, req.Id, targets)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build project name map for lookups
+	projectNames := make(map[string]string)
+	for _, p := range projects {
+		projectNames[p.ID.String()] = p.Name
+	}
+
+	// Convert result to API response
+	response := api.ClassificationExplanation{
+		Event:   calendarEventToAPI(event),
+		Outcome: result.Outcome,
+	}
+
+	// Set optional fields
+	if result.WouldBeSkipped {
+		response.WouldBeSkipped = &result.WouldBeSkipped
+		skipConf := float32(result.SkipConfidence)
+		response.SkipConfidence = &skipConf
+	}
+
+	if result.WinnerTargetID != "" {
+		winnerID, err := uuid.Parse(result.WinnerTargetID)
+		if err == nil {
+			response.WinnerProjectId = &winnerID
+		}
+	}
+
+	winnerConf := float32(result.WinnerConfidence)
+	response.WinnerConfidence = &winnerConf
+	totalWeight := float32(result.TotalWeight)
+	response.TotalWeight = &totalWeight
+
+	// Convert target scores
+	response.TargetScores = make([]api.TargetScore, 0, len(result.TargetScores))
+	for _, ts := range result.TargetScores {
+		targetID, err := uuid.Parse(ts.TargetID)
+		if err != nil {
+			continue
+		}
+		score := api.TargetScore{
+			TargetId:    targetID,
+			TotalWeight: float32(ts.TotalWeight),
+		}
+		if ts.TargetName != "" {
+			score.TargetName = &ts.TargetName
+		} else if name, ok := projectNames[ts.TargetID]; ok {
+			score.TargetName = &name
+		}
+		ruleWeight := float32(ts.RuleWeight)
+		score.RuleWeight = &ruleWeight
+		fpWeight := float32(ts.FingerprintWeight)
+		score.FingerprintWeight = &fpWeight
+		score.IsWinner = &ts.IsWinner
+		response.TargetScores = append(response.TargetScores, score)
+	}
+
+	// Convert rule evaluations
+	response.RuleEvaluations = make([]api.RuleEvaluation, 0, len(result.Evaluations))
+	for _, eval := range result.Evaluations {
+		re := api.RuleEvaluation{
+			Query:   eval.Query,
+			Matched: eval.Matched,
+		}
+		re.RuleId = &eval.RuleID
+		re.TargetId = &eval.TargetID
+		if eval.TargetName != "" {
+			re.TargetName = &eval.TargetName
+		} else if name, ok := projectNames[eval.TargetID]; ok {
+			re.TargetName = &name
+		}
+		weight := float32(eval.Weight)
+		re.Weight = &weight
+		source := api.RuleEvaluationSource(eval.Source)
+		re.Source = &source
+		response.RuleEvaluations = append(response.RuleEvaluations, re)
+	}
+
+	// Convert skip evaluations
+	if len(result.SkipEvaluations) > 0 {
+		skipEvals := make([]api.RuleEvaluation, 0, len(result.SkipEvaluations))
+		for _, eval := range result.SkipEvaluations {
+			re := api.RuleEvaluation{
+				Query:   eval.Query,
+				Matched: eval.Matched,
+			}
+			re.RuleId = &eval.RuleID
+			re.TargetId = &eval.TargetID
+			weight := float32(eval.Weight)
+			re.Weight = &weight
+			source := api.RuleEvaluationSource(eval.Source)
+			re.Source = &source
+			skipEvals = append(skipEvals, re)
+		}
+		response.SkipEvaluations = &skipEvals
+	}
+
+	return api.ExplainEventClassification200JSONResponse(response), nil
+}
+
+// projectsToTargetsWithNames creates classification targets with project names included
+func projectsToTargetsWithNames(projects []*store.Project) []classification.Target {
+	targets := make([]classification.Target, len(projects))
+	for i, p := range projects {
+		attrs := make(map[string]any)
+		attrs["name"] = p.Name
+		if len(p.FingerprintDomains) > 0 {
+			attrs["domains"] = p.FingerprintDomains
+		}
+		if len(p.FingerprintEmails) > 0 {
+			attrs["emails"] = p.FingerprintEmails
+		}
+		if len(p.FingerprintKeywords) > 0 {
+			attrs["keywords"] = p.FingerprintKeywords
+		}
+		targets[i] = classification.Target{
+			ID:         p.ID.String(),
+			Attributes: attrs,
+		}
+	}
+	return targets
+}
+
 // calendarConnectionToAPI converts store model to API model
 func calendarConnectionToAPI(c *store.CalendarConnection) api.CalendarConnection {
 	conn := api.CalendarConnection{
@@ -777,6 +934,7 @@ func calendarEventToAPI(e *store.CalendarEvent) api.CalendarEvent {
 		IsOrphaned:           &e.IsOrphaned,
 		IsSuppressed:         &e.IsSuppressed,
 		ClassificationStatus: api.CalendarEventClassificationStatus(e.ClassificationStatus),
+		IsSkipped:            &e.IsSkipped,
 		NeedsReview:          &e.NeedsReview,
 		ProjectId:            e.ProjectID,
 		CreatedAt:            e.CreatedAt,
