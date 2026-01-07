@@ -328,7 +328,7 @@ func ExtractDomains(attendees []string) []string {
 }
 
 // ExtendedEventProperties includes event properties plus classification metadata
-// for filtering by project, client, and confidence level
+// for filtering by project, client, confidence level, and skip status
 type ExtendedEventProperties struct {
 	EventProperties
 	ProjectID    *string
@@ -336,6 +336,7 @@ type ExtendedEventProperties struct {
 	ClientName   *string
 	Confidence   *float64
 	IsClassified bool
+	IsSkipped    bool
 }
 
 // EvaluateExtended evaluates a query against extended event properties
@@ -404,6 +405,19 @@ func evaluateExtendedCondition(cond *ConditionNode, props *ExtendedEventProperti
 			return conf >= ConfidenceFloor && conf < ConfidenceCeiling // 0.5 <= conf < 0.8
 		case "low":
 			return conf < ConfidenceFloor // < 0.5
+		default:
+			return false
+		}
+
+	case "status":
+		// status:pending, status:classified, status:skipped
+		switch strings.ToLower(cond.Value) {
+		case "pending":
+			return !props.IsClassified && !props.IsSkipped
+		case "classified":
+			return props.IsClassified && !props.IsSkipped
+		case "skipped":
+			return props.IsSkipped
 		default:
 			return false
 		}

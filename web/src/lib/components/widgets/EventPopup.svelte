@@ -149,8 +149,8 @@
 				<button
 					type="button"
 					class="w-6 h-6 rounded border-2 border-dashed border-gray-300 dark:border-zinc-600 text-gray-400 hover:border-gray-500 hover:text-gray-600 dark:hover:border-zinc-400 dark:hover:text-zinc-300 flex items-center justify-center text-xs"
-					class:bg-gray-200={event.classification_status === 'skipped'}
-					class:dark:bg-zinc-700={event.classification_status === 'skipped'}
+					class:bg-gray-200={event.is_skipped}
+					class:dark:bg-zinc-700={event.is_skipped}
 					title="Did not attend"
 					onclick={() => onskip?.()}
 				>

@@ -569,4 +569,31 @@ var migrations = []migration{
 			ALTER COLUMN worksheet_id TYPE INTEGER USING (NULLIF(worksheet_id, '')::INTEGER);
 		`,
 	},
+	{
+		version: 19,
+		sql: `
+			-- Skip Rules: Add is_skipped column and simplify classification_status enum
+			-- Assumes calendar_events table is empty (run make db-clear-time-data first)
+
+			-- Add is_skipped column
+			ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS is_skipped BOOLEAN NOT NULL DEFAULT false;
+
+			-- Create new enum without 'skipped' value
+			CREATE TYPE classification_status_new AS ENUM ('pending', 'classified');
+
+			-- Migrate column to new enum type
+			ALTER TABLE calendar_events
+				ALTER COLUMN classification_status DROP DEFAULT,
+				ALTER COLUMN classification_status TYPE classification_status_new
+					USING classification_status::text::classification_status_new,
+				ALTER COLUMN classification_status SET DEFAULT 'pending';
+
+			-- Replace old enum with new
+			DROP TYPE classification_status;
+			ALTER TYPE classification_status_new RENAME TO classification_status;
+
+			-- Index for finding skipped events
+			CREATE INDEX IF NOT EXISTS idx_calendar_events_is_skipped ON calendar_events(is_skipped) WHERE is_skipped = true;
+		`,
+	},
 }

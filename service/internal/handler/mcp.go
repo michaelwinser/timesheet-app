@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/michaelw/timesheet-app/service/internal/classification"
+	"github.com/michaelw/timesheet-app/service/internal/mcp"
 	"github.com/michaelw/timesheet-app/service/internal/store"
 )
 
@@ -70,274 +71,29 @@ func NewMCPHandler(
 }
 
 func (h *MCPHandler) initTools() {
-	h.tools = []mcpTool{
-		{
-			Name:        "list_projects",
-			Description: "List all projects. Use this first to understand available options for classification.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"include_archived": map[string]any{
-						"type":        "boolean",
-						"description": "Include archived/inactive projects",
-						"default":     false,
-					},
-				},
-			},
-		},
-		{
-			Name:        "get_time_summary",
-			Description: "Get a summary of time entries grouped by project or date. Useful for analyzing time spent.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"start_date": map[string]any{
-						"type":        "string",
-						"description": "Start date (YYYY-MM-DD). Defaults to 7 days ago.",
-					},
-					"end_date": map[string]any{
-						"type":        "string",
-						"description": "End date (YYYY-MM-DD). Defaults to today.",
-					},
-					"group_by": map[string]any{
-						"type":        "string",
-						"description": "How to group: 'project' or 'date'",
-						"enum":        []string{"project", "date"},
-						"default":     "project",
-					},
-				},
-			},
-		},
-		{
-			Name:        "list_pending_events",
-			Description: "List calendar events that need classification (assignment to a project or skip).",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"start_date": map[string]any{
-						"type":        "string",
-						"description": "Start date (YYYY-MM-DD). Defaults to 30 days ago.",
-					},
-					"end_date": map[string]any{
-						"type":        "string",
-						"description": "End date (YYYY-MM-DD). Defaults to today.",
-					},
-					"limit": map[string]any{
-						"type":        "integer",
-						"description": "Maximum events to return",
-						"default":     20,
-					},
-				},
-			},
-		},
-		{
-			Name:        "classify_event",
-			Description: "Classify a calendar event by assigning it to a project or skipping it.",
-			InputSchema: map[string]any{
-				"type":     "object",
-				"required": []string{"event_id"},
-				"properties": map[string]any{
-					"event_id": map[string]any{
-						"type":        "string",
-						"description": "The calendar event ID to classify",
-					},
-					"project_id": map[string]any{
-						"type":        "string",
-						"description": "Project ID to assign (from list_projects)",
-					},
-					"skip": map[string]any{
-						"type":        "boolean",
-						"description": "Set true to mark as skipped (not work time)",
-						"default":     false,
-					},
-				},
-			},
-		},
-		{
-			Name:        "create_time_entry",
-			Description: "Create a manual time entry for work not captured by calendar events.",
-			InputSchema: map[string]any{
-				"type":     "object",
-				"required": []string{"project_id", "date", "hours"},
-				"properties": map[string]any{
-					"project_id": map[string]any{
-						"type":        "string",
-						"description": "Project ID (from list_projects)",
-					},
-					"date": map[string]any{
-						"type":        "string",
-						"description": "Date in YYYY-MM-DD format",
-					},
-					"hours": map[string]any{
-						"type":        "number",
-						"description": "Number of hours (e.g., 1.5 for 1h 30m)",
-					},
-					"description": map[string]any{
-						"type":        "string",
-						"description": "Optional description of work done",
-					},
-				},
-			},
-		},
-		{
-			Name:        "search_events",
-			Description: "Search calendar events using query syntax. Read the timesheet://docs/query-syntax resource first to understand the query language. Use this to find events by status, project, attendees, title, etc.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"query": map[string]any{
-						"type":        "string",
-						"description": "Query string using the search syntax (e.g., 'status:pending', 'domain:acme.com', 'title:standup'). See timesheet://docs/query-syntax resource.",
-					},
-					"start_date": map[string]any{
-						"type":        "string",
-						"description": "Start date (YYYY-MM-DD). Defaults to 30 days ago.",
-					},
-					"end_date": map[string]any{
-						"type":        "string",
-						"description": "End date (YYYY-MM-DD). Defaults to today.",
-					},
-					"limit": map[string]any{
-						"type":        "integer",
-						"description": "Maximum events to return (default 50)",
-						"default":     50,
-					},
-				},
-			},
-		},
-		{
-			Name:        "list_rules",
-			Description: "List all classification rules. Rules automatically assign events to projects based on query patterns.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"include_disabled": map[string]any{
-						"type":        "boolean",
-						"description": "Include disabled rules",
-						"default":     false,
-					},
-				},
-			},
-		},
-		{
-			Name:        "create_rule",
-			Description: "Create a new classification rule. The rule will automatically classify matching events to the specified project. Read timesheet://docs/query-syntax first to understand query syntax.",
-			InputSchema: map[string]any{
-				"type":     "object",
-				"required": []string{"query", "project_id"},
-				"properties": map[string]any{
-					"query": map[string]any{
-						"type":        "string",
-						"description": "Query pattern to match events (e.g., 'domain:acme.com', 'title:standup')",
-					},
-					"project_id": map[string]any{
-						"type":        "string",
-						"description": "Project ID to assign matching events to",
-					},
-					"weight": map[string]any{
-						"type":        "number",
-						"description": "Rule priority weight (higher = stronger, default 1.0)",
-						"default":     1.0,
-					},
-				},
-			},
-		},
-		{
-			Name:        "preview_rule",
-			Description: "Test a query against events to see what would match before creating a rule. Always use this before create_rule to verify the query works as expected.",
-			InputSchema: map[string]any{
-				"type":     "object",
-				"required": []string{"query"},
-				"properties": map[string]any{
-					"query": map[string]any{
-						"type":        "string",
-						"description": "Query pattern to test",
-					},
-					"project_id": map[string]any{
-						"type":        "string",
-						"description": "Optional project ID to check for conflicts",
-					},
-					"start_date": map[string]any{
-						"type":        "string",
-						"description": "Start date for preview range (YYYY-MM-DD)",
-					},
-					"end_date": map[string]any{
-						"type":        "string",
-						"description": "End date for preview range (YYYY-MM-DD)",
-					},
-				},
-			},
-		},
-		{
-			Name:        "bulk_classify",
-			Description: "Classify multiple events matching a query to a project (or skip them). More efficient than classifying one by one.",
-			InputSchema: map[string]any{
-				"type":     "object",
-				"required": []string{"query"},
-				"properties": map[string]any{
-					"query": map[string]any{
-						"type":        "string",
-						"description": "Query to match events (e.g., 'status:pending domain:acme.com')",
-					},
-					"project_id": map[string]any{
-						"type":        "string",
-						"description": "Project ID to assign matching events to",
-					},
-					"skip": map[string]any{
-						"type":        "boolean",
-						"description": "If true, mark matching events as skipped instead of classifying",
-						"default":     false,
-					},
-				},
-			},
-		},
-		{
-			Name:        "apply_rules",
-			Description: "Run all enabled classification rules against pending events. This applies rules to unclassified events and creates time entries.",
-			InputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"start_date": map[string]any{
-						"type":        "string",
-						"description": "Start date (YYYY-MM-DD). Defaults to 30 days ago.",
-					},
-					"end_date": map[string]any{
-						"type":        "string",
-						"description": "End date (YYYY-MM-DD). Defaults to today.",
-					},
-					"dry_run": map[string]any{
-						"type":        "boolean",
-						"description": "If true, show what would be classified without making changes",
-						"default":     false,
-					},
-				},
-			},
-		},
-		{
-			Name:        "explain_classification",
-			Description: "Explain how an event was (or would be) classified. Shows all rules evaluated, which matched, score breakdown by project, and the final decision. Useful for debugging why an event was classified to a particular project.",
-			InputSchema: map[string]any{
-				"type":     "object",
-				"required": []string{"event_id"},
-				"properties": map[string]any{
-					"event_id": map[string]any{
-						"type":        "string",
-						"description": "The calendar event ID to explain classification for",
-					},
-				},
-			},
-		},
+	// Use generated tool definitions from OpenAPI spec
+	genTools := mcp.GetTools()
+	h.tools = make([]mcpTool, len(genTools))
+	for i, t := range genTools {
+		h.tools[i] = mcpTool{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: t.InputSchema,
+		}
 	}
 }
 
 func (h *MCPHandler) initResources() {
-	h.resources = []mcpResource{
-		{
-			URI:         "timesheet://docs/query-syntax",
-			Name:        "Query Syntax Reference",
-			Description: "Complete reference for the Gmail-style query syntax used to search events and create classification rules",
-			MimeType:    "text/markdown",
-		},
+	// Use generated resource definitions from OpenAPI spec
+	genResources := mcp.GetResources()
+	h.resources = make([]mcpResource, len(genResources))
+	for i, r := range genResources {
+		h.resources[i] = mcpResource{
+			URI:         r.URI,
+			Name:        r.Name,
+			Description: r.Description,
+			MimeType:    r.MimeType,
+		}
 	}
 }
 
@@ -835,14 +591,24 @@ func (h *MCPHandler) createRule(ctx context.Context, userID uuid.UUID, args map[
 		return nil, fmt.Errorf("query is required")
 	}
 
-	projectIDStr, ok := args["project_id"].(string)
-	if !ok || projectIDStr == "" {
-		return nil, fmt.Errorf("project_id is required")
+	skip := false
+	if v, ok := args["skip"].(bool); ok {
+		skip = v
 	}
 
-	projectID, err := uuid.Parse(projectIDStr)
-	if err != nil {
-		return nil, fmt.Errorf("invalid project_id: %w", err)
+	var projectID *uuid.UUID
+	projectIDStr, hasProjectID := args["project_id"].(string)
+	if hasProjectID && projectIDStr != "" {
+		pid, err := uuid.Parse(projectIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid project_id: %w", err)
+		}
+		projectID = &pid
+	}
+
+	// Must specify either project_id or skip
+	if projectID == nil && !skip {
+		return nil, fmt.Errorf("must provide either project_id or skip=true")
 	}
 
 	weight := 1.0
@@ -855,19 +621,29 @@ func (h *MCPHandler) createRule(ctx context.Context, userID uuid.UUID, args map[
 		return nil, fmt.Errorf("invalid query syntax: %w", err)
 	}
 
-	// Verify project exists
-	project, err := h.projects.GetByID(ctx, projectID, userID)
-	if err != nil {
-		return nil, fmt.Errorf("project not found: %w", err)
+	var projectName string
+	if projectID != nil {
+		// Verify project exists
+		project, err := h.projects.GetByID(ctx, *projectID, userID)
+		if err != nil {
+			return nil, fmt.Errorf("project not found: %w", err)
+		}
+		projectName = project.Name
 	}
 
 	// Create the rule
 	rule := &store.ClassificationRule{
 		UserID:    userID,
 		Query:     query,
-		ProjectID: &projectID,
+		ProjectID: projectID,
 		Weight:    weight,
 		IsEnabled: true,
+	}
+
+	// For skip rules, set attended=false (this is how skip rules are stored)
+	if skip {
+		attended := false
+		rule.Attended = &attended
 	}
 
 	created, err := h.rules.Create(ctx, rule)
@@ -875,9 +651,17 @@ func (h *MCPHandler) createRule(ctx context.Context, userID uuid.UUID, args map[
 		return nil, fmt.Errorf("failed to create rule: %w", err)
 	}
 
+	if skip {
+		return map[string]any{
+			"content": []map[string]any{
+				{"type": "text", "text": fmt.Sprintf("Created skip rule:\n- **Query**: `%s`\n- **ID**: `%s`\n\nUse apply_rules to run this rule against pending events.", created.Query, created.ID)},
+			},
+		}, nil
+	}
+
 	return map[string]any{
 		"content": []map[string]any{
-			{"type": "text", "text": fmt.Sprintf("Created rule:\n- **Query**: `%s`\n- **Project**: %s\n- **ID**: `%s`\n\nUse apply_rules to run this rule against pending events.", created.Query, project.Name, created.ID)},
+			{"type": "text", "text": fmt.Sprintf("Created rule:\n- **Query**: `%s`\n- **Project**: %s\n- **ID**: `%s`\n\nUse apply_rules to run this rule against pending events.", created.Query, projectName, created.ID)},
 		},
 	}, nil
 }
@@ -1103,8 +887,18 @@ func (h *MCPHandler) applyRules(ctx context.Context, userID uuid.UUID, args map[
 		sb.WriteString("# Apply Rules Results\n\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("- **Events classified**: %d\n", len(result.Classified)))
-	sb.WriteString(fmt.Sprintf("- **Events skipped** (no matching rule): %d\n", result.Skipped))
+	sb.WriteString(fmt.Sprintf("- **Events marked as skipped**: %d\n", len(result.SkipApplied)))
+	sb.WriteString(fmt.Sprintf("- **Events classified to projects**: %d\n", len(result.Classified)))
+	sb.WriteString(fmt.Sprintf("- **Events with no matching project rule**: %d\n", result.Skipped))
+
+	if len(result.SkipApplied) > 0 && len(result.SkipApplied) <= 10 {
+		sb.WriteString("\n## Skipped Events\n\n")
+		for _, s := range result.SkipApplied {
+			sb.WriteString(fmt.Sprintf("- %s (%.0f%% confidence)\n", s.EventID, s.Confidence*100))
+		}
+	} else if len(result.SkipApplied) > 10 {
+		sb.WriteString(fmt.Sprintf("\n*%d events marked as skipped (too many to show)*\n", len(result.SkipApplied)))
+	}
 
 	if len(result.Classified) > 0 && len(result.Classified) <= 10 {
 		sb.WriteString("\n## Classified Events\n\n")
@@ -1119,6 +913,8 @@ func (h *MCPHandler) applyRules(ctx context.Context, userID uuid.UUID, args map[
 			}
 			sb.WriteString(fmt.Sprintf("- %s → %s (%.0f%% confidence)%s\n", c.EventID, projectName, c.Confidence*100, review))
 		}
+	} else if len(result.Classified) > 10 {
+		sb.WriteString(fmt.Sprintf("\n*%d events classified (too many to show)*\n", len(result.Classified)))
 	}
 
 	return map[string]any{
@@ -1200,10 +996,57 @@ func (h *MCPHandler) explainClassification(ctx context.Context, userID uuid.UUID
 	} else {
 		sb.WriteString(fmt.Sprintf("- **Current status**: %s\n", event.ClassificationStatus))
 	}
+	if event.IsSkipped {
+		sb.WriteString("- **Skipped**: Yes (excluded from time entries)\n")
+	}
 	sb.WriteString("\n")
 
+	// Skip rules section (shown first since skip is evaluated before project)
+	if len(result.SkipEvaluations) > 0 {
+		sb.WriteString("## Skip Rules\n\n")
+		if result.WouldBeSkipped {
+			sb.WriteString(fmt.Sprintf("**This event would be marked as skipped** (%.0f%% confidence)\n\n", result.SkipConfidence*100))
+		} else {
+			sb.WriteString("*No skip rules matched this event*\n\n")
+		}
+
+		// Show matching skip rules
+		var matchingSkip, nonMatchingSkip []classification.RuleEvaluation
+		for _, e := range result.SkipEvaluations {
+			if e.Matched {
+				matchingSkip = append(matchingSkip, e)
+			} else {
+				nonMatchingSkip = append(nonMatchingSkip, e)
+			}
+		}
+
+		if len(matchingSkip) > 0 {
+			sb.WriteString("### Matching Skip Rules\n\n")
+			sb.WriteString("| Query | Weight |\n")
+			sb.WriteString("|-------|--------|\n")
+			for _, e := range matchingSkip {
+				sb.WriteString(fmt.Sprintf("| `%s` | %.1f |\n", e.Query, e.Weight))
+			}
+			sb.WriteString("\n")
+		}
+
+		if len(nonMatchingSkip) > 0 {
+			sb.WriteString(fmt.Sprintf("### Non-Matching Skip Rules (%d)\n\n", len(nonMatchingSkip)))
+			sb.WriteString("| Query |\n")
+			sb.WriteString("|-------|\n")
+			for i, e := range nonMatchingSkip {
+				if i >= 5 {
+					sb.WriteString(fmt.Sprintf("\n*... and %d more*\n", len(nonMatchingSkip)-i))
+					break
+				}
+				sb.WriteString(fmt.Sprintf("| `%s` |\n", e.Query))
+			}
+			sb.WriteString("\n")
+		}
+	}
+
 	// Outcome summary
-	sb.WriteString("## Result\n\n")
+	sb.WriteString("## Project Classification Result\n\n")
 	sb.WriteString(fmt.Sprintf("**%s**\n\n", result.Outcome))
 
 	// Target scores (projects that received votes)
@@ -1483,6 +1326,7 @@ func (h *MCPHandler) handleJSONRPC(w http.ResponseWriter, r *http.Request, userI
 
 	switch req.Method {
 	case "initialize":
+		serverInfo := mcp.GetServerInfo()
 		result = map[string]any{
 			"protocolVersion": "2024-11-05",
 			"capabilities": map[string]any{
@@ -1490,23 +1334,10 @@ func (h *MCPHandler) handleJSONRPC(w http.ResponseWriter, r *http.Request, userI
 				"resources": map[string]any{},
 			},
 			"serverInfo": map[string]any{
-				"name":    "timesheet",
-				"version": "1.0.0",
+				"name":    serverInfo.Name,
+				"version": serverInfo.Version,
 			},
-			"instructions": `You are an AI assistant helping manage a timesheet application.
-
-The user tracks their time across different projects. Calendar events are synced from
-Google Calendar and need to be classified (assigned to projects or marked as skipped).
-
-IMPORTANT: Before using search_events, create_rule, or preview_rule tools, first read the
-timesheet://docs/query-syntax resource to understand the query language.
-
-When helping the user:
-1. Read timesheet://docs/query-syntax to learn the search syntax
-2. List projects to understand available classification targets
-3. Search for pending events to see what needs attention
-4. Use preview_rule to test classification patterns
-5. Create rules or use bulk_classify to classify events`,
+			"instructions": serverInfo.Instructions,
 		}
 
 	case "initialized", "notifications/initialized":

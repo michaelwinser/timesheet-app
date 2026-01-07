@@ -465,7 +465,8 @@ type TargetScore struct {
 // ExplainResult contains detailed information about how an item was classified
 type ExplainResult struct {
 	ItemID           string
-	Evaluations      []RuleEvaluation // All rules evaluated (matched and unmatched)
+	Evaluations      []RuleEvaluation // All project rules evaluated (matched and unmatched)
+	SkipEvaluations  []RuleEvaluation // All skip rules evaluated
 	TargetScores     []TargetScore    // Scores by target
 	TotalWeight      float64          // Sum of all matching rule weights
 	WinnerTargetID   string
@@ -473,6 +474,8 @@ type ExplainResult struct {
 	NeedsReview      bool
 	MatchSource      MatchSource // Primary source of winning classification
 	Outcome          string      // Human-readable outcome description
+	WouldBeSkipped   bool        // Whether skip rules would mark this event as skipped
+	SkipConfidence   float64     // Confidence of skip decision
 }
 
 // ExplainClassification evaluates all rules against a single item and returns

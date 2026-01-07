@@ -20,7 +20,6 @@ type ClassificationSource string
 const (
 	StatusPending    ClassificationStatus = "pending"
 	StatusClassified ClassificationStatus = "classified"
-	StatusSkipped    ClassificationStatus = "skipped"
 
 	SourceRule        ClassificationSource = "rule"
 	SourceFingerprint ClassificationSource = "fingerprint"
@@ -46,6 +45,7 @@ type CalendarEvent struct {
 	IsOrphaned               bool
 	IsSuppressed             bool
 	IsLocked                 bool // Protection model: locked via Lock Day/Week
+	IsSkipped                bool // Skip rules: exclude from time entries
 	ClassificationStatus     ClassificationStatus
 	ClassificationSource     *ClassificationSource
 	ClassificationConfidence *float64
@@ -213,8 +213,8 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 	query := `
 		SELECT ce.id, ce.connection_id, ce.calendar_id, ce.user_id, ce.external_id, ce.title, ce.description,
 		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.response_status,
-		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_locked, ce.classification_status,
-		       ce.classification_source, ce.classification_confidence, ce.needs_review,
+		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_locked, ce.is_skipped,
+		       ce.classification_status, ce.classification_source, ce.classification_confidence, ce.needs_review,
 		       ce.project_id, ce.created_at, ce.updated_at,
 		       p.id, p.user_id, p.name, p.short_code, p.client, p.color, p.is_billable, p.is_archived,
 		       p.is_hidden_by_default, p.does_not_accumulate_hours, p.created_at, p.updated_at,
@@ -270,8 +270,8 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		err := rows.Scan(
 			&e.ID, &e.ConnectionID, &e.CalendarID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
 			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
-			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.ClassificationStatus,
-			&e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
+			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.IsSkipped,
+			&e.ClassificationStatus, &e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 			&pID, &pUserID, &pName, &pShortCode, &pClient, &pColor, &pIsBillable, &pIsArchived,
 			&pIsHidden, &pNoAccum, &pCreatedAt, &pUpdatedAt,
@@ -306,13 +306,13 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 	return events, rows.Err()
 }
 
-// CountByStatus returns counts of events by classification status
+// CountByStatus returns counts of events by classification status and skip state
 func (s *CalendarEventStore) CountByStatus(ctx context.Context, connectionID uuid.UUID) (pending, classified, skipped int, err error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT classification_status, COUNT(*)
+		SELECT classification_status, is_skipped, COUNT(*)
 		FROM calendar_events
 		WHERE connection_id = $1 AND is_orphaned = false
-		GROUP BY classification_status
+		GROUP BY classification_status, is_skipped
 	`, connectionID)
 	if err != nil {
 		return 0, 0, 0, err
@@ -321,17 +321,20 @@ func (s *CalendarEventStore) CountByStatus(ctx context.Context, connectionID uui
 
 	for rows.Next() {
 		var status ClassificationStatus
+		var isSkipped bool
 		var count int
-		if err := rows.Scan(&status, &count); err != nil {
+		if err := rows.Scan(&status, &isSkipped, &count); err != nil {
 			return 0, 0, 0, err
 		}
-		switch status {
-		case StatusPending:
-			pending = count
-		case StatusClassified:
-			classified = count
-		case StatusSkipped:
-			skipped = count
+		if isSkipped {
+			skipped += count
+		} else {
+			switch status {
+			case StatusPending:
+				pending += count
+			case StatusClassified:
+				classified += count
+			}
 		}
 	}
 
@@ -345,8 +348,8 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 	query := `
 		SELECT ce.id, ce.connection_id, ce.calendar_id, ce.user_id, ce.external_id, ce.title, ce.description,
 		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.response_status,
-		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_locked, ce.classification_status,
-		       ce.classification_source, ce.classification_confidence, ce.needs_review,
+		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_locked, ce.is_skipped,
+		       ce.classification_status, ce.classification_source, ce.classification_confidence, ce.needs_review,
 		       ce.project_id, ce.created_at, ce.updated_at,
 		       p.id, p.user_id, p.name, p.short_code, p.client, p.color, p.is_billable, p.is_archived,
 		       p.is_hidden_by_default, p.does_not_accumulate_hours, p.created_at, p.updated_at,
@@ -396,8 +399,8 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 		err := rows.Scan(
 			&e.ID, &e.ConnectionID, &e.CalendarID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
 			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
-			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.ClassificationStatus,
-			&e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
+			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.IsSkipped,
+			&e.ClassificationStatus, &e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 			&projectID, &projectUserID, &projectName, &projectShortCode, &projectClient, &projectColor,
 			&projectIsBillable, &projectIsArchived, &projectIsHiddenByDefault, &projectDoesNotAccumulateHours,
@@ -468,16 +471,16 @@ func (s *CalendarEventStore) GetByID(ctx context.Context, userID, eventID uuid.U
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, connection_id, user_id, external_id, title, description,
 		       start_time, end_time, attendees, is_recurring, response_status,
-		       transparency, is_orphaned, is_suppressed, classification_status,
-		       classification_source, classification_confidence, needs_review,
+		       transparency, is_orphaned, is_suppressed, is_locked, is_skipped,
+		       classification_status, classification_source, classification_confidence, needs_review,
 		       project_id, created_at, updated_at
 		FROM calendar_events
 		WHERE id = $1 AND user_id = $2
 	`, eventID, userID).Scan(
 		&e.ID, &e.ConnectionID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
 		&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
-		&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.ClassificationStatus,
-		&e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
+		&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.IsSkipped,
+		&e.ClassificationStatus, &e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 		&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 	)
 
@@ -495,12 +498,11 @@ func (s *CalendarEventStore) GetByID(ctx context.Context, userID, eventID uuid.U
 // Classify updates an event's classification status and project assignment
 func (s *CalendarEventStore) Classify(ctx context.Context, userID, eventID uuid.UUID, projectID *uuid.UUID, skip bool) (*CalendarEvent, error) {
 	now := time.Now().UTC()
-	var status ClassificationStatus
 	source := SourceManual
 
-	if skip {
-		status = StatusSkipped
-	} else {
+	// Determine classification status based on whether a project is assigned
+	status := StatusPending
+	if projectID != nil {
 		status = StatusClassified
 	}
 
@@ -512,9 +514,10 @@ func (s *CalendarEventStore) Classify(ctx context.Context, userID, eventID uuid.
 		    classification_confidence = 1.0,
 		    needs_review = false,
 		    project_id = $5,
-		    updated_at = $6
+		    is_skipped = $6,
+		    updated_at = $7
 		WHERE id = $1 AND user_id = $2
-	`, eventID, userID, status, source, projectID, now)
+	`, eventID, userID, status, source, projectID, skip, now)
 
 	if err != nil {
 		return nil, err
@@ -525,4 +528,55 @@ func (s *CalendarEventStore) Classify(ctx context.Context, userID, eventID uuid.
 	}
 
 	return s.GetByID(ctx, userID, eventID)
+}
+
+// SetSkipped updates just the is_skipped field for an event.
+// Used by the skip pass in ApplyRules.
+func (s *CalendarEventStore) SetSkipped(ctx context.Context, userID, eventID uuid.UUID, skip bool, source ClassificationSource) error {
+	now := time.Now().UTC()
+
+	result, err := s.pool.Exec(ctx, `
+		UPDATE calendar_events
+		SET is_skipped = $3,
+		    classification_source = COALESCE(classification_source, $4),
+		    updated_at = $5
+		WHERE id = $1 AND user_id = $2
+	`, eventID, userID, skip, source, now)
+
+	if err != nil {
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrCalendarEventNotFound
+	}
+
+	return nil
+}
+
+// ClassifyByRule updates an event's classification from a rule or fingerprint.
+// Unlike Classify (which is for manual classification), this sets the specified source.
+func (s *CalendarEventStore) ClassifyByRule(ctx context.Context, userID, eventID uuid.UUID, projectID uuid.UUID, source ClassificationSource, confidence float64, needsReview bool) error {
+	now := time.Now().UTC()
+
+	result, err := s.pool.Exec(ctx, `
+		UPDATE calendar_events
+		SET classification_status = 'classified',
+		    classification_source = $3,
+		    classification_confidence = $4,
+		    needs_review = $5,
+		    project_id = $6,
+		    updated_at = $7
+		WHERE id = $1 AND user_id = $2
+	`, eventID, userID, source, confidence, needsReview, projectID, now)
+
+	if err != nil {
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrCalendarEventNotFound
+	}
+
+	return nil
 }

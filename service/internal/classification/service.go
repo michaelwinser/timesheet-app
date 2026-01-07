@@ -184,6 +184,7 @@ func eventToExtendedProperties(event *store.CalendarEvent) *ExtendedEventPropert
 		},
 		Confidence:   event.ClassificationConfidence,
 		IsClassified: event.ClassificationStatus == store.StatusClassified,
+		IsSkipped:    event.IsSkipped,
 	}
 
 	if event.Description != nil {
@@ -242,9 +243,11 @@ type PreviewStats struct {
 }
 
 // ApplyRules runs classification on pending events and re-evaluates unlocked classified events.
-// Per the PRD, unlocked items (classified by rule/fingerprint, not manual) should update freely.
+// Per the PRD, this runs two passes:
+//   1. Skip pass: Evaluate skip rules (attended=false), set is_skipped=true for matches
+//   2. Project pass: Evaluate project rules, classify to winning project
+// Both passes always run - a skipped event still gets classified to a project.
 // Targets represent classification destinations (e.g., projects) with their fingerprint attributes.
-// The caller is responsible for providing targets with appropriate attributes.
 func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Target, startDate, endDate *time.Time, dryRun bool) (*ApplyResult, error) {
 	// Get pending events
 	pendingStatus := store.StatusPending
@@ -268,10 +271,7 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Ta
 		return nil, err
 	}
 
-	// Convert rules to library types
-	rules := storeRulesToLibraryRules(storeRules)
-
-	// Convert events to items
+	// Convert events to items (shared between passes)
 	items := make([]Item, 0, len(events))
 	eventMap := make(map[string]*store.CalendarEvent)
 	for _, event := range events {
@@ -280,15 +280,52 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Ta
 		eventMap[item.ID] = event
 	}
 
-	// Use pure classifier with targets
-	results := Classify(rules, targets, items, DefaultConfig())
-
 	applyResult := &ApplyResult{
-		Classified: make([]*ClassifiedEvent, 0),
-		Skipped:    0,
+		Classified:  make([]*ClassifiedEvent, 0),
+		SkipApplied: make([]*SkippedEvent, 0),
+		Skipped:     0,
 	}
 
-	for _, libResult := range results {
+	// Track affected dates for time entry recalculation
+	affectedDates := make(map[time.Time]bool)
+
+	// ========== PASS 1: Skip Rules ==========
+	// Evaluate attendance rules where attended=false (skip rules)
+	skipRules := storeRulesToAttendanceRules(storeRules)
+	skipResults := ClassifyAttendance(skipRules, items, DefaultConfig())
+
+	for _, skipResult := range skipResults {
+		event := eventMap[skipResult.ItemID]
+		if event == nil {
+			continue
+		}
+
+		// If the result is "not attended" (skip), mark as skipped
+		if !skipResult.Attended {
+			skippedEvent := &SkippedEvent{
+				EventID:    event.ID,
+				Confidence: skipResult.Confidence,
+			}
+			applyResult.SkipApplied = append(applyResult.SkipApplied, skippedEvent)
+
+			if !dryRun {
+				if err := s.eventStore.SetSkipped(ctx, userID, event.ID, true, store.SourceRule); err != nil {
+					continue
+				}
+				eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
+				affectedDates[eventDate] = true
+			}
+		}
+	}
+
+	// ========== PASS 2: Project Rules ==========
+	// Convert project rules to library types
+	projectRules := storeRulesToLibraryRules(storeRules)
+
+	// Use pure classifier with targets
+	projectResults := Classify(projectRules, targets, items, DefaultConfig())
+
+	for _, libResult := range projectResults {
 		event := eventMap[libResult.ItemID]
 		if event == nil {
 			continue
@@ -320,36 +357,17 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Ta
 				source = store.SourceFingerprint
 			}
 
-			_, err := s.eventStore.Classify(ctx, userID, event.ID, &targetID, false)
-			if err != nil {
+			if err := s.eventStore.ClassifyByRule(ctx, userID, event.ID, targetID, source, libResult.Confidence, libResult.NeedsReview); err != nil {
 				continue
 			}
 
-			// Update confidence and needs_review
-			_, err = s.pool.Exec(ctx, `
-				UPDATE calendar_events
-				SET classification_confidence = $3,
-				    needs_review = $4,
-				    classification_source = $5
-				WHERE id = $1 AND user_id = $2
-			`, event.ID, userID, libResult.Confidence, libResult.NeedsReview, source)
-			if err != nil {
-				continue
-			}
+			eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
+			affectedDates[eventDate] = true
 		}
 	}
 
 	// Recalculate time entries for all affected dates
-	if !dryRun && len(applyResult.Classified) > 0 {
-		affectedDates := make(map[time.Time]bool)
-		for _, c := range applyResult.Classified {
-			event := eventMap[c.EventID.String()]
-			if event != nil {
-				eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
-				affectedDates[eventDate] = true
-			}
-		}
-
+	if !dryRun && len(affectedDates) > 0 {
 		for date := range affectedDates {
 			// Recalculate time entries for this date using the analyzer
 			if err := s.timeEntryService.RecalculateForDate(ctx, userID, date); err != nil {
@@ -364,8 +382,15 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Ta
 
 // ApplyResult contains the results of applying rules
 type ApplyResult struct {
-	Classified []*ClassifiedEvent `json:"classified"`
-	Skipped    int                `json:"skipped"`
+	Classified  []*ClassifiedEvent `json:"classified"`
+	SkipApplied []*SkippedEvent    `json:"skip_applied"`
+	Skipped     int                `json:"skipped"` // Events with no matching project rules
+}
+
+// SkippedEvent represents an event that was marked as skipped by skip rules
+type SkippedEvent struct {
+	EventID    uuid.UUID `json:"event_id"`
+	Confidence float64   `json:"confidence"`
 }
 
 // ClassifiedEvent represents an event that was classified
@@ -566,14 +591,44 @@ func (s *Service) ExplainEventClassification(ctx context.Context, userID uuid.UU
 	rules := storeRulesToLibraryRules(storeRules)
 	item := eventToItem(event)
 
-	// Build a map for rule names (queries) by ID
-	ruleQueries := make(map[string]string)
-	for _, r := range storeRules {
-		ruleQueries[r.ID.String()] = r.Query
+	// Use pure classifier explain function for project rules
+	result := ExplainClassification(rules, targets, item, DefaultConfig())
+
+	// Also evaluate skip rules
+	skipRules := storeRulesToAttendanceRules(storeRules)
+	skipResults := ClassifyAttendance(skipRules, []Item{item}, DefaultConfig())
+
+	// Add skip rule info to result
+	if len(skipResults) > 0 && !skipResults[0].Attended {
+		// Event would be skipped
+		result.WouldBeSkipped = true
+		result.SkipConfidence = skipResults[0].Confidence
 	}
 
-	// Use pure classifier explain function
-	result := ExplainClassification(rules, targets, item, DefaultConfig())
+	// Add skip rule evaluations
+	for _, r := range storeRules {
+		// Only include attendance rules
+		if r.Attended == nil {
+			continue
+		}
+		// Parse and evaluate the rule
+		ast, err := Parse(r.Query)
+		if err != nil {
+			continue
+		}
+		props := itemToProperties(item)
+		matched := Evaluate(ast, props)
+
+		eval := RuleEvaluation{
+			RuleID:   r.ID.String(),
+			Query:    r.Query,
+			TargetID: "skip",
+			Matched:  matched,
+			Weight:   r.Weight,
+			Source:   MatchSourceRule,
+		}
+		result.SkipEvaluations = append(result.SkipEvaluations, eval)
+	}
 
 	return result, nil
 }

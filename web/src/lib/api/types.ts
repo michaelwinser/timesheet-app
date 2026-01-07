@@ -155,12 +155,14 @@ export interface CalendarEvent {
 	transparency?: string | null;
 	is_orphaned?: boolean;
 	is_suppressed?: boolean;
-	classification_status: 'pending' | 'classified' | 'skipped';
+	classification_status: 'pending' | 'classified';
+	is_skipped?: boolean;
 	classification_source?: 'rule' | 'fingerprint' | 'manual' | 'llm' | null;
 	classification_confidence?: number | null;
 	needs_review?: boolean;
 	project_id?: string | null;
 	project?: Project;
+	suggested_project_id?: string | null;
 	calendar_id?: string | null; // Google Calendar ID (typically the calendar email)
 	calendar_name?: string | null;
 	calendar_color?: string | null;

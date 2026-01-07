@@ -257,7 +257,7 @@
 	const filteredCalendarEvents = $derived(
 		calendarEvents.filter(e => {
 			if (e.classification_status === 'pending') return true;
-			if (e.classification_status === 'skipped') return true;
+			if (e.is_skipped) return true;
 			if (e.project_id && visibleProjectIds.has(e.project_id)) return true;
 			return false;
 		})
@@ -440,7 +440,11 @@
 	}
 
 	// Get styling classes based on classification status (Google Calendar inspired)
-	function getStatusClasses(status: string, needsReview: boolean = false): string {
+	function getStatusClasses(status: string, needsReview: boolean = false, skipped: boolean = false): string {
+		// Skipped events: Google Calendar declined-style (strikethrough handled separately)
+		if (skipped) {
+			return 'bg-transparent border border-dashed border-gray-400 dark:border-gray-500';
+		}
 		if (status === 'classified' && needsReview) {
 			// Needs verification: outlined style
 			return 'bg-white dark:bg-zinc-900 border-2 border-solid';
@@ -449,8 +453,6 @@
 			case 'classified':
 				// Confirmed: solid project color background
 				return 'border border-solid';
-			case 'skipped':
-				return 'bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700';
 			default:
 				// Pending: white/black with border
 				return 'bg-white dark:bg-zinc-900 border-2 border-solid border-black/30 dark:border-white/50';
@@ -1168,16 +1170,16 @@
 									{@const dayAllDayEvents = (eventsByDate[dateStr] || []).filter(e => isAllDayEvent(e))}
 									<div class="flex flex-wrap gap-1">
 										{#each dayAllDayEvents as event (event.id)}
-											{@const calendarColor = event.classification_status === 'skipped' ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
 											{@const isPending = event.classification_status === 'pending'}
 											{@const isClassified = event.classification_status === 'classified'}
-											{@const isSkipped = event.classification_status === 'skipped'}
+											{@const isSkipped = event.is_skipped === true}
 											{@const needsReview = event.needs_review === true}
-											{@const projectColor = event.project?.color || null}
-											{@const statusClasses = getStatusClasses(event.classification_status, needsReview)}
-											{@const statusStyle = getStatusStyle(event.classification_status, needsReview, projectColor)}
+											{@const calendarColor = isSkipped ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
+											{@const projectColor = isSkipped ? null : (event.project?.color || null)}
+											{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
+											{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
 											{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-											{@const needsVerifyColor = isClassified && needsReview && projectColor ? getVerificationTextColor(projectColor) : null}
+											{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
 											<!-- svelte-ignore a11y_no_static_element_interactions -->
 											<div
 												class="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"
@@ -1267,13 +1269,13 @@
 											{@const left = column * width}
 											{@const isPending = event.classification_status === 'pending'}
 											{@const isClassified = event.classification_status === 'classified'}
-											{@const isSkipped = event.classification_status === 'skipped'}
+											{@const isSkipped = event.is_skipped === true}
 											{@const needsReview = event.needs_review === true}
-											{@const projectColor = event.project?.color || null}
-											{@const statusClasses = getStatusClasses(event.classification_status, needsReview)}
-											{@const statusStyle = getStatusStyle(event.classification_status, needsReview, projectColor)}
+											{@const projectColor = isSkipped ? null : (event.project?.color || null)}
+											{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
+											{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
 											{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-											{@const needsVerifyColor = isClassified && needsReview && projectColor ? getVerificationTextColor(projectColor) : null}
+											{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
 
 											<!-- svelte-ignore a11y_no_static_element_interactions -->
 											<div
@@ -1361,13 +1363,13 @@
 											{#each allDayEvents as event (event.id)}
 												{@const isPending = event.classification_status === 'pending'}
 												{@const isClassified = event.classification_status === 'classified'}
-												{@const isSkipped = event.classification_status === 'skipped'}
+												{@const isSkipped = event.is_skipped === true}
 												{@const needsReview = event.needs_review === true}
-												{@const projectColor = event.project?.color || null}
-												{@const statusClasses = getStatusClasses(event.classification_status, needsReview)}
-												{@const statusStyle = getStatusStyle(event.classification_status, needsReview, projectColor)}
+												{@const projectColor = isSkipped ? null : (event.project?.color || null)}
+												{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
+												{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
 												{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-												{@const needsVerifyColor = isClassified && needsReview && projectColor ? getVerificationTextColor(projectColor) : null}
+												{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
 												<!-- svelte-ignore a11y_no_static_element_interactions -->
 												<div
 													class="rounded-md p-2 text-xs cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"
@@ -1489,13 +1491,13 @@
 														{#each allDayEvents as event (event.id)}
 															{@const isPending = event.classification_status === 'pending'}
 															{@const isClassified = event.classification_status === 'classified'}
-															{@const isSkipped = event.classification_status === 'skipped'}
+															{@const isSkipped = event.is_skipped === true}
 															{@const needsReview = event.needs_review === true}
-															{@const projectColor = event.project?.color || null}
-															{@const statusClasses = getStatusClasses(event.classification_status, needsReview)}
-															{@const statusStyle = getStatusStyle(event.classification_status, needsReview, projectColor)}
+															{@const projectColor = isSkipped ? null : (event.project?.color || null)}
+															{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
+															{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
 															{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-															{@const needsVerifyColor = isClassified && needsReview && projectColor ? getVerificationTextColor(projectColor) : null}
+															{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
 															<!-- svelte-ignore a11y_no_static_element_interactions -->
 															<div
 																class="text-xs p-1.5 rounded cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"
@@ -1557,13 +1559,13 @@
 															<!-- Compact event card for list columns -->
 															{@const isPending = event.classification_status === 'pending'}
 															{@const isClassified = event.classification_status === 'classified'}
-															{@const isSkipped = event.classification_status === 'skipped'}
+															{@const isSkipped = event.is_skipped === true}
 															{@const needsReview = event.needs_review === true}
-															{@const projectColor = event.project?.color || null}
-															{@const statusClasses = getStatusClasses(event.classification_status, needsReview)}
-															{@const statusStyle = getStatusStyle(event.classification_status, needsReview, projectColor)}
+															{@const projectColor = isSkipped ? null : (event.project?.color || null)}
+															{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
+															{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
 															{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-															{@const needsVerifyColor = isClassified && needsReview && projectColor ? getVerificationTextColor(projectColor) : null}
+															{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
 															<!-- svelte-ignore a11y_no_static_element_interactions -->
 															<div
 																class="text-xs p-1.5 rounded cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"

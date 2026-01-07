@@ -38,7 +38,11 @@
 	}
 
 	// Get styling based on classification status (Google Calendar inspired)
-	function getStatusClasses(status: string, needsReview: boolean = false): string {
+	function getStatusClasses(status: string, needsReview: boolean = false, skipped: boolean = false): string {
+		// Skipped events: Google Calendar declined-style (strikethrough handled separately)
+		if (skipped) {
+			return 'bg-transparent border border-dashed border-gray-400 dark:border-gray-500';
+		}
 		if (status === 'classified' && needsReview) {
 			// Needs verification: outlined style (border/text colored by project, handled via inline style)
 			return 'bg-white dark:bg-zinc-900 border-2 border-solid';
@@ -47,8 +51,6 @@
 			case 'classified':
 				// Confirmed: solid project color background (handled via inline style)
 				return 'border border-solid';
-			case 'skipped':
-				return 'bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700';
 			default:
 				// Pending: white/black with border
 				return 'bg-white dark:bg-zinc-900 border-2 border-solid border-black/30 dark:border-white/50';
@@ -82,15 +84,15 @@
 	const dateStr = $derived(formatDate(event.start_time));
 	const isPending = $derived(event.classification_status === 'pending');
 	const isClassified = $derived(event.classification_status === 'classified');
-	const isSkipped = $derived(event.classification_status === 'skipped');
+	const isSkipped = $derived(event.is_skipped === true);
 	const needsReview = $derived(event.needs_review === true);
 	const calendarColor = $derived(isSkipped ? '#9CA3AF' : (event.calendar_color || '#9CA3AF'));
-	const projectColor = $derived(event.project?.color || null);
-	const statusClasses = $derived(getStatusClasses(event.classification_status, needsReview));
-	const statusStyle = $derived(getStatusStyle(event.classification_status, needsReview, projectColor));
+	const projectColor = $derived(isSkipped ? null : (event.project?.color || null));
+	const statusClasses = $derived(getStatusClasses(event.classification_status, needsReview, isSkipped));
+	const statusStyle = $derived(isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor));
 	const textColors = $derived(projectColor ? getProjectTextColors(projectColor) : null);
 	// For needs verification, use project color for text
-	const needsVerifyTextColor = $derived(isClassified && needsReview && projectColor ? getVerificationTextColor(projectColor) : null);
+	const needsVerifyTextColor = $derived(isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null);
 </script>
 
 <div

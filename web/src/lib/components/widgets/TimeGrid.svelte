@@ -174,7 +174,11 @@
 	}
 
 	// Get styling classes based on classification status (Google Calendar inspired)
-	function getStatusClasses(status: string, needsReview: boolean = false): string {
+	function getStatusClasses(status: string, needsReview: boolean = false, skipped: boolean = false): string {
+		// Skipped events: Google Calendar declined-style (strikethrough handled separately)
+		if (skipped) {
+			return 'bg-transparent border border-dashed border-gray-400 dark:border-gray-500';
+		}
 		if (status === 'classified' && needsReview) {
 			// Needs verification: outlined style (border/text colored by project, handled via inline style)
 			return 'bg-white dark:bg-zinc-900 border-2 border-solid';
@@ -183,8 +187,6 @@
 			case 'classified':
 				// Confirmed: solid project color background (handled via inline style)
 				return 'border border-solid';
-			case 'skipped':
-				return 'bg-gray-100 dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700';
 			default:
 				// Pending: white/black with border
 				return 'bg-white dark:bg-zinc-900 border-2 border-solid border-black/30 dark:border-white/50';
@@ -244,13 +246,13 @@
 			{#each allDayEvents as event (event.id)}
 				{@const isPending = event.classification_status === 'pending'}
 				{@const isClassified = event.classification_status === 'classified'}
-				{@const isSkipped = event.classification_status === 'skipped'}
+				{@const isSkipped = event.is_skipped === true}
 				{@const needsReview = event.needs_review === true}
-				{@const projectColor = event.project?.color || null}
-				{@const statusClasses = getStatusClasses(event.classification_status, needsReview)}
-				{@const statusStyle = getStatusStyle(event.classification_status, needsReview, projectColor)}
-				{@const useLightText = shouldUseLightText(event.classification_status, needsReview, projectColor)}
-				{@const needsVerifyColor = isClassified && needsReview && projectColor ? projectColor : null}
+				{@const projectColor = isSkipped ? null : (event.project?.color || null)}
+				{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
+				{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
+				{@const useLightText = isSkipped ? false : shouldUseLightText(event.classification_status, needsReview, projectColor)}
+				{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? projectColor : null}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
 					class="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"
@@ -332,13 +334,13 @@
 			{@const posStyle = getEventPositionStyle(column, totalColumns)}
 			{@const isPending = event.classification_status === 'pending'}
 			{@const isClassified = event.classification_status === 'classified'}
-			{@const isSkipped = event.classification_status === 'skipped'}
+			{@const isSkipped = event.is_skipped === true}
 			{@const needsReview = event.needs_review === true}
-			{@const projectColor = event.project?.color || null}
-			{@const statusClasses = getStatusClasses(event.classification_status, needsReview)}
-			{@const statusStyle = getStatusStyle(event.classification_status, needsReview, projectColor)}
-			{@const useLightText = shouldUseLightText(event.classification_status, needsReview, projectColor)}
-			{@const needsVerifyColor = isClassified && needsReview && projectColor ? projectColor : null}
+			{@const projectColor = isSkipped ? null : (event.project?.color || null)}
+			{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
+			{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
+			{@const useLightText = isSkipped ? false : shouldUseLightText(event.classification_status, needsReview, projectColor)}
+			{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? projectColor : null}
 			{@const usePopup = !!onhover}
 			{@const eventHeight = parseFloat(style.height)}
 

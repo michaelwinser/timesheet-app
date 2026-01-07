@@ -185,7 +185,7 @@ class ApiClient {
 	async listCalendarEvents(params?: {
 		start_date?: string;
 		end_date?: string;
-		classification_status?: 'pending' | 'classified' | 'skipped';
+		classification_status?: 'pending' | 'classified';
 		connection_id?: string;
 	}): Promise<CalendarEvent[]> {
 		const searchParams = new URLSearchParams();

@@ -56,10 +56,10 @@ func (s *Service) RecalculateForDate(ctx context.Context, userID uuid.UUID, date
 		return err
 	}
 
-	// Filter to only events that have a project assigned
+	// Filter to only events that have a project assigned and are not skipped
 	var projectEvents []store.CalendarEvent
 	for _, e := range events {
-		if e.ProjectID != nil && e.StartTime.Before(endOfDay) {
+		if e.ProjectID != nil && !e.IsSkipped && e.StartTime.Before(endOfDay) {
 			projectEvents = append(projectEvents, *e)
 		}
 	}
@@ -186,10 +186,10 @@ func (s *Service) ComputeForProjectAndDate(ctx context.Context, userID, projectI
 		return nil, err
 	}
 
-	// Filter to events for this specific project
+	// Filter to events for this specific project that are not skipped
 	var projectEvents []store.CalendarEvent
 	for _, e := range events {
-		if e.ProjectID != nil && *e.ProjectID == projectID && e.StartTime.Before(endOfDay) {
+		if e.ProjectID != nil && *e.ProjectID == projectID && !e.IsSkipped && e.StartTime.Before(endOfDay) {
 			projectEvents = append(projectEvents, *e)
 		}
 	}
