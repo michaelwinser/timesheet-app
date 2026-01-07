@@ -384,6 +384,54 @@ type ClassifyEventResponse struct {
 	TimeEntry *TimeEntry    `json:"time_entry,omitempty"`
 }
 
+// ConfigExport defines model for ConfigExport.
+type ConfigExport struct {
+	// ExportedAt When this export was created
+	ExportedAt time.Time `json:"exported_at"`
+
+	// Projects All projects in the export
+	Projects []ProjectExport `json:"projects"`
+
+	// Rules All classification rules in the export
+	Rules []RuleExport `json:"rules"`
+
+	// Version Export format version
+	Version string `json:"version"`
+}
+
+// ConfigImport defines model for ConfigImport.
+type ConfigImport struct {
+	// Projects Projects to import
+	Projects []ProjectExport `json:"projects"`
+
+	// Rules Rules to import
+	Rules []RuleExport `json:"rules"`
+
+	// Version Export format version (optional, for compatibility)
+	Version *string `json:"version,omitempty"`
+}
+
+// ConfigImportResult defines model for ConfigImportResult.
+type ConfigImportResult struct {
+	// ProjectsCreated Number of new projects created
+	ProjectsCreated int `json:"projects_created"`
+
+	// ProjectsUpdated Number of existing projects updated
+	ProjectsUpdated int `json:"projects_updated"`
+
+	// RulesCreated Number of new rules created
+	RulesCreated int `json:"rules_created"`
+
+	// RulesSkipped Number of rules skipped (e.g., project not found)
+	RulesSkipped *int `json:"rules_skipped,omitempty"`
+
+	// RulesUpdated Number of existing rules updated
+	RulesUpdated int `json:"rules_updated"`
+
+	// Warnings Any warnings during import
+	Warnings *[]string `json:"warnings,omitempty"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	Code    string                  `json:"code"`
@@ -548,6 +596,23 @@ type ProjectCreate struct {
 	ShortCode              *string   `json:"short_code,omitempty"`
 }
 
+// ProjectExport Project data for export/import (name is the unique identifier)
+type ProjectExport struct {
+	Client                 *string   `json:"client,omitempty"`
+	Color                  *string   `json:"color,omitempty"`
+	DoesNotAccumulateHours *bool     `json:"does_not_accumulate_hours,omitempty"`
+	FingerprintDomains     *[]string `json:"fingerprint_domains,omitempty"`
+	FingerprintEmails      *[]string `json:"fingerprint_emails,omitempty"`
+	FingerprintKeywords    *[]string `json:"fingerprint_keywords,omitempty"`
+	IsArchived             *bool     `json:"is_archived,omitempty"`
+	IsBillable             *bool     `json:"is_billable,omitempty"`
+	IsHiddenByDefault      *bool     `json:"is_hidden_by_default,omitempty"`
+
+	// Name Project name (used as unique identifier)
+	Name      string  `json:"name"`
+	ShortCode *string `json:"short_code,omitempty"`
+}
+
 // ProjectUpdate defines model for ProjectUpdate.
 type ProjectUpdate struct {
 	Client                 *string   `json:"client,omitempty"`
@@ -613,6 +678,21 @@ type RuleEvaluation struct {
 
 // RuleEvaluationSource Whether from explicit rule or fingerprint
 type RuleEvaluationSource string
+
+// RuleExport Classification rule for export/import (references projects by name)
+type RuleExport struct {
+	IsEnabled *bool `json:"is_enabled,omitempty"`
+
+	// ProjectName Target project name (instead of ID for portability)
+	ProjectName *string `json:"project_name,omitempty"`
+
+	// Query Gmail-style query string
+	Query string `json:"query"`
+
+	// Skip If true, this is a skip rule (attended=false)
+	Skip   *bool    `json:"skip,omitempty"`
+	Weight *float32 `json:"weight,omitempty"`
+}
 
 // RulePreviewRequest defines model for RulePreviewRequest.
 type RulePreviewRequest struct {
@@ -798,6 +878,12 @@ type SyncCalendarParams struct {
 	EndDate *openapi_types.Date `form:"end_date,omitempty" json:"end_date,omitempty"`
 }
 
+// ExportConfigParams defines parameters for ExportConfig.
+type ExportConfigParams struct {
+	// IncludeArchived Include archived projects in export
+	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
+}
+
 // ListInvoicesParams defines parameters for ListInvoices.
 type ListInvoicesParams struct {
 	ProjectId *openapi_types.UUID       `form:"project_id,omitempty" json:"project_id,omitempty"`
@@ -862,6 +948,9 @@ type ClassifyCalendarEventJSONRequestBody = ClassifyEventRequest
 
 // UpdateCalendarSourcesJSONRequestBody defines body for UpdateCalendarSources for application/json ContentType.
 type UpdateCalendarSourcesJSONRequestBody = UpdateCalendarSourcesRequest
+
+// ImportConfigJSONRequestBody defines body for ImportConfig for application/json ContentType.
+type ImportConfigJSONRequestBody = ConfigImport
 
 // CreateInvoiceJSONRequestBody defines body for CreateInvoice for application/json ContentType.
 type CreateInvoiceJSONRequestBody = InvoiceCreate
@@ -961,6 +1050,12 @@ type ServerInterface interface {
 	// Trigger sync for a calendar connection
 	// (POST /api/calendars/{id}/sync)
 	SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params SyncCalendarParams)
+	// Export projects and rules as JSON
+	// (GET /api/config/export)
+	ExportConfig(w http.ResponseWriter, r *http.Request, params ExportConfigParams)
+	// Import projects and rules from JSON
+	// (POST /api/config/import)
+	ImportConfig(w http.ResponseWriter, r *http.Request)
 	// List invoices
 	// (GET /api/invoices)
 	ListInvoices(w http.ResponseWriter, r *http.Request, params ListInvoicesParams)
@@ -1171,6 +1266,18 @@ func (_ Unimplemented) UpdateCalendarSources(w http.ResponseWriter, r *http.Requ
 // Trigger sync for a calendar connection
 // (POST /api/calendars/{id}/sync)
 func (_ Unimplemented) SyncCalendar(w http.ResponseWriter, r *http.Request, id openapi_types.UUID, params SyncCalendarParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Export projects and rules as JSON
+// (GET /api/config/export)
+func (_ Unimplemented) ExportConfig(w http.ResponseWriter, r *http.Request, params ExportConfigParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Import projects and rules from JSON
+// (POST /api/config/import)
+func (_ Unimplemented) ImportConfig(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1962,6 +2069,59 @@ func (siw *ServerInterfaceWrapper) SyncCalendar(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SyncCalendar(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExportConfig operation middleware
+func (siw *ServerInterfaceWrapper) ExportConfig(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ExportConfigParams
+
+	// ------------- Optional query parameter "include_archived" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "include_archived", r.URL.Query(), &params.IncludeArchived)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "include_archived", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExportConfig(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ImportConfig operation middleware
+func (siw *ServerInterfaceWrapper) ImportConfig(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ImportConfig(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2892,6 +3052,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/calendars/{id}/sync", wrapper.SyncCalendar)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/config/export", wrapper.ExportConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/config/import", wrapper.ImportConfig)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/invoices", wrapper.ListInvoices)
 	})
 	r.Group(func(r chi.Router) {
@@ -3722,6 +3888,67 @@ type SyncCalendar404JSONResponse Error
 func (response SyncCalendar404JSONResponse) VisitSyncCalendarResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportConfigRequestObject struct {
+	Params ExportConfigParams
+}
+
+type ExportConfigResponseObject interface {
+	VisitExportConfigResponse(w http.ResponseWriter) error
+}
+
+type ExportConfig200JSONResponse ConfigExport
+
+func (response ExportConfig200JSONResponse) VisitExportConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ExportConfig401JSONResponse Error
+
+func (response ExportConfig401JSONResponse) VisitExportConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ImportConfigRequestObject struct {
+	Body *ImportConfigJSONRequestBody
+}
+
+type ImportConfigResponseObject interface {
+	VisitImportConfigResponse(w http.ResponseWriter) error
+}
+
+type ImportConfig200JSONResponse ConfigImportResult
+
+func (response ImportConfig200JSONResponse) VisitImportConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ImportConfig400JSONResponse Error
+
+func (response ImportConfig400JSONResponse) VisitImportConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ImportConfig401JSONResponse Error
+
+func (response ImportConfig401JSONResponse) VisitImportConfigResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -4728,6 +4955,12 @@ type StrictServerInterface interface {
 	// Trigger sync for a calendar connection
 	// (POST /api/calendars/{id}/sync)
 	SyncCalendar(ctx context.Context, request SyncCalendarRequestObject) (SyncCalendarResponseObject, error)
+	// Export projects and rules as JSON
+	// (GET /api/config/export)
+	ExportConfig(ctx context.Context, request ExportConfigRequestObject) (ExportConfigResponseObject, error)
+	// Import projects and rules from JSON
+	// (POST /api/config/import)
+	ImportConfig(ctx context.Context, request ImportConfigRequestObject) (ImportConfigResponseObject, error)
 	// List invoices
 	// (GET /api/invoices)
 	ListInvoices(ctx context.Context, request ListInvoicesRequestObject) (ListInvoicesResponseObject, error)
@@ -5436,6 +5669,63 @@ func (sh *strictHandler) SyncCalendar(w http.ResponseWriter, r *http.Request, id
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SyncCalendarResponseObject); ok {
 		if err := validResponse.VisitSyncCalendarResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExportConfig operation middleware
+func (sh *strictHandler) ExportConfig(w http.ResponseWriter, r *http.Request, params ExportConfigParams) {
+	var request ExportConfigRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExportConfig(ctx, request.(ExportConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExportConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExportConfigResponseObject); ok {
+		if err := validResponse.VisitExportConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ImportConfig operation middleware
+func (sh *strictHandler) ImportConfig(w http.ResponseWriter, r *http.Request) {
+	var request ImportConfigRequestObject
+
+	var body ImportConfigJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ImportConfig(ctx, request.(ImportConfigRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ImportConfig")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ImportConfigResponseObject); ok {
+		if err := validResponse.VisitImportConfigResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

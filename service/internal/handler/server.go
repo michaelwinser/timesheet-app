@@ -18,6 +18,7 @@ type Server struct {
 	*APIKeyHandler
 	*BillingHandler
 	*InvoiceHandler
+	*ConfigHandler
 }
 
 // NewServer creates a new server handler
@@ -47,6 +48,7 @@ func NewServer(
 		APIKeyHandler:    NewAPIKeyHandler(apiKeys),
 		BillingHandler:   NewBillingHandler(billingPeriods),
 		InvoiceHandler:   NewInvoiceHandler(invoices, projects, sheetsSvc, calendarConns),
+		ConfigHandler:    NewConfigHandler(projects, classificationRules),
 	}
 }
 

@@ -1916,6 +1916,75 @@ paths:
 
                 $ref: '#/components/schemas/Error'
 
+  # Configuration import/export endpoints
+  /api/config/export:
+    get:
+      operationId: exportConfig
+      tags: [projects, rules]
+      summary: Export projects and rules as JSON
+      description: |
+        Exports all projects and classification rules as a JSON file.
+        Rules reference projects by name for portability across environments.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: include_archived
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include archived projects in export
+      responses:
+        '200':
+          description: Configuration export
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigExport'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/config/import:
+    post:
+      operationId: importConfig
+      tags: [projects, rules]
+      summary: Import projects and rules from JSON
+      description: |
+        Imports projects and classification rules from a JSON export.
+        Projects are matched by name - existing projects are updated, new ones are created.
+        Rules reference projects by name and are created/updated accordingly.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigImport'
+      responses:
+        '200':
+          description: Import completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigImportResult'
+        '400':
+          description: Invalid import data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3092,3 +3161,128 @@ components:
           type: string
           enum: [draft, sent, paid]
           description: New status for the invoice
+
+    # Configuration import/export schemas
+    ConfigExport:
+      type: object
+      required: [version, exported_at, projects, rules]
+      properties:
+        version:
+          type: string
+          description: Export format version
+          example: "1"
+        exported_at:
+          type: string
+          format: date-time
+          description: When this export was created
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectExport'
+          description: All projects in the export
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleExport'
+          description: All classification rules in the export
+
+    ConfigImport:
+      type: object
+      required: [projects, rules]
+      properties:
+        version:
+          type: string
+          description: Export format version (optional, for compatibility)
+        projects:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectExport'
+          description: Projects to import
+        rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleExport'
+          description: Rules to import
+
+    ConfigImportResult:
+      type: object
+      required: [projects_created, projects_updated, rules_created, rules_updated]
+      properties:
+        projects_created:
+          type: integer
+          description: Number of new projects created
+        projects_updated:
+          type: integer
+          description: Number of existing projects updated
+        rules_created:
+          type: integer
+          description: Number of new rules created
+        rules_updated:
+          type: integer
+          description: Number of existing rules updated
+        rules_skipped:
+          type: integer
+          description: Number of rules skipped (e.g., project not found)
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Any warnings during import
+
+    ProjectExport:
+      type: object
+      required: [name]
+      description: Project data for export/import (name is the unique identifier)
+      properties:
+        name:
+          type: string
+          description: Project name (used as unique identifier)
+        short_code:
+          type: string
+          maxLength: 10
+        client:
+          type: string
+        color:
+          type: string
+          pattern: '^#[0-9A-Fa-f]{6}$'
+        is_billable:
+          type: boolean
+        is_archived:
+          type: boolean
+        is_hidden_by_default:
+          type: boolean
+        does_not_accumulate_hours:
+          type: boolean
+        fingerprint_domains:
+          type: array
+          items:
+            type: string
+        fingerprint_emails:
+          type: array
+          items:
+            type: string
+        fingerprint_keywords:
+          type: array
+          items:
+            type: string
+
+    RuleExport:
+      type: object
+      required: [query]
+      description: Classification rule for export/import (references projects by name)
+      properties:
+        query:
+          type: string
+          description: Gmail-style query string
+        project_name:
+          type: string
+          description: Target project name (instead of ID for portability)
+        skip:
+          type: boolean
+          description: If true, this is a skip rule (attended=false)
+        weight:
+          type: number
+          format: float
+          minimum: 0
+        is_enabled:
+          type: boolean
