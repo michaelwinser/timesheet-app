@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import AppShell from '$lib/components/AppShell.svelte';
-	import { Button, Modal, Input } from '$lib/components/primitives';
+	import { Button, Modal, Input, ToastContainer } from '$lib/components/primitives';
 	import {
 		ProjectChip,
 		TimeEntryCard,
@@ -13,10 +13,11 @@
 		EventPopup,
 		GoToDateModal,
 		DateNavigator,
-		ProjectSidebar
+		ProjectSidebar,
+		ReclassifyWeekModal
 	} from '$lib/components/widgets';
 	import { api } from '$lib/api/client';
-	import type { Project, TimeEntry, CalendarEvent, CalendarConnection } from '$lib/api/types';
+	import type { Project, TimeEntry, CalendarEvent, CalendarConnection, SyncResult, ClassifiedEvent } from '$lib/api/types';
 	import {
 		getClassificationStyles,
 		getPrimaryTextClasses,
@@ -24,7 +25,9 @@
 		getSecondaryTextClasses,
 		getSecondaryTextStyle,
 		formatConfidenceTitle,
-		type ClassificationStatus
+		getClassificationSourceBadge,
+		type ClassificationStatus,
+		type ClassificationSource
 	} from '$lib/styles';
 
 	// Scope: how many days to show
@@ -36,6 +39,7 @@
 	let projects = $state<Project[]>([]);
 	let entries = $state<TimeEntry[]>([]);
 	let calendarEvents = $state<CalendarEvent[]>([]);
+	let calendarConnections = $state<CalendarConnection[]>([]);
 	let loading = $state(true);
 	let currentDate = $state(getDateFromUrl());
 	let scopeMode = $state<ScopeMode>(getScopeModeFromUrl());
@@ -43,6 +47,23 @@
 	let showClassificationPanel = $state(true);
 	let classifyingId = $state<string | null>(null);
 	let syncing = $state(false);
+
+	// Toast container reference
+	let toastContainer: ToastContainer;
+
+	// Derived: most recent sync time across all connections
+	const lastSyncedAt = $derived.by(() => {
+		let latest: Date | null = null;
+		for (const conn of calendarConnections) {
+			if (conn.last_synced_at) {
+				const syncDate = new Date(conn.last_synced_at);
+				if (!latest || syncDate > latest) {
+					latest = syncDate;
+				}
+			}
+		}
+		return latest;
+	});
 
 	// Hover popup state
 	let hoveredEvent = $state<CalendarEvent | null>(null);
@@ -58,6 +79,11 @@
 
 	// Go to date modal
 	let showGoToDateModal = $state(false);
+
+	// Reclassify week modal
+	let showReclassifyModal = $state(false);
+	let reclassifyLoading = $state(false);
+	let reclassifyPreviewResults = $state<ClassifiedEvent[] | null>(null);
 
 	// Global keyboard shortcuts
 	function handleGlobalKeydown(e: KeyboardEvent) {
@@ -507,7 +533,7 @@
 	async function loadData() {
 		loading = true;
 		try {
-			const [projectsData, entriesData, eventsData] = await Promise.all([
+			const [projectsData, entriesData, eventsData, connectionsData] = await Promise.all([
 				api.listProjects(),
 				api.listTimeEntries({
 					start_date: formatDate(startDate),
@@ -516,7 +542,8 @@
 				api.listCalendarEvents({
 					start_date: formatDate(startDate),
 					end_date: formatDate(endDate)
-				})
+				}),
+				api.listCalendarConnections()
 			]);
 			// Initialize visible projects BEFORE setting events to ensure correct filtering
 			const initialVisible = new Set<string>();
@@ -531,6 +558,7 @@
 			projects = projectsData;
 			entries = entriesData;
 			calendarEvents = eventsData;
+			calendarConnections = connectionsData;
 
 			// Trigger scroll after data loads (for initial load and date range changes)
 			scrollTrigger++;
@@ -598,6 +626,37 @@
 		}
 	}
 
+	async function handleUnskip(eventId: string) {
+		classifyingId = eventId;
+		try {
+			const result = await api.classifyCalendarEvent(eventId, { skip: false });
+			// Populate the project object from local data if needed
+			if (result.event.project_id) {
+				result.event.project = projects.find((p) => p.id === result.event.project_id);
+			}
+			// Update the event in place
+			calendarEvents = calendarEvents.map((e) =>
+				e.id === eventId ? result.event : e
+			);
+			// Add or update time entry if returned
+			if (result.time_entry) {
+				result.time_entry.project = projects.find((p) => p.id === result.time_entry?.project_id);
+				const existingIdx = entries.findIndex(
+					(e) => e.project_id === result.time_entry?.project_id && e.date === result.time_entry?.date
+				);
+				if (existingIdx >= 0) {
+					entries = entries.map((e, i) => (i === existingIdx ? result.time_entry! : e));
+				} else {
+					entries = [...entries, result.time_entry];
+				}
+			}
+		} catch (e) {
+			console.error('Failed to unskip event:', e);
+		} finally {
+			classifyingId = null;
+		}
+	}
+
 	// Handle hover events for popup
 	function handleEventHover(event: CalendarEvent | null, element: HTMLElement | null) {
 		clearTimeout(hoverShowTimeout);
@@ -646,6 +705,12 @@
 	function handlePopupSkip() {
 		if (hoveredEvent) {
 			handleSkip(hoveredEvent.id);
+		}
+	}
+
+	function handlePopupUnskip() {
+		if (hoveredEvent) {
+			handleUnskip(hoveredEvent.id);
 		}
 	}
 
@@ -724,6 +789,10 @@
 			case 'a':
 			case 'l':
 				setDisplayMode('list');
+				break;
+			// Sync
+			case 'r':
+				handleManualSync();
 				break;
 		}
 	}
@@ -865,23 +934,137 @@
 	async function autoSyncStaleConnections() {
 		try {
 			const connections = await api.listCalendarConnections();
+			calendarConnections = connections;
 			const staleConnections = connections.filter(isConnectionStale);
 
 			if (staleConnections.length > 0) {
 				syncing = true;
 				// Sync all stale connections in parallel
 				await Promise.all(staleConnections.map((conn) => api.syncCalendar(conn.id)));
-				// Reload events after sync
-				const eventsData = await api.listCalendarEvents({
-					start_date: formatDate(startDate),
-					end_date: formatDate(endDate)
-				});
+				// Reload events and connections after sync
+				const [eventsData, updatedConnections] = await Promise.all([
+					api.listCalendarEvents({
+						start_date: formatDate(startDate),
+						end_date: formatDate(endDate)
+					}),
+					api.listCalendarConnections()
+				]);
 				calendarEvents = eventsData;
+				calendarConnections = updatedConnections;
 			}
 		} catch (e) {
 			console.error('Auto-sync failed:', e);
 		} finally {
 			syncing = false;
+		}
+	}
+
+	// Manual sync triggered by user
+	async function handleManualSync() {
+		if (syncing || calendarConnections.length === 0) return;
+
+		syncing = true;
+		try {
+			// Sync all connections in parallel
+			const results = await Promise.all(
+				calendarConnections.map((conn) => api.syncCalendar(conn.id))
+			);
+
+			// Calculate totals
+			const totals = results.reduce(
+				(acc, r) => ({
+					created: acc.created + r.events_created,
+					updated: acc.updated + r.events_updated,
+					orphaned: acc.orphaned + r.events_orphaned
+				}),
+				{ created: 0, updated: 0, orphaned: 0 }
+			);
+
+			// Reload events and connections
+			const [eventsData, updatedConnections] = await Promise.all([
+				api.listCalendarEvents({
+					start_date: formatDate(startDate),
+					end_date: formatDate(endDate)
+				}),
+				api.listCalendarConnections()
+			]);
+			calendarEvents = eventsData;
+			calendarConnections = updatedConnections;
+
+			// Show success toast
+			if (totals.created > 0 || totals.updated > 0) {
+				const parts = [];
+				if (totals.created > 0) parts.push(`${totals.created} new`);
+				if (totals.updated > 0) parts.push(`${totals.updated} updated`);
+				toastContainer?.success(`Sync complete: ${parts.join(', ')} events`);
+			} else {
+				toastContainer?.info('Sync complete: Calendar is up to date');
+			}
+		} catch (e) {
+			console.error('Manual sync failed:', e);
+			toastContainer?.error('Sync failed. Please try again.');
+		} finally {
+			syncing = false;
+		}
+	}
+
+	// Reclassify week handlers
+	function openReclassifyModal() {
+		showReclassifyModal = true;
+		reclassifyPreviewResults = null;
+	}
+
+	function closeReclassifyModal() {
+		showReclassifyModal = false;
+		reclassifyPreviewResults = null;
+		reclassifyLoading = false;
+	}
+
+	async function handleReclassifyPreview() {
+		reclassifyLoading = true;
+		try {
+			const result = await api.applyRules({
+				start_date: formatDate(weekStart),
+				end_date: formatDate(endDate),
+				dry_run: true
+			});
+			reclassifyPreviewResults = result.classified;
+		} catch (e) {
+			console.error('Failed to preview reclassification:', e);
+			toastContainer?.error('Failed to preview changes. Please try again.');
+		} finally {
+			reclassifyLoading = false;
+		}
+	}
+
+	async function handleReclassifyConfirm() {
+		reclassifyLoading = true;
+		try {
+			const result = await api.applyRules({
+				start_date: formatDate(weekStart),
+				end_date: formatDate(endDate),
+				dry_run: false
+			});
+
+			// Close modal
+			showReclassifyModal = false;
+			reclassifyPreviewResults = null;
+
+			// Reload data to reflect changes
+			await loadData();
+
+			// Show success toast
+			const count = result.classified.length;
+			if (count > 0) {
+				toastContainer?.success(`Reclassified ${count} event${count === 1 ? '' : 's'}`);
+			} else {
+				toastContainer?.info('No events were reclassified');
+			}
+		} catch (e) {
+			console.error('Failed to reclassify events:', e);
+			toastContainer?.error('Reclassification failed. Please try again.');
+		} finally {
+			reclassifyLoading = false;
 		}
 	}
 
@@ -956,23 +1139,18 @@
 		weekdaysEnd={weekdaysOnly[4]}
 		weekEnd={endDate}
 		weekendEventCount={weekendEvents.length}
+		{lastSyncedAt}
+		{syncing}
+		hasCalendarConnections={calendarConnections.length > 0}
+		reclassifying={reclassifyLoading}
 		onnavigateprevious={navigatePrevious}
 		onnavigatenext={navigateNext}
 		ongototoday={goToToday}
 		onscopechange={setScopeMode}
 		ondisplaychange={setDisplayMode}
+		onsync={handleManualSync}
+		onreclassify={openReclassifyModal}
 	/>
-
-	<!-- Sync indicator -->
-	{#if syncing}
-		<div class="mb-4 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-			<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-			</svg>
-			Syncing calendar events...
-		</div>
-	{/if}
 
 	<!-- Project Summary Bar -->
 	{@const unclassifiedHours = calendarEvents
@@ -1018,6 +1196,7 @@
 							{scrollTrigger}
 							onclassify={(eventId, projectId) => handleClassify(eventId, projectId)}
 							onskip={(eventId) => handleSkip(eventId)}
+							onunskip={(eventId) => handleUnskip(eventId)}
 							onhover={handleEventHover}
 						/>
 					</div>
@@ -1071,6 +1250,7 @@
 												maxProjectButtons={3}
 												onclassify={(projectId) => handleClassify(event.id, projectId)}
 												onskip={() => handleSkip(event.id)}
+												onunskip={() => handleUnskip(event.id)}
 												onhover={(el) => handleEventHover(el ? event : null, el)}
 											/>
 										{/each}
@@ -1151,13 +1331,22 @@
 															class="font-medium truncate flex-1 {getPrimaryTextClasses(styles, isSkipped)}"
 															style={getPrimaryTextStyle(styles, isSkipped)}
 														>{event.title}</span>
-														<!-- Project dot: only for confirmed classified events -->
+														<!-- Project dot with source badge: only for confirmed classified events -->
 														{#if isClassified && !needsReview && event.project}
-															<span
-																class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 {styles.textColors?.isDark ? 'border border-white/50' : ''}"
-																style="background-color: {event.project.color}"
-																title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
-															></span>
+															{@const sourceBadge = getClassificationSourceBadge(event.classification_source as ClassificationSource, event.project.name)}
+															<div class="flex items-center gap-0.5 flex-shrink-0 mt-0.5">
+																<span
+																	class="w-3 h-3 rounded-full {styles.textColors?.isDark ? 'border border-white/50' : ''}"
+																	style="background-color: {event.project.color}"
+																	title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
+																></span>
+																{#if sourceBadge}
+																	<span
+																		class="text-[7px] font-medium {styles.textColors?.isDark ? 'text-white/70' : 'text-gray-500'}"
+																		title={sourceBadge.tooltip}
+																	>{sourceBadge.label}</span>
+																{/if}
+															</div>
 														{/if}
 													</div>
 
@@ -1179,14 +1368,19 @@
 															<button
 																type="button"
 																class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[7px]"
-																title="Skip - did not attend"
+																title="Did not attend"
 																onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
 															>✕</button>
 														</div>
 													{:else if isSkipped}
-														<!-- Skip indicator in bottom right -->
+														<!-- Skip indicator in bottom right - clickable to unskip -->
 														<div class="mt-auto flex justify-end">
-															<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
+															<button
+																type="button"
+																class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[7px]"
+																title="Click to mark as attended"
+																onclick={(e) => { e.stopPropagation(); handleUnskip(event.id); }}
+															>✕</button>
 														</div>
 													{/if}
 												</div>
@@ -1225,6 +1419,7 @@
 														variant="card"
 														onclassify={(projectId) => handleClassify(event.id, projectId)}
 														onskip={() => handleSkip(event.id)}
+														onunskip={() => handleUnskip(event.id)}
 														onhover={(el) => handleEventHover(el ? event : null, el)}
 													/>
 												</div>
@@ -1297,6 +1492,7 @@
 																maxProjectButtons={3}
 																onclassify={(projectId) => handleClassify(event.id, projectId)}
 																onskip={() => handleSkip(event.id)}
+																onunskip={() => handleUnskip(event.id)}
 																onhover={(el) => handleEventHover(el ? event : null, el)}
 															/>
 														{/each}
@@ -1316,6 +1512,7 @@
 																showTime={true}
 																onclassify={(projectId) => handleClassify(event.id, projectId)}
 																onskip={() => handleSkip(event.id)}
+																onunskip={() => handleUnskip(event.id)}
 																onhover={(el) => handleEventHover(el ? event : null, el)}
 															/>
 														{/each}
@@ -1487,3 +1684,20 @@
 	referenceDate={currentDate}
 	onselect={handleGoToDate}
 />
+
+<!-- Reclassify Week Modal -->
+<ReclassifyWeekModal
+	bind:open={showReclassifyModal}
+	{weekStart}
+	weekEnd={endDate}
+	events={calendarEvents}
+	{projects}
+	loading={reclassifyLoading}
+	previewResults={reclassifyPreviewResults}
+	onclose={closeReclassifyModal}
+	onpreview={handleReclassifyPreview}
+	onconfirm={handleReclassifyConfirm}
+/>
+
+<!-- Toast notifications -->
+<ToastContainer bind:this={toastContainer} />

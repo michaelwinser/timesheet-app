@@ -19,5 +19,19 @@
       "Bash(rm -rf:*)",
       "Bash(sudo:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "If the file being edited is a .svelte file in $ARGUMENTS, check for the state synchronization anti-pattern: storing objects from arrays in $state (like `let hoveredEvent = $state<CalendarEvent | null>(null)`) instead of storing IDs and deriving objects. If this pattern is detected, respond with BLOCK and explain that IDs should be stored with $derived used to get the actual object. Otherwise respond ALLOW.",
+            "statusMessage": "Checking for state sync patterns..."
+          }
+        ]
+      }
+    ]
   }
 }

@@ -361,6 +361,74 @@ func TestRecalculateForDate_InvoicedEntryNotDeleted(t *testing.T) {
 	}
 }
 
+func TestRecalculateForDate_UserEditedEntryNotDeleted(t *testing.T) {
+	// Test scenario: Event skipped/reclassified, but entry has user edits
+	// Expected: Entry with HasUserEdits=true should NOT be deleted, but marked stale with computed=0
+	// Per PRD: "Auto-delete if: 0 hours AND no user-edited description. Preserve if user edited anything."
+
+	date := time.Date(2024, 1, 15, 0, 0, 0, 0, time.UTC)
+	userID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	projectA := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+	projectB := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+	entryAID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+
+	// Event is classified to Project B (so Project A has no events)
+	eventStore := &mockEventStore{
+		events: []*store.CalendarEvent{
+			{
+				ID:                   uuid.New(),
+				UserID:               userID,
+				Title:                "Meeting",
+				StartTime:            date.Add(9 * time.Hour),
+				EndTime:              date.Add(10 * time.Hour),
+				ClassificationStatus: store.StatusClassified,
+				ProjectID:            &projectB,
+			},
+		},
+	}
+
+	// Existing entry for Project A with user edits (e.g., user modified the description)
+	userDescription := "User added notes"
+	entryStore := &mockTimeEntryStore{
+		entries: []*store.TimeEntry{
+			{
+				ID:           entryAID,
+				UserID:       userID,
+				ProjectID:    projectA,
+				Date:         date,
+				Hours:        1.0,
+				Description:  &userDescription,
+				HasUserEdits: true, // Protected because user edited!
+				IsPinned:     false,
+				IsLocked:     false,
+			},
+		},
+	}
+
+	svc := &Service{
+		eventStore:     eventStore,
+		timeEntryStore: entryStore,
+	}
+
+	err := svc.RecalculateForDate(context.Background(), userID, date)
+	if err != nil {
+		t.Fatalf("RecalculateForDate() error = %v", err)
+	}
+
+	// Verify Project A entry was NOT deleted
+	if len(entryStore.deletedIDs) != 0 {
+		t.Errorf("Expected 0 deleted entries (user-edited entry protected), got %d", len(entryStore.deletedIDs))
+	}
+
+	// Verify computed values were updated for the user-edited entry (marked stale with 0 computed hours)
+	if len(entryStore.updatedCompIDs) != 1 {
+		t.Errorf("Expected 1 entry with updated computed values, got %d", len(entryStore.updatedCompIDs))
+	}
+	if len(entryStore.updatedCompIDs) > 0 && entryStore.updatedCompIDs[0] != entryAID {
+		t.Errorf("Expected entry %s to have computed values updated, got %s", entryAID, entryStore.updatedCompIDs[0])
+	}
+}
+
 func TestRecalculateForDate_MultipleProjects(t *testing.T) {
 	// Test scenario: Events for multiple projects, one project loses all events
 	// Expected: Entry without events deleted, others updated

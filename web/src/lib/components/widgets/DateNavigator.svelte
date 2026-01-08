@@ -12,11 +12,17 @@
 		weekdaysEnd: Date;
 		weekEnd: Date;
 		weekendEventCount?: number;
+		lastSyncedAt?: Date | null;
+		syncing?: boolean;
+		hasCalendarConnections?: boolean;
+		reclassifying?: boolean;
 		onnavigateprevious: () => void;
 		onnavigatenext: () => void;
 		ongototoday: () => void;
 		onscopechange: (mode: ScopeMode) => void;
 		ondisplaychange: (mode: DisplayMode) => void;
+		onsync?: () => void;
+		onreclassify?: () => void;
 	}
 
 	let {
@@ -27,12 +33,52 @@
 		weekdaysEnd,
 		weekEnd,
 		weekendEventCount = 0,
+		lastSyncedAt = null,
+		syncing = false,
+		hasCalendarConnections = false,
+		reclassifying = false,
 		onnavigateprevious,
 		onnavigatenext,
 		ongototoday,
 		onscopechange,
-		ondisplaychange
+		ondisplaychange,
+		onsync,
+		onreclassify
 	}: Props = $props();
+
+	// Format relative time (e.g., "2 hours ago", "just now")
+	function formatRelativeTime(date: Date): string {
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffMins = Math.floor(diffMs / (1000 * 60));
+		const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+		if (diffMins < 1) return 'just now';
+		if (diffMins < 60) return `${diffMins}m ago`;
+		if (diffHours < 24) return `${diffHours}h ago`;
+		if (diffDays === 1) return 'yesterday';
+		return `${diffDays}d ago`;
+	}
+
+	// Determine sync status text and style
+	const syncStatus = $derived.by(() => {
+		if (!hasCalendarConnections) {
+			return { text: 'No calendars', style: 'text-gray-400 dark:text-gray-500', isStale: false };
+		}
+		if (!lastSyncedAt) {
+			return { text: 'Never synced', style: 'text-amber-600 dark:text-amber-400', isStale: true };
+		}
+		const hoursSinceSync = (Date.now() - lastSyncedAt.getTime()) / (1000 * 60 * 60);
+		const isStale = hoursSinceSync > 24;
+		return {
+			text: formatRelativeTime(lastSyncedAt),
+			style: isStale
+				? 'text-amber-600 dark:text-amber-400'
+				: 'text-gray-500 dark:text-gray-400',
+			isStale
+		};
+	});
 
 	function formatFullDayLabel(date: Date): string {
 		return date.toLocaleDateString('en-US', {
@@ -131,42 +177,98 @@
 				{weekendEventCount} weekend
 			</button>
 		{/if}
+
+		<!-- Reclassify Week button (only in week modes) -->
+		{#if scopeMode !== 'day' && onreclassify}
+			<button
+				type="button"
+				class="ml-2 flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:border-zinc-600 dark:bg-zinc-800 dark:text-gray-400 dark:hover:bg-zinc-700 dark:hover:text-white"
+				onclick={onreclassify}
+				disabled={reclassifying}
+				title="Re-run classification rules on this week"
+			>
+				{#if reclassifying}
+					<svg class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+					</svg>
+				{:else}
+					<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+					</svg>
+				{/if}
+				Reclassify Week
+			</button>
+		{/if}
 	</div>
 
-	<!-- Right: View toggle -->
-	<div class="display-toggle">
-		<button
-			type="button"
-			class="display-button"
-			class:display-button--active={displayMode === 'calendar'}
-			onclick={() => ondisplaychange('calendar')}
-			title="Calendar view (C)"
-		>
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					stroke-width="2"
-					d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-				/>
-			</svg>
-		</button>
-		<button
-			type="button"
-			class="display-button"
-			class:display-button--active={displayMode === 'list'}
-			onclick={() => ondisplaychange('list')}
-			title="List view (L or A)"
-		>
-			<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-				<path
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					stroke-width="2"
-					d="M4 6h16M4 10h16M4 14h16M4 18h16"
-				/>
-			</svg>
-		</button>
+	<!-- Right: Sync status + View toggle -->
+	<div class="flex items-center gap-3">
+		<!-- Sync status -->
+		{#if hasCalendarConnections}
+			<div class="flex items-center gap-1.5">
+				{#if syncing}
+					<svg class="h-4 w-4 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+					</svg>
+					<span class="text-xs text-primary-600 dark:text-primary-400">Syncing...</span>
+				{:else}
+					<button
+						type="button"
+						class="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-xs transition-colors hover:bg-gray-100 dark:hover:bg-zinc-700 {syncStatus.style}"
+						onclick={onsync}
+						title="Sync calendars (R)"
+					>
+						<svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+						</svg>
+						<span>{syncStatus.text}</span>
+						{#if syncStatus.isStale}
+							<svg class="h-3 w-3 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+								<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+							</svg>
+						{/if}
+					</button>
+				{/if}
+			</div>
+		{/if}
+
+		<!-- View toggle -->
+		<div class="display-toggle">
+			<button
+				type="button"
+				class="display-button"
+				class:display-button--active={displayMode === 'calendar'}
+				onclick={() => ondisplaychange('calendar')}
+				title="Calendar view (C)"
+			>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
+					/>
+				</svg>
+			</button>
+			<button
+				type="button"
+				class="display-button"
+				class:display-button--active={displayMode === 'list'}
+				onclick={() => ondisplaychange('list')}
+				title="List view (L or A)"
+			>
+				<svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M4 6h16M4 10h16M4 14h16M4 18h16"
+					/>
+				</svg>
+			</button>
+		</div>
 	</div>
 </div>
 

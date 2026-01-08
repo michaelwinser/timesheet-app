@@ -234,3 +234,52 @@ export function formatConfidenceTitle(
 	}
 	return projectName;
 }
+
+export type ClassificationSource = 'rule' | 'fingerprint' | 'manual' | 'llm' | null | undefined;
+
+export interface ClassificationSourceBadge {
+	/** Single character or short text for the badge */
+	label: string;
+	/** Tooltip text explaining the source */
+	tooltip: string;
+	/** Whether this is a "locked" manual classification */
+	isLocked: boolean;
+}
+
+/**
+ * Get badge info for a classification source.
+ * Returns null if no badge should be shown (e.g., for pending events).
+ */
+export function getClassificationSourceBadge(
+	source: ClassificationSource,
+	projectName?: string
+): ClassificationSourceBadge | null {
+	switch (source) {
+		case 'rule':
+			return {
+				label: 'R',
+				tooltip: projectName ? `Auto-classified by rule to ${projectName}` : 'Auto-classified by rule',
+				isLocked: false
+			};
+		case 'fingerprint':
+			return {
+				label: 'F',
+				tooltip: projectName ? `Auto-classified by fingerprint to ${projectName}` : 'Auto-classified by fingerprint',
+				isLocked: false
+			};
+		case 'manual':
+			return {
+				label: '\u{1F512}', // Lock emoji or use icon
+				tooltip: projectName ? `Manually classified to ${projectName}` : 'Manually classified',
+				isLocked: true
+			};
+		case 'llm':
+			return {
+				label: 'AI',
+				tooltip: projectName ? `AI-suggested classification to ${projectName}` : 'AI-suggested classification',
+				isLocked: false
+			};
+		default:
+			return null;
+	}
+}

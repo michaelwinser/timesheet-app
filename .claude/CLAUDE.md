@@ -15,3 +15,22 @@
 - Execute the user's decision once concerns have been aired
 - Don't be contrarian for its own sake
 - Respect that the user has project context you may lack
+
+## UI Code Patterns (Critical)
+
+### State Synchronization
+When displaying items from arrays in popups/detail views, **never store object copies in $state**. This creates stale data when the source array updates.
+
+**Anti-pattern:**
+```svelte
+let hoveredEvent = $state<CalendarEvent | null>(null);
+hoveredEvent = eventFromArray; // Creates stale copy
+```
+
+**Correct pattern:**
+```svelte
+let hoveredEventId = $state<string | null>(null);
+const hoveredEvent = $derived(events.find(e => e.id === hoveredEventId) ?? null);
+```
+
+See `docs/ui-coding-guidelines.md` for full guidelines.

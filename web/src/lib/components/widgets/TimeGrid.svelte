@@ -15,6 +15,7 @@
 		scrollTrigger?: number;
 		onclassify?: (eventId: string, projectId: string) => void;
 		onskip?: (eventId: string) => void;
+		onunskip?: (eventId: string) => void;
 		onhover?: (event: CalendarEvent | null, element: HTMLElement | null) => void;
 		showTimeLegend?: boolean;
 	}
@@ -26,6 +27,7 @@
 		scrollTrigger = 0,
 		onclassify,
 		onskip,
+		onunskip,
 		onhover,
 		showTimeLegend = true
 	}: Props = $props();
@@ -290,7 +292,7 @@
 						<button
 							type="button"
 							class="ml-1 flex h-2.5 w-2.5 items-center justify-center rounded border border-dashed border-gray-400 text-[5px] text-gray-400 hover:border-gray-600 dark:border-gray-500 dark:hover:border-gray-300"
-							title="Skip - did not attend"
+							title="Did not attend"
 							onclick={(e) => {
 								e.stopPropagation();
 								onskip?.(event.id);
@@ -416,7 +418,7 @@
 									<button
 										type="button"
 										class="flex h-3.5 w-3.5 items-center justify-center rounded border border-dashed border-gray-400 text-[7px] text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:border-gray-500 dark:hover:border-gray-300 dark:hover:text-gray-300"
-										title="Skip - did not attend"
+										title="Did not attend"
 										onclick={(e) => {
 											e.stopPropagation();
 											onskip?.(event.id);
@@ -426,12 +428,17 @@
 									</button>
 								</div>
 							{:else if isSkipped}
-								<!-- Skip indicator in bottom right -->
+								<!-- Skip indicator in bottom right - clickable to unskip -->
 								<div class="mt-auto flex justify-end">
-									<span
-										class="flex h-3.5 w-3.5 items-center justify-center rounded border border-dashed border-gray-400 text-[7px] text-gray-400 dark:border-gray-500"
-										>✕</span
-									>
+									<button
+										type="button"
+										class="flex h-3.5 w-3.5 items-center justify-center rounded border border-dashed border-gray-400 text-[7px] text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:border-gray-500 dark:hover:border-gray-300 dark:hover:text-gray-300"
+										title="Click to mark as attended"
+										onclick={(e) => {
+											e.stopPropagation();
+											onunskip?.(event.id);
+										}}
+									>✕</button>
 								</div>
 							{/if}
 						{:else}
@@ -478,7 +485,7 @@
 										<button
 											type="button"
 											class="flex h-3.5 w-3.5 items-center justify-center rounded border border-dashed border-gray-400 text-[7px] text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:border-gray-500 dark:hover:border-gray-300 dark:hover:text-gray-300"
-											title="Skip - did not attend"
+											title="Did not attend"
 											onclick={() => {
 												onskip?.(event.id);
 												reclassifyingId = null;
@@ -488,12 +495,17 @@
 										</button>
 									</div>
 								{:else if isSkipped}
-									<!-- Skip indicator in bottom right -->
+									<!-- Skip indicator in bottom right - clickable to unskip -->
 									<div class="flex justify-end">
-										<span
-											class="flex h-3.5 w-3.5 items-center justify-center rounded border border-dashed border-gray-400 text-[7px] text-gray-400 dark:border-gray-500"
-											>✕</span
-										>
+										<button
+											type="button"
+											class="flex h-3.5 w-3.5 items-center justify-center rounded border border-dashed border-gray-400 text-[7px] text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:border-gray-500 dark:hover:border-gray-300 dark:hover:text-gray-300"
+											title="Click to mark as attended"
+											onclick={() => {
+												onunskip?.(event.id);
+												reclassifyingId = null;
+											}}
+										>✕</button>
 									</div>
 								{:else if isClassified && event.project}
 									<!-- Classified - click to reclassify -->

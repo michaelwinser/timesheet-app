@@ -6,7 +6,9 @@
 		getPrimaryTextStyle,
 		getSecondaryTextClasses,
 		getSecondaryTextStyle,
-		formatConfidenceTitle
+		formatConfidenceTitle,
+		getClassificationSourceBadge,
+		type ClassificationSource
 	} from '$lib/styles';
 
 	type Variant = 'chip' | 'card' | 'compact';
@@ -19,6 +21,7 @@
 		maxProjectButtons?: number;
 		onclassify?: (projectId: string) => void;
 		onskip?: () => void;
+		onunskip?: () => void;
 		onhover?: (element: HTMLElement | null) => void;
 	}
 
@@ -30,6 +33,7 @@
 		maxProjectButtons = 4,
 		onclassify,
 		onskip,
+		onunskip,
 		onhover
 	}: Props = $props();
 
@@ -50,6 +54,13 @@
 			isSkipped,
 			projectColor
 		})
+	);
+
+	// Get classification source badge
+	const sourceBadge = $derived(
+		isClassified && !isSkipped
+			? getClassificationSourceBadge(event.classification_source as ClassificationSource, event.project?.name)
+			: null
 	);
 
 	// Format time range
@@ -95,22 +106,35 @@
 			title={event.title}>{event.title}</span
 		>
 		{#if isClassified && !needsReview && event.project}
-			<span
-				class="h-2.5 w-2.5 flex-shrink-0 rounded-full {styles.textColors?.isDark
-					? 'border border-white/50'
-					: ''}"
-				style="background-color: {event.project.color}"
-				title={formatConfidenceTitle(
-					event.project.name,
-					event.classification_confidence,
-					event.classification_source
-				)}
-			></span>
+			<div class="flex items-center gap-0.5 flex-shrink-0">
+				<span
+					class="h-2.5 w-2.5 rounded-full {styles.textColors?.isDark
+						? 'border border-white/50'
+						: ''}"
+					style="background-color: {event.project.color}"
+					title={formatConfidenceTitle(
+						event.project.name,
+						event.classification_confidence,
+						event.classification_source
+					)}
+				></span>
+				{#if sourceBadge}
+					<span
+						class="text-[6px] font-medium {styles.textColors?.isDark ? 'text-white/70' : 'text-gray-500'}"
+						title={sourceBadge.tooltip}
+					>{sourceBadge.label}</span>
+				{/if}
+			</div>
 		{:else if isSkipped}
-			<span
-				class="flex h-2.5 w-2.5 items-center justify-center rounded border border-dashed border-gray-400 text-[5px] text-gray-400"
-				>✕</span
-			>
+			<button
+				type="button"
+				class="flex h-2.5 w-2.5 items-center justify-center rounded border border-dashed border-gray-400 text-[5px] text-gray-400 hover:border-gray-600 hover:text-gray-600"
+				title="Click to mark as attended"
+				onclick={(e) => {
+					e.stopPropagation();
+					onunskip?.();
+				}}
+			>✕</button>
 		{:else if isPending}
 			<div class="ml-1 flex items-center gap-0.5">
 				{#each activeProjects.slice(0, 3) as project, i}
@@ -133,7 +157,7 @@
 			<button
 				type="button"
 				class="ml-1 flex h-2.5 w-2.5 items-center justify-center rounded border border-dashed border-gray-400 text-[5px] text-gray-400 hover:border-gray-600"
-				title="Skip - did not attend"
+				title="Did not attend"
 				onclick={(e) => {
 					e.stopPropagation();
 					onskip?.();
@@ -164,18 +188,25 @@
 					{/if}
 				</div>
 				{#if isClassified && !needsReview && event.project}
-					<span
-						class="{projectButtonSize[variant]} mt-0.5 flex-shrink-0 rounded-full {styles.textColors
-							?.isDark
-							? 'border border-white/50'
-							: ''}"
-						style="background-color: {event.project.color}"
-						title={formatConfidenceTitle(
-							event.project.name,
-							event.classification_confidence,
-							event.classification_source
-						)}
-					></span>
+					<div class="flex items-center gap-0.5 mt-0.5 flex-shrink-0">
+						<span
+							class="{projectButtonSize[variant]} rounded-full {styles.textColors?.isDark
+								? 'border border-white/50'
+								: ''}"
+							style="background-color: {event.project.color}"
+							title={formatConfidenceTitle(
+								event.project.name,
+								event.classification_confidence,
+								event.classification_source
+							)}
+						></span>
+						{#if sourceBadge}
+							<span
+								class="text-[7px] font-medium {styles.textColors?.isDark ? 'text-white/70' : 'text-gray-500'}"
+								title={sourceBadge.tooltip}
+							>{sourceBadge.label}</span>
+						{/if}
+					</div>
 				{/if}
 			</div>
 
@@ -204,7 +235,7 @@
 					<button
 						type="button"
 						class="{skipButtonSize[variant]} flex items-center justify-center rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600"
-						title="Skip - did not attend"
+						title="Did not attend"
 						onclick={(e) => {
 							e.stopPropagation();
 							onskip?.();
@@ -215,10 +246,15 @@
 				</div>
 			{:else if isSkipped}
 				<div class="flex justify-end">
-					<span
-						class="{skipButtonSize[variant]} flex items-center justify-center rounded border border-dashed border-gray-400 text-gray-400"
-						>✕</span
-					>
+					<button
+						type="button"
+						class="{skipButtonSize[variant]} flex items-center justify-center rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600"
+						title="Click to mark as attended"
+						onclick={(e) => {
+							e.stopPropagation();
+							onunskip?.();
+						}}
+					>✕</button>
 				</div>
 			{/if}
 		</div>

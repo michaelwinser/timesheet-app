@@ -37,6 +37,11 @@ Review the provided UI code changes against the project's coding guidelines.
 - [ ] Uses `{@const}` for template-local computed values
 - [ ] `$effect` only used for true side effects
 
+### State Synchronization (CRITICAL)
+- [ ] **No object copies for detail views**: Check for patterns like `let selectedItem = $state<SomeType | null>(null)` where the object comes from an array. This creates stale data when the source array updates.
+- [ ] **Store IDs, derive objects**: Should be `let selectedId = $state<string | null>(null)` with `const selected = $derived(items.find(...))`
+- [ ] **Popups/modals use derived data**: Any popup, sidebar, or detail view showing data from an array must derive from the source array, not store a copy
+
 ### Code Organization
 - [ ] No style logic duplicated from other components
 - [ ] Complex style computation moved to style system if reusable

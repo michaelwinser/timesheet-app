@@ -6,10 +6,11 @@ This document establishes coding patterns and best practices for the Timesheet w
 
 1. [Style System Architecture](#style-system-architecture)
 2. [Component Design Principles](#component-design-principles)
-3. [Tailwind CSS Patterns](#tailwind-css-patterns)
-4. [Svelte 5 Patterns](#svelte-5-patterns)
-5. [File Organization](#file-organization)
-6. [Common Patterns](#common-patterns)
+3. [State Synchronization](#state-synchronization)
+4. [Tailwind CSS Patterns](#tailwind-css-patterns)
+5. [Svelte 5 Patterns](#svelte-5-patterns)
+6. [File Organization](#file-organization)
+7. [Common Patterns](#common-patterns)
 
 ---
 
@@ -172,6 +173,75 @@ Use lowercase event handler names without the `on` prefix in props, but include 
 
 <button onclick={() => onclassify?.('project-id')}>Classify</button>
 ```
+
+---
+
+## State Synchronization
+
+### The Problem: Stale Object References
+
+When displaying data from an array (like events or entries) in a popup or detail view, a common mistake is storing the entire object in state. This creates a copy that doesn't update when the source array changes.
+
+**Anti-pattern:**
+```svelte
+<script lang="ts">
+  // BAD: Stores a copy of the object that won't update
+  let hoveredEvent = $state<CalendarEvent | null>(null);
+
+  function handleHover(event: CalendarEvent | null) {
+    hoveredEvent = event; // This is a snapshot, not a live reference
+  }
+</script>
+
+<!-- When calendarEvents array updates, hoveredEvent is stale -->
+{#if hoveredEvent}
+  <EventPopup event={hoveredEvent} />
+{/if}
+```
+
+### The Solution: Store IDs, Derive Objects
+
+Store only the identifier in state, then derive the actual object from the source array. This ensures the derived object always reflects the latest data.
+
+**Correct pattern:**
+```svelte
+<script lang="ts">
+  // GOOD: Store only the ID
+  let hoveredEventId = $state<string | null>(null);
+  let hoveredElement = $state<HTMLElement | null>(null);
+
+  // Derive the actual object from the authoritative source
+  const hoveredEvent = $derived(
+    hoveredEventId ? calendarEvents.find(e => e.id === hoveredEventId) ?? null : null
+  );
+
+  function handleHover(event: CalendarEvent | null, element: HTMLElement | null) {
+    hoveredEventId = event?.id ?? null;
+    hoveredElement = element;
+  }
+</script>
+
+<!-- hoveredEvent automatically updates when calendarEvents changes -->
+{#if hoveredEvent && hoveredElement}
+  <EventPopup event={hoveredEvent} anchorElement={hoveredElement} />
+{/if}
+```
+
+### When This Matters
+
+This pattern is critical when:
+1. **User actions update the source array** - Classifying an event, marking as skipped, editing an entry
+2. **The displayed object can change while visible** - Popups, sidebars, detail panels
+3. **Multiple views show the same data** - List view and popup showing the same event
+
+### General Principle
+
+**One component should own each piece of data.** Other components that need that data should:
+- Receive it via props (for read-only display)
+- Call callbacks to request changes (for mutations)
+- Derive from shared state using IDs (for independent access)
+
+Never create parallel copies of mutable data across components.
 
 ---
 
@@ -559,6 +629,26 @@ function formatHourLabel(hour: number): string {
 </script>
 ```
 
+### Don't: Store object copies for detail views
+
+```svelte
+<!-- Bad: Object copy becomes stale when source updates -->
+<script lang="ts">
+  let selectedEvent = $state<CalendarEvent | null>(null);
+  // When user classifies, selectedEvent still shows old data
+</script>
+```
+
+```svelte
+<!-- Good: Store ID, derive object from source -->
+<script lang="ts">
+  let selectedEventId = $state<string | null>(null);
+  const selectedEvent = $derived(
+    selectedEventId ? events.find(e => e.id === selectedEventId) ?? null : null
+  );
+</script>
+```
+
 ---
 
 ## Checklist for New UI Code
@@ -571,3 +661,4 @@ function formatHourLabel(hour: number): string {
 - [ ] Component is exported through barrel file
 - [ ] No duplicate style logic from other components
 - [ ] Accessibility: interactive elements are keyboard accessible
+- [ ] Detail/popup views derive objects from source arrays via IDs (not object copies)

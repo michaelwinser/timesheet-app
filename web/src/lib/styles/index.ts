@@ -12,7 +12,10 @@ export {
 	getTertiaryTextStyle,
 	getTertiaryTextClasses,
 	formatConfidenceTitle,
+	getClassificationSourceBadge,
 	type ClassificationStatus,
 	type ClassificationState,
-	type ClassificationStyles
+	type ClassificationStyles,
+	type ClassificationSource,
+	type ClassificationSourceBadge
 } from './classification';
