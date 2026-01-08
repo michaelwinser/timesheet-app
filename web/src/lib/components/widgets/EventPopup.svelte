@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { CalendarEvent, Project } from '$lib/api/types';
-	import ProjectChip from './ProjectChip.svelte';
+	import { getContrastColor } from '$lib/utils/colors';
 
 	interface Props {
 		event: CalendarEvent;
@@ -12,9 +12,20 @@
 		onmouseleave?: () => void;
 	}
 
-	let { event, projects, anchorElement, onclassify, onskip, onmouseenter, onmouseleave }: Props = $props();
+	let { event, projects, anchorElement, onclassify, onskip, onmouseenter, onmouseleave }: Props =
+		$props();
 
-	const activeProjects = $derived(projects.filter(p => !p.is_archived));
+	// Sort projects alphabetically by name
+	const sortedProjects = $derived(
+		projects
+			.filter((p) => !p.is_archived)
+			.toSorted((a, b) => a.name.localeCompare(b.name))
+	);
+
+	// Get display code for a project (short_code or first 3 chars of name)
+	function getDisplayCode(project: Project): string {
+		return project.short_code || project.name.substring(0, 3).toUpperCase();
+	}
 
 	// Sanitize HTML - strip dangerous tags, keep basic formatting
 	function sanitizeHtml(html: string): string {
@@ -130,32 +141,58 @@
 			</div>
 		</div>
 
-		<!-- Classification actions (second row) -->
-		<div class="px-4 py-2.5 border-t border-b border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50">
-			<div class="flex items-center justify-between">
-				<div class="flex flex-wrap gap-2 items-center">
-					{#each activeProjects as project}
+		<!-- Classification actions -->
+		<div class="border-t border-b border-gray-200 px-4 py-3 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50">
+			<!-- Project chips -->
+			<div class="mb-2">
+				<span class="mb-2 block text-xs uppercase tracking-wide text-gray-500 dark:text-zinc-400">
+					Classify as
+				</span>
+				<div class="flex flex-wrap gap-1.5">
+					{#each sortedProjects as project}
+						{@const isSelected = event.project_id === project.id}
+						{@const isSuggested = event.suggested_project_id === project.id}
+						{@const textColor = getContrastColor(project.color)}
 						<button
 							type="button"
-							class="w-6 h-6 rounded-full hover:ring-2 hover:ring-offset-1 dark:ring-offset-zinc-800 ring-gray-400 transition-shadow flex items-center justify-center"
-							class:ring-2={event.project_id === project.id}
-							class:ring-offset-1={event.project_id === project.id}
-							style="background-color: {project.color}"
-							title={project.name}
+							class="rounded px-2 py-1 text-xs font-medium transition-shadow hover:ring-2 hover:ring-offset-1 dark:ring-offset-zinc-800 {isSuggested && !isSelected
+								? 'ring-2 ring-black/30 ring-offset-1 dark:ring-white/50'
+								: ''} {isSelected ? 'ring-2 ring-black/50 ring-offset-2 dark:ring-white/70' : ''}"
+							style="background-color: {project.color}; color: {textColor};"
+							title="{project.name}{isSuggested ? ' (suggested)' : ''}"
 							onclick={() => onclassify?.(project.id)}
-						></button>
+						>
+							{getDisplayCode(project)}
+						</button>
 					{/each}
 				</div>
-				<button
-					type="button"
-					class="w-6 h-6 rounded border-2 border-dashed border-gray-300 dark:border-zinc-600 text-gray-400 hover:border-gray-500 hover:text-gray-600 dark:hover:border-zinc-400 dark:hover:text-zinc-300 flex items-center justify-center text-xs"
-					class:bg-gray-200={event.is_skipped}
-					class:dark:bg-zinc-700={event.is_skipped}
-					title="Did not attend"
-					onclick={() => onskip?.()}
-				>
-					✕
-				</button>
+			</div>
+
+			<!-- Skip option (separate row) -->
+			<div class="border-t border-gray-200 pt-2 dark:border-zinc-700">
+				{#if event.is_skipped}
+					<div class="flex items-center justify-between">
+						<span class="text-sm text-gray-500 dark:text-zinc-400">Marked as skipped</span>
+						<button
+							type="button"
+							class="text-xs text-gray-500 hover:text-gray-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+							onclick={() => onskip?.()}
+						>
+							Undo
+						</button>
+					</div>
+				{:else}
+					<button
+						type="button"
+						class="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+						onclick={() => onskip?.()}
+					>
+						<span class="flex h-4 w-4 items-center justify-center rounded border border-dashed border-gray-400 text-[8px] dark:border-zinc-500">
+							✕
+						</span>
+						Did not attend
+					</button>
+				{/if}
 			</div>
 		</div>
 
