@@ -1,7 +1,15 @@
 <script lang="ts">
 	import type { CalendarEvent, Project } from '$lib/api/types';
-	import ProjectChip from './ProjectChip.svelte';
-	import { getProjectTextColors, getVerificationTextColor } from '$lib/utils/colors';
+	import {
+		getClassificationStyles,
+		getPrimaryTextClasses,
+		getPrimaryTextStyle,
+		getSecondaryTextClasses,
+		getSecondaryTextStyle,
+		getTertiaryTextClasses,
+		getTertiaryTextStyle,
+		formatConfidenceTitle
+	} from '$lib/styles';
 
 	interface Props {
 		event: CalendarEvent;
@@ -14,7 +22,7 @@
 	let { event, projects, onclassify, onskip, onunclassify }: Props = $props();
 
 	let showReclassify = $state(false);
-	const activeProjects = $derived(projects.filter(p => !p.is_archived));
+	const activeProjects = $derived(projects.filter((p) => !p.is_archived));
 
 	// Format time range
 	function formatTimeRange(start: string, end: string): string {
@@ -28,7 +36,7 @@
 	function getDuration(start: string, end: string): number {
 		const startDate = new Date(start);
 		const endDate = new Date(end);
-		return Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60) * 100) / 100;
+		return Math.round(((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)) * 100) / 100;
 	}
 
 	// Format date
@@ -37,48 +45,7 @@
 		return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 	}
 
-	// Get styling based on classification status (Google Calendar inspired)
-	function getStatusClasses(status: string, needsReview: boolean = false, skipped: boolean = false): string {
-		// Skipped events: Google Calendar declined-style (strikethrough handled separately)
-		if (skipped) {
-			return 'bg-transparent border border-dashed border-gray-400 dark:border-gray-500';
-		}
-		if (status === 'classified' && needsReview) {
-			// Needs verification: outlined style (border/text colored by project, handled via inline style)
-			return 'bg-white dark:bg-zinc-900 border-2 border-solid';
-		}
-		switch (status) {
-			case 'classified':
-				// Confirmed: solid project color background (handled via inline style)
-				return 'border border-solid';
-			default:
-				// Pending: white/black with border
-				return 'bg-white dark:bg-zinc-900 border-2 border-solid border-black/30 dark:border-white/50';
-		}
-	}
-
-	// Get inline style for status-dependent coloring
-	function getStatusStyle(status: string, needsReview: boolean, projectColor: string | null): string {
-		if (status === 'classified' && !needsReview && projectColor) {
-			// Confirmed: solid project color background
-			return `background-color: ${projectColor}; border-color: ${projectColor};`;
-		}
-		if (status === 'classified' && needsReview && projectColor) {
-			// Needs verification: outlined style with project color border
-			return `border: 2px solid ${projectColor};`;
-		}
-		return '';
-	}
-
-	// Format tooltip with confidence score
-	function formatConfidenceTitle(projectName: string, confidence: number | null | undefined, source: string | null | undefined): string {
-		if (source === 'manual') return projectName;
-		if (confidence != null) {
-			return `${projectName} (confidence: ${Math.round(confidence * 100)}%)`;
-		}
-		return projectName;
-	}
-
+	// Derived state
 	const timeRange = $derived(formatTimeRange(event.start_time, event.end_time));
 	const duration = $derived(getDuration(event.start_time, event.end_time));
 	const dateStr = $derived(formatDate(event.start_time));
@@ -86,30 +53,33 @@
 	const isClassified = $derived(event.classification_status === 'classified');
 	const isSkipped = $derived(event.is_skipped === true);
 	const needsReview = $derived(event.needs_review === true);
-	const calendarColor = $derived(isSkipped ? '#9CA3AF' : (event.calendar_color || '#9CA3AF'));
-	const projectColor = $derived(isSkipped ? null : (event.project?.color || null));
-	const statusClasses = $derived(getStatusClasses(event.classification_status, needsReview, isSkipped));
-	const statusStyle = $derived(isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor));
-	const textColors = $derived(projectColor ? getProjectTextColors(projectColor) : null);
-	// For needs verification, use project color for text
-	const needsVerifyTextColor = $derived(isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null);
+	const projectColor = $derived(isSkipped ? null : (event.project?.color ?? null));
+
+	// Get computed styles from the style system
+	const styles = $derived(
+		getClassificationStyles({
+			status: event.classification_status as 'pending' | 'classified' | 'skipped',
+			needsReview,
+			isSkipped,
+			projectColor
+		})
+	);
 </script>
 
-<div
-	class="rounded-lg p-3 hover:shadow-sm transition-shadow {statusClasses}"
-	style="{statusStyle}"
->
+<div class="p-3 hover:shadow-sm {styles.containerClasses}" style={styles.containerStyle}>
 	<div class="flex flex-col gap-1">
 		<!-- Top row: title and project dot -->
 		<div class="flex items-start justify-between gap-2">
-			<div class="flex-1 min-w-0">
+			<div class="min-w-0 flex-1">
 				<h4
-					class="font-medium truncate {isSkipped ? 'line-through text-gray-400' : !isClassified || needsReview ? 'text-gray-900 dark:text-gray-100' : ''}"
-					style={needsVerifyTextColor ? `color: ${needsVerifyTextColor}` : isClassified && !needsReview && textColors ? `color: ${textColors.text}` : ''}
-				>{event.title}</h4>
+					class="truncate font-medium {getPrimaryTextClasses(styles, isSkipped)}"
+					style={getPrimaryTextStyle(styles, isSkipped)}
+				>
+					{event.title}
+				</h4>
 				<div
-					class="flex items-center gap-3 text-sm mt-0.5 {isSkipped ? 'text-gray-400' : !isClassified || needsReview ? 'text-gray-500 dark:text-gray-400' : ''}"
-					style={needsVerifyTextColor ? `color: ${needsVerifyTextColor}; opacity: 0.8` : isClassified && !needsReview && textColors ? `color: ${textColors.textMuted}` : ''}
+					class="mt-0.5 flex items-center gap-3 text-sm {getSecondaryTextClasses(styles, isSkipped)}"
+					style={getSecondaryTextStyle(styles, isSkipped)}
 				>
 					<span>{dateStr}</span>
 					<span>{timeRange}</span>
@@ -117,19 +87,27 @@
 				</div>
 				{#if event.attendees && event.attendees.length > 0}
 					<div
-						class="text-xs mt-1 truncate {!isClassified || needsReview ? 'text-gray-400' : ''}"
-						style={needsVerifyTextColor ? `color: ${needsVerifyTextColor}; opacity: 0.6` : isClassified && !needsReview && textColors ? `color: ${textColors.textSubtle}` : ''}
+						class="mt-1 truncate text-xs {getTertiaryTextClasses(styles, isSkipped)}"
+						style={getTertiaryTextStyle(styles, isSkipped)}
 					>
-						{event.attendees.slice(0, 3).join(', ')}{event.attendees.length > 3 ? ` +${event.attendees.length - 3} more` : ''}
+						{event.attendees.slice(0, 3).join(', ')}{event.attendees.length > 3
+							? ` +${event.attendees.length - 3} more`
+							: ''}
 					</div>
 				{/if}
 			</div>
 			{#if isClassified && !needsReview && event.project}
 				<!-- Confirmed: small indicator dot (background already shows project color) -->
 				<span
-					class="w-3 h-3 rounded-full flex-shrink-0 border-2 {textColors?.isDark ? 'border-white/50' : 'border-black/20'}"
+					class="h-3 w-3 flex-shrink-0 rounded-full border-2 {styles.textColors?.isDark
+						? 'border-white/50'
+						: 'border-black/20'}"
 					style="background-color: {event.project.color}"
-					title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
+					title={formatConfidenceTitle(
+						event.project.name,
+						event.classification_confidence,
+						event.classification_source
+					)}
 				></span>
 			{/if}
 		</div>
@@ -139,20 +117,27 @@
 			<div class="flex items-center justify-between pt-1">
 				<div class="flex items-center gap-1.5">
 					{#each activeProjects as project, i}
-						{@const isBestGuess = event.suggested_project_id === project.id || (!event.suggested_project_id && i === 0 && isPending)}
+						{@const isBestGuess =
+							event.suggested_project_id === project.id ||
+							(!event.suggested_project_id && i === 0 && isPending)}
 						<button
 							type="button"
-							class="w-5 h-5 rounded-full transition-all {isBestGuess ? 'ring-2 ring-offset-1 ring-offset-white dark:ring-offset-zinc-900 ring-black/40 dark:ring-white/60' : 'hover:ring-2 hover:ring-offset-1 hover:ring-gray-400'}"
+							class="h-5 w-5 rounded-full transition-all {isBestGuess
+								? 'ring-2 ring-black/40 ring-offset-1 ring-offset-white dark:ring-white/60 dark:ring-offset-zinc-900'
+								: 'hover:ring-2 hover:ring-gray-400 hover:ring-offset-1'}"
 							style="background-color: {project.color}"
 							title="{project.name}{isBestGuess ? ' (suggested)' : ''}"
-							onclick={() => { onclassify?.(project.id); showReclassify = false; }}
+							onclick={() => {
+								onclassify?.(project.id);
+								showReclassify = false;
+							}}
 						></button>
 					{/each}
 					{#if showReclassify}
 						<button
 							type="button"
 							class="ml-2 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-							onclick={() => showReclassify = false}
+							onclick={() => (showReclassify = false)}
 						>
 							Cancel
 						</button>
@@ -160,9 +145,12 @@
 				</div>
 				<button
 					type="button"
-					class="w-5 h-5 rounded border border-dashed border-gray-400 dark:border-gray-500 text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:hover:border-gray-300 dark:hover:text-gray-300 flex items-center justify-center text-xs"
+					class="flex h-5 w-5 items-center justify-center rounded border border-dashed border-gray-400 text-xs text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:border-gray-500 dark:hover:border-gray-300 dark:hover:text-gray-300"
 					title="Skip - did not attend"
-					onclick={() => { onskip?.(); showReclassify = false; }}
+					onclick={() => {
+						onskip?.();
+						showReclassify = false;
+					}}
 				>
 					✕
 				</button>
@@ -172,9 +160,9 @@
 			<div class="flex justify-end pt-1">
 				<button
 					type="button"
-					class="w-5 h-5 rounded border border-dashed border-gray-400 dark:border-gray-500 text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:hover:border-gray-300 dark:hover:text-gray-300 flex items-center justify-center text-xs"
+					class="flex h-5 w-5 items-center justify-center rounded border border-dashed border-gray-400 text-xs text-gray-400 hover:border-gray-600 hover:text-gray-600 dark:border-gray-500 dark:hover:border-gray-300 dark:hover:text-gray-300"
 					title="Skipped - click to reclassify"
-					onclick={() => showReclassify = true}
+					onclick={() => (showReclassify = true)}
 				>
 					✕
 				</button>
@@ -184,10 +172,13 @@
 			<div class="flex justify-end pt-1">
 				<button
 					type="button"
-					class="w-5 h-5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow {textColors?.isDark ? 'ring-offset-current' : ''}"
+					class="h-5 w-5 rounded-full transition-shadow hover:ring-2 hover:ring-offset-1 {styles
+						.textColors?.isDark
+						? 'ring-offset-current'
+						: ''} ring-gray-400"
 					style="background-color: {event.project.color}"
 					title="{event.project.name} - click to reclassify"
-					onclick={() => showReclassify = true}
+					onclick={() => (showReclassify = true)}
 				></button>
 			</div>
 		{/if}

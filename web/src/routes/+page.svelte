@@ -4,10 +4,28 @@
 	import { goto } from '$app/navigation';
 	import AppShell from '$lib/components/AppShell.svelte';
 	import { Button, Modal, Input } from '$lib/components/primitives';
-	import { ProjectChip, TimeEntryCard, CalendarEventCard, TimeGrid, EventPopup, GoToDateModal } from '$lib/components/widgets';
+	import {
+		ProjectChip,
+		TimeEntryCard,
+		CalendarEventCard,
+		CompactEventCard,
+		TimeGrid,
+		EventPopup,
+		GoToDateModal,
+		DateNavigator,
+		ProjectSidebar
+	} from '$lib/components/widgets';
 	import { api } from '$lib/api/client';
 	import type { Project, TimeEntry, CalendarEvent, CalendarConnection } from '$lib/api/types';
-	import { getProjectTextColors, getVerificationTextColor } from '$lib/utils/colors';
+	import {
+		getClassificationStyles,
+		getPrimaryTextClasses,
+		getPrimaryTextStyle,
+		getSecondaryTextClasses,
+		getSecondaryTextStyle,
+		formatConfidenceTitle,
+		type ClassificationStatus
+	} from '$lib/styles';
 
 	// Scope: how many days to show
 	type ScopeMode = 'day' | 'week' | 'full-week';
@@ -34,7 +52,6 @@
 
 	// Project visibility filtering
 	let visibleProjectIds = $state<Set<string>>(new Set());
-	let showHiddenSection = $state(false);
 
 	// Track date ranges that have been synced on-demand
 	let syncedDateRanges = $state<Set<string>>(new Set());
@@ -437,45 +454,6 @@
 			current.totalColumns = maxColumn + 1;
 		}
 		return result;
-	}
-
-	// Get styling classes based on classification status (Google Calendar inspired)
-	function getStatusClasses(status: string, needsReview: boolean = false, skipped: boolean = false): string {
-		// Skipped events: Google Calendar declined-style (strikethrough handled separately)
-		if (skipped) {
-			return 'bg-transparent border border-dashed border-gray-400 dark:border-gray-500';
-		}
-		if (status === 'classified' && needsReview) {
-			// Needs verification: outlined style
-			return 'bg-white dark:bg-zinc-900 border-2 border-solid';
-		}
-		switch (status) {
-			case 'classified':
-				// Confirmed: solid project color background
-				return 'border border-solid';
-			default:
-				// Pending: white/black with border
-				return 'bg-white dark:bg-zinc-900 border-2 border-solid border-black/30 dark:border-white/50';
-		}
-	}
-
-	// Get inline style for status-dependent coloring
-	function getStatusStyle(status: string, needsReview: boolean, projectColor: string | null): string {
-		if (status === 'classified' && !needsReview && projectColor) {
-			return `background-color: ${projectColor}; border-color: ${projectColor};`;
-		}
-		if (status === 'classified' && needsReview && projectColor) {
-			return `border: 2px solid ${projectColor};`;
-		}
-		return '';
-	}
-
-	function formatConfidenceTitle(projectName: string, confidence: number | null | undefined, source: string | null | undefined): string {
-		if (source === 'manual') return projectName;
-		if (confidence != null) {
-			return `${projectName} (confidence: ${Math.round(confidence * 100)}%)`;
-		}
-		return projectName;
 	}
 
 	// Project categories for sidebar
@@ -970,103 +948,20 @@
 
 <AppShell wide>
 	<!-- Consolidated Header -->
-	<div class="flex items-center justify-between mb-4">
-		<!-- Left: Scope mode toggle -->
-		<div class="flex bg-gray-100 dark:bg-zinc-700 rounded-lg p-0.5">
-			<button
-				type="button"
-				class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'day' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-				onclick={() => setScopeMode('day')}
-				title="Day (D)"
-			>
-				Day
-			</button>
-			<button
-				type="button"
-				class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'week' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-				onclick={() => setScopeMode('week')}
-				title="Week Mon-Fri (W)"
-			>
-				Week
-			</button>
-			<button
-				type="button"
-				class="px-3 py-1 text-sm rounded-md transition-colors {scopeMode === 'full-week' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-				onclick={() => setScopeMode('full-week')}
-				title="Full Week Mon-Sun (F)"
-			>
-				Full
-			</button>
-		</div>
-
-		<!-- Center: Date navigation -->
-		<div class="flex items-center gap-2">
-			<Button variant="ghost" size="sm" onclick={navigatePrevious} title="Previous (K)">
-				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
-				</svg>
-			</Button>
-			<Button variant="secondary" size="sm" onclick={goToToday} title="Today (T)">
-				Today
-			</Button>
-			<Button variant="ghost" size="sm" onclick={navigateNext} title="Next (J)">
-				<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-				</svg>
-			</Button>
-			<h1 class="text-base font-semibold text-gray-900 dark:text-white ml-2">
-				{#if scopeMode === 'day'}
-					{formatFullDayLabel(currentDate)}
-				{:else if scopeMode === 'week'}
-					{weekStart.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} -
-					{weekdaysOnly[4].toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-				{:else}
-					{weekStart.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} -
-					{endDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-				{/if}
-			</h1>
-			<!-- Weekend warning -->
-			{#if weekendEvents.length > 0}
-				<button
-					type="button"
-					class="flex items-center gap-1 px-2 py-1 text-xs bg-amber-100 text-amber-700 rounded-md hover:bg-amber-200 transition-colors ml-2"
-					onclick={() => setScopeMode('full-week')}
-					title="Click to show full week"
-				>
-					<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-					</svg>
-					{weekendEvents.length} weekend
-				</button>
-			{/if}
-		</div>
-
-		<!-- Right: View toggle -->
-		<div class="flex items-center gap-2">
-			<div class="flex bg-gray-100 dark:bg-zinc-700 rounded-lg p-0.5">
-				<button
-					type="button"
-					class="p-1.5 rounded-md transition-colors {displayMode === 'calendar' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-					onclick={() => setDisplayMode('calendar')}
-					title="Calendar view (C)"
-				>
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-					</svg>
-				</button>
-				<button
-					type="button"
-					class="p-1.5 rounded-md transition-colors {displayMode === 'list' ? 'bg-white dark:bg-zinc-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}"
-					onclick={() => setDisplayMode('list')}
-					title="List view (L or A)"
-				>
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-					</svg>
-				</button>
-			</div>
-		</div>
-	</div>
+	<DateNavigator
+		{currentDate}
+		{scopeMode}
+		{displayMode}
+		{weekStart}
+		weekdaysEnd={weekdaysOnly[4]}
+		weekEnd={endDate}
+		weekendEventCount={weekendEvents.length}
+		onnavigateprevious={navigatePrevious}
+		onnavigatenext={navigateNext}
+		ongototoday={goToToday}
+		onscopechange={setScopeMode}
+		ondisplaychange={setDisplayMode}
+	/>
 
 	<!-- Sync indicator -->
 	{#if syncing}
@@ -1161,7 +1056,6 @@
 
 					<!-- All-day events row (below headers) -->
 					{#if allDayEventsForWeek.length > 0}
-						{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 						<div class="mb-2 border-b border-gray-200 dark:border-zinc-700 pb-2 flex">
 							<div class="w-12 flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 text-right pr-2 pt-0.5">All day</div>
 							<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
@@ -1170,57 +1064,15 @@
 									{@const dayAllDayEvents = (eventsByDate[dateStr] || []).filter(e => isAllDayEvent(e))}
 									<div class="flex flex-wrap gap-1">
 										{#each dayAllDayEvents as event (event.id)}
-											{@const isPending = event.classification_status === 'pending'}
-											{@const isClassified = event.classification_status === 'classified'}
-											{@const isSkipped = event.is_skipped === true}
-											{@const needsReview = event.needs_review === true}
-											{@const calendarColor = isSkipped ? '#9CA3AF' : (event.calendar_color || '#9CA3AF')}
-											{@const projectColor = isSkipped ? null : (event.project?.color || null)}
-											{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
-											{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
-											{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-											{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
-											<!-- svelte-ignore a11y_no_static_element_interactions -->
-											<div
-												class="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"
-												style="{statusStyle}"
-												onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
-												onmouseleave={() => handleEventHover(null, null)}
-											>
-												<span
-													class="truncate max-w-[80px] {isSkipped ? 'line-through text-gray-400' : !isClassified || needsReview ? 'text-gray-900 dark:text-gray-100' : ''}"
-													style={needsVerifyColor ? `color: ${needsVerifyColor}` : isClassified && !needsReview && textColors ? `color: ${textColors.text}` : ''}
-													title={event.title}
-												>{event.title}</span>
-												{#if isClassified && !needsReview && event.project}
-													<span
-														class="w-2.5 h-2.5 rounded-full flex-shrink-0"
-														style="background-color: {event.project.color}"
-														title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
-													></span>
-												{:else if isSkipped}
-													<span class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
-												{:else if isPending}
-													<!-- Quick classify buttons for pending all-day events -->
-													<div class="flex items-center gap-0.5 ml-1">
-														{#each activeProjectsList.slice(0, 3) as project}
-															<button
-																type="button"
-																class="w-2.5 h-2.5 rounded-full hover:ring-1 hover:ring-offset-1 ring-gray-400 transition-shadow"
-																style="background-color: {project.color}"
-																title={project.name}
-																onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
-															></button>
-														{/each}
-													</div>
-													<button
-														type="button"
-														class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 flex items-center justify-center text-[5px] ml-1"
-														title="Skip - did not attend"
-														onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
-													>✕</button>
-												{/if}
-											</div>
+											<CompactEventCard
+												{event}
+												{projects}
+												variant="chip"
+												maxProjectButtons={3}
+												onclassify={(projectId) => handleClassify(event.id, projectId)}
+												onskip={() => handleSkip(event.id)}
+												onhover={(el) => handleEventHover(el ? event : null, el)}
+											/>
 										{/each}
 									</div>
 								{/each}
@@ -1271,21 +1123,23 @@
 											{@const isClassified = event.classification_status === 'classified'}
 											{@const isSkipped = event.is_skipped === true}
 											{@const needsReview = event.needs_review === true}
-											{@const projectColor = isSkipped ? null : (event.project?.color || null)}
-											{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
-											{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
-											{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-											{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
+											{@const projectColor = isSkipped ? null : (event.project?.color ?? null)}
+											{@const styles = getClassificationStyles({
+												status: event.classification_status as 'pending' | 'classified' | 'skipped',
+												needsReview,
+												isSkipped,
+												projectColor
+											})}
 
 											<!-- svelte-ignore a11y_no_static_element_interactions -->
 											<div
-												class="absolute rounded-md overflow-hidden text-xs {statusClasses} hover:shadow-md transition-shadow cursor-pointer"
+												class="absolute rounded-md overflow-hidden text-xs {styles.containerClasses} hover:shadow-md transition-shadow cursor-pointer"
 												style="
 													top: {style.top}px;
 													height: calc({style.height}px - 1px);
 													left: calc({left}% + 2px);
 													width: calc({width}% - 4px);
-													{statusStyle}
+													{styles.containerStyle}
 												"
 												onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
 												onmouseleave={() => handleEventHover(null, null)}
@@ -1294,13 +1148,13 @@
 													<!-- Title row -->
 													<div class="flex items-start justify-between gap-1 min-w-0">
 														<span
-															class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : !isClassified || needsReview ? 'text-gray-900 dark:text-gray-100' : ''}"
-															style={needsVerifyColor ? `color: ${needsVerifyColor}` : isClassified && !needsReview && textColors ? `color: ${textColors.text}` : ''}
+															class="font-medium truncate flex-1 {getPrimaryTextClasses(styles, isSkipped)}"
+															style={getPrimaryTextStyle(styles, isSkipped)}
 														>{event.title}</span>
 														<!-- Project dot: only for confirmed classified events -->
 														{#if isClassified && !needsReview && event.project}
 															<span
-																class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 {textColors?.isDark ? 'border border-white/50' : ''}"
+																class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 {styles.textColors?.isDark ? 'border border-white/50' : ''}"
 																style="background-color: {event.project.color}"
 																title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
 															></span>
@@ -1311,12 +1165,13 @@
 													{#if isPending && style.height >= 40}
 														<div class="mt-auto pt-1 flex items-center justify-between">
 															<div class="flex items-center gap-0.5">
-																{#each activeProjectsList.slice(0, 4) as project}
+																{#each activeProjectsList.slice(0, 4) as project, i}
+																	{@const isBestGuess = event.suggested_project_id === project.id || (!event.suggested_project_id && i === 0)}
 																	<button
 																		type="button"
-																		class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
+																		class="w-3.5 h-3.5 rounded-full transition-shadow {isBestGuess ? 'ring-1 ring-black/40 ring-offset-1 ring-offset-white dark:ring-white/60 dark:ring-offset-zinc-900' : 'ring-gray-400 hover:ring-2 hover:ring-offset-1'}"
 																		style="background-color: {project.color}"
-																		title={project.name}
+																		title="{project.name}{isBestGuess ? ' (suggested)' : ''}"
 																		onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
 																	></button>
 																{/each}
@@ -1351,7 +1206,6 @@
 					{@const dayEvents = eventsByDate[dateStr] || []}
 					{@const allDayEvents = getAllDayEventsForDay(dayEvents)}
 					{@const hourGroups = getEventsByHourForDay(dayEvents)}
-					{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 					<div class="bg-gray-50 dark:bg-zinc-900 rounded-lg p-4 max-h-[32rem] overflow-y-auto">
 						{#if allDayEvents.length > 0 || hourGroups.length > 0}
 							<div class="space-y-3">
@@ -1361,70 +1215,18 @@
 										<div class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">All day</div>
 										<div class="space-y-px">
 											{#each allDayEvents as event (event.id)}
-												{@const isPending = event.classification_status === 'pending'}
-												{@const isClassified = event.classification_status === 'classified'}
-												{@const isSkipped = event.is_skipped === true}
-												{@const needsReview = event.needs_review === true}
-												{@const projectColor = isSkipped ? null : (event.project?.color || null)}
-												{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
-												{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
-												{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-												{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
-												<!-- svelte-ignore a11y_no_static_element_interactions -->
 												<div
-													class="rounded-md p-2 text-xs cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"
-													style="{statusStyle}"
 													class:opacity-50={classifyingId === event.id}
 													class:pointer-events-none={classifyingId === event.id}
-													onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
-													onmouseleave={() => handleEventHover(null, null)}
 												>
-													<div class="flex flex-col gap-1">
-														<div class="flex items-start justify-between gap-1">
-															<div class="flex-1 min-w-0">
-																<div
-																	class="font-medium truncate {isSkipped ? 'line-through text-gray-400' : !isClassified || needsReview ? 'text-gray-900 dark:text-gray-100' : ''}"
-																	style={needsVerifyColor ? `color: ${needsVerifyColor}` : isClassified && !needsReview && textColors ? `color: ${textColors.text}` : ''}
-																>{event.title}</div>
-																<div
-																	class="mt-0.5 {isSkipped ? 'text-gray-400' : !isClassified || needsReview ? 'text-gray-500 dark:text-gray-400' : ''}"
-																	style={needsVerifyColor ? `color: ${needsVerifyColor}; opacity: 0.7` : isClassified && !needsReview && textColors ? `color: ${textColors.textMuted}` : ''}
-																>All day</div>
-															</div>
-															{#if isClassified && !needsReview && event.project}
-																<span
-																	class="w-4 h-4 rounded-full flex-shrink-0 {textColors?.isDark ? 'border border-white/50' : ''}"
-																	style="background-color: {event.project.color}"
-																	title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
-																></span>
-															{/if}
-														</div>
-														{#if isPending}
-															<div class="flex items-center justify-between pt-1">
-																<div class="flex items-center gap-0.5">
-																	{#each activeProjectsList.slice(0, 4) as project}
-																		<button
-																			type="button"
-																			class="w-3.5 h-3.5 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
-																			style="background-color: {project.color}"
-																			title={project.name}
-																			onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
-																		></button>
-																	{/each}
-																</div>
-																<button
-																	type="button"
-																	class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[7px]"
-																	title="Skip - did not attend"
-																	onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
-																>✕</button>
-															</div>
-														{:else if isSkipped}
-															<div class="flex justify-end">
-																<span class="w-3.5 h-3.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[7px]">✕</span>
-															</div>
-														{/if}
-													</div>
+													<CompactEventCard
+														{event}
+														{projects}
+														variant="card"
+														onclassify={(projectId) => handleClassify(event.id, projectId)}
+														onskip={() => handleSkip(event.id)}
+														onhover={(el) => handleEventHover(el ? event : null, el)}
+													/>
 												</div>
 											{/each}
 										</div>
@@ -1463,7 +1265,6 @@
 								{@const allDayEvents = getAllDayEventsForDay(dayEvents)}
 								{@const hourGroups = getEventsByHourForDay(dayEvents)}
 								{@const isToday = formatDate(new Date()) === dateStr}
-								{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 
 								{@const header = formatDayHeaderCompact(day)}
 								{@const stats = getDayStats(dateStr)}
@@ -1489,63 +1290,15 @@
 													<div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">All day</div>
 													<div class="space-y-px">
 														{#each allDayEvents as event (event.id)}
-															{@const isPending = event.classification_status === 'pending'}
-															{@const isClassified = event.classification_status === 'classified'}
-															{@const isSkipped = event.is_skipped === true}
-															{@const needsReview = event.needs_review === true}
-															{@const projectColor = isSkipped ? null : (event.project?.color || null)}
-															{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
-															{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
-															{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-															{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
-															<!-- svelte-ignore a11y_no_static_element_interactions -->
-															<div
-																class="text-xs p-1.5 rounded cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"
-																style="{statusStyle}"
-																onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
-																onmouseleave={() => handleEventHover(null, null)}
-															>
-																<div class="flex flex-col gap-1">
-																	<div class="flex items-start justify-between gap-1">
-																		<div
-																			class="font-medium truncate flex-1 {isSkipped ? 'line-through text-gray-400' : !isClassified || needsReview ? 'text-gray-900 dark:text-gray-100' : ''}"
-																			style={needsVerifyColor ? `color: ${needsVerifyColor}` : isClassified && !needsReview && textColors ? `color: ${textColors.text}` : ''}
-																		>{event.title}</div>
-																		{#if isClassified && !needsReview && event.project}
-																			<span
-																				class="w-3 h-3 rounded-full flex-shrink-0 {textColors?.isDark ? 'border border-white/50' : ''}"
-																				style="background-color: {event.project.color}"
-																				title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
-																			></span>
-																		{/if}
-																	</div>
-																	{#if isPending}
-																		<div class="flex items-center justify-between pt-0.5">
-																			<div class="flex items-center gap-0.5">
-																				{#each activeProjectsList.slice(0, 3) as project}
-																					<button
-																						type="button"
-																						class="w-2.5 h-2.5 rounded-full hover:ring-1 hover:ring-offset-1 ring-gray-400 transition-shadow"
-																						style="background-color: {project.color}"
-																						title={project.name}
-																						onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
-																					></button>
-																				{/each}
-																			</div>
-																			<button
-																				type="button"
-																				class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 flex items-center justify-center text-[5px]"
-																				title="Skip - did not attend"
-																				onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
-																			>✕</button>
-																		</div>
-																	{:else if isSkipped}
-																		<div class="flex justify-end">
-																			<span class="w-2.5 h-2.5 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[5px]">✕</span>
-																		</div>
-																	{/if}
-																</div>
-															</div>
+															<CompactEventCard
+																{event}
+																{projects}
+																variant="compact"
+																maxProjectButtons={3}
+																onclassify={(projectId) => handleClassify(event.id, projectId)}
+																onskip={() => handleSkip(event.id)}
+																onhover={(el) => handleEventHover(el ? event : null, el)}
+															/>
 														{/each}
 													</div>
 												</div>
@@ -1556,75 +1309,15 @@
 													<div class="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1">{group.label}</div>
 													<div class="space-y-px">
 														{#each group.events as event (event.id)}
-															<!-- Compact event card for list columns -->
-															{@const isPending = event.classification_status === 'pending'}
-															{@const isClassified = event.classification_status === 'classified'}
-															{@const isSkipped = event.is_skipped === true}
-															{@const needsReview = event.needs_review === true}
-															{@const projectColor = isSkipped ? null : (event.project?.color || null)}
-															{@const statusClasses = getStatusClasses(event.classification_status, needsReview, isSkipped)}
-															{@const statusStyle = isSkipped ? '' : getStatusStyle(event.classification_status, needsReview, projectColor)}
-															{@const textColors = projectColor ? getProjectTextColors(projectColor) : null}
-															{@const needsVerifyColor = isClassified && needsReview && !isSkipped && projectColor ? getVerificationTextColor(projectColor) : null}
-															<!-- svelte-ignore a11y_no_static_element_interactions -->
-															<div
-																class="text-xs p-1.5 rounded cursor-pointer hover:shadow-sm transition-shadow {statusClasses}"
-																style="{statusStyle}"
-																onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
-																onmouseleave={() => handleEventHover(null, null)}
-															>
-																<div class="flex flex-col gap-1">
-																	<!-- Top row: title and project dot -->
-																	<div class="flex items-start justify-between gap-1">
-																		<div class="flex-1 min-w-0">
-																			<div
-																				class="font-medium truncate {isSkipped ? 'line-through text-gray-400' : !isClassified || needsReview ? 'text-gray-900 dark:text-gray-100' : ''}"
-																				style={needsVerifyColor ? `color: ${needsVerifyColor}` : isClassified && !needsReview && textColors ? `color: ${textColors.text}` : ''}
-																			>{event.title}</div>
-																			<div
-																				class="mt-0.5 {isSkipped ? 'text-gray-400' : !isClassified || needsReview ? 'text-gray-500 dark:text-gray-400' : ''}"
-																				style={needsVerifyColor ? `color: ${needsVerifyColor}; opacity: 0.7` : isClassified && !needsReview && textColors ? `color: ${textColors.textMuted}` : ''}
-																			>
-																				{new Date(event.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - {new Date(event.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-																			</div>
-																		</div>
-																		{#if isClassified && !needsReview && event.project}
-																			<span
-																				class="w-3 h-3 rounded-full flex-shrink-0 mt-0.5 {textColors?.isDark ? 'border border-white/50' : ''}"
-																				style="background-color: {event.project.color}"
-																				title={formatConfidenceTitle(event.project.name, event.classification_confidence, event.classification_source)}
-																			></span>
-																		{/if}
-																	</div>
-																	<!-- Bottom row: project buttons (left) and skip button (right) for pending events -->
-																	{#if isPending}
-																		<div class="flex items-center justify-between pt-0.5">
-																			<div class="flex items-center gap-0.5">
-																				{#each activeProjectsList.slice(0, 4) as project}
-																					<button
-																						type="button"
-																						class="w-3 h-3 rounded-full hover:ring-2 hover:ring-offset-1 ring-gray-400 transition-shadow"
-																						style="background-color: {project.color}"
-																						title={project.name}
-																						onclick={(e) => { e.stopPropagation(); handleClassify(event.id, project.id); }}
-																					></button>
-																				{/each}
-																			</div>
-																			<button
-																				type="button"
-																				class="w-3 h-3 rounded border border-dashed border-gray-400 text-gray-400 hover:border-gray-600 hover:text-gray-600 flex items-center justify-center text-[6px]"
-																				title="Skip - did not attend"
-																				onclick={(e) => { e.stopPropagation(); handleSkip(event.id); }}
-																			>✕</button>
-																		</div>
-																	{:else if isSkipped}
-																		<!-- Skip indicator in bottom right -->
-																		<div class="flex justify-end">
-																			<span class="w-3 h-3 rounded border border-dashed border-gray-400 text-gray-400 flex items-center justify-center text-[6px]">✕</span>
-																		</div>
-																	{/if}
-																</div>
-															</div>
+															<CompactEventCard
+																{event}
+																{projects}
+																variant="compact"
+																showTime={true}
+																onclassify={(projectId) => handleClassify(event.id, projectId)}
+																onskip={() => handleSkip(event.id)}
+																onhover={(el) => handleEventHover(el ? event : null, el)}
+															/>
 														{/each}
 													</div>
 												</div>
@@ -1698,120 +1391,17 @@
 
 		<!-- Sidebar with project totals -->
 		<div class="lg:w-72">
-			<div class="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg p-4 sticky top-4">
-				<h2 class="font-semibold text-gray-900 dark:text-white mb-4">{scopeMode === 'day' ? 'Day' : 'Week'} Summary</h2>
-
-				<div class="mb-4 pb-4 border-b border-gray-200 dark:border-zinc-700">
-					<div class="text-3xl font-bold text-gray-900 dark:text-white">{totalHours}h</div>
-					<div class="text-sm text-gray-500 dark:text-gray-400">Total hours</div>
-				</div>
-
-				<!-- Active Projects -->
-				{#if activeProjects.length > 0}
-					<div class="mb-4">
-						<h3 class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Projects</h3>
-						<div class="space-y-2">
-							{#each activeProjects as project}
-								{@const hours = projectTotals.find(t => t.project.id === project.id)?.hours ?? 0}
-								<label class="flex items-center justify-between cursor-pointer group">
-									<div class="flex items-center gap-2">
-										<input
-											type="checkbox"
-											checked={visibleProjectIds.has(project.id)}
-											onchange={() => toggleProjectVisibility(project.id)}
-											class="h-4 w-4 rounded border-gray-300 dark:border-zinc-600 text-primary-600 focus:ring-primary-500 dark:bg-zinc-700"
-										/>
-										<span
-											class="w-3 h-3 rounded-full flex-shrink-0"
-											style="background-color: {project.color}"
-										></span>
-										<span class="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">{project.name}</span>
-									</div>
-									{#if hours > 0}
-										<span class="text-sm font-medium text-gray-500 dark:text-gray-400">{hours}h</span>
-									{/if}
-								</label>
-							{/each}
-						</div>
-					</div>
-				{/if}
-
-				<!-- Hidden Projects (collapsed by default) -->
-				{#if hiddenProjects.length > 0}
-					<div class="mb-4 border-t border-gray-200 dark:border-zinc-700 pt-4">
-						<button
-							type="button"
-							class="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 hover:text-gray-700 dark:hover:text-gray-300"
-							onclick={() => showHiddenSection = !showHiddenSection}
-						>
-							<svg
-								class="w-3 h-3 transition-transform {showHiddenSection ? 'rotate-90' : ''}"
-								fill="none"
-								stroke="currentColor"
-								viewBox="0 0 24 24"
-							>
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-							</svg>
-							Hidden ({hiddenProjects.length})
-						</button>
-						{#if showHiddenSection}
-							<div class="space-y-2">
-								{#each hiddenProjects as project}
-									{@const hours = entries.filter(e => e.project_id === project.id && !e.project?.does_not_accumulate_hours).reduce((sum, e) => sum + e.hours, 0)}
-									<label class="flex items-center justify-between cursor-pointer group">
-										<div class="flex items-center gap-2">
-											<input
-												type="checkbox"
-												checked={visibleProjectIds.has(project.id)}
-												onchange={() => toggleProjectVisibility(project.id)}
-												class="h-4 w-4 rounded border-gray-300 dark:border-zinc-600 text-primary-600 focus:ring-primary-500 dark:bg-zinc-700"
-											/>
-											<span
-												class="w-3 h-3 rounded-full flex-shrink-0"
-												style="background-color: {project.color}"
-											></span>
-											<span class="text-sm text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300">{project.name}</span>
-										</div>
-										{#if hours > 0}
-											<span class="text-sm font-medium text-gray-400 dark:text-gray-500">{hours}h</span>
-										{/if}
-									</label>
-								{/each}
-							</div>
-						{/if}
-					</div>
-				{/if}
-
-				<!-- Archived Projects (warning if entries exist) -->
-				{#if archivedTotals.length > 0}
-					<div class="border-t border-gray-200 dark:border-zinc-700 pt-4">
-						<div class="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-500 uppercase tracking-wide mb-2">
-							<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-							</svg>
-							Archived
-						</div>
-						<div class="space-y-2">
-							{#each archivedTotals as { project, hours }}
-								<div class="flex items-center justify-between">
-									<div class="flex items-center gap-2">
-										<span
-											class="w-3 h-3 rounded-full flex-shrink-0 opacity-50"
-											style="background-color: {project.color}"
-										></span>
-										<span class="text-sm text-gray-500 dark:text-gray-400">{project.name}</span>
-									</div>
-									<span class="text-sm font-medium text-amber-600 dark:text-amber-500">{hours}h</span>
-								</div>
-							{/each}
-						</div>
-					</div>
-				{/if}
-
-				{#if activeProjects.length === 0 && hiddenProjects.length === 0 && archivedTotals.length === 0}
-					<p class="text-sm text-gray-400 dark:text-gray-500">No entries {scopeMode === 'day' ? 'today' : 'this week'}</p>
-				{/if}
-			</div>
+			<ProjectSidebar
+				{scopeMode}
+				{totalHours}
+				{activeProjects}
+				{hiddenProjects}
+				{projectTotals}
+				{archivedTotals}
+				{visibleProjectIds}
+				{entries}
+				ontogglevisibility={toggleProjectVisibility}
+			/>
 		</div>
 	</div>
 
