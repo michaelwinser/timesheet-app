@@ -83,7 +83,7 @@ func (h *ProjectHandler) CreateProject(ctx context.Context, req api.CreateProjec
 		doesNotAccumulateHours = *req.Body.DoesNotAccumulateHours
 	}
 
-	project, err := h.projects.Create(ctx, userID, req.Body.Name, req.Body.ShortCode, color, isBillable, isHiddenByDefault, doesNotAccumulateHours)
+	project, err := h.projects.Create(ctx, userID, req.Body.Name, req.Body.ShortCode, req.Body.Client, color, isBillable, isHiddenByDefault, doesNotAccumulateHours)
 	if err != nil {
 		return nil, err
 	}

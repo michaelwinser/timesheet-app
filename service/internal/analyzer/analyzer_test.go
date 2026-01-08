@@ -8,7 +8,7 @@ import (
 )
 
 func TestRoundMinutes(t *testing.T) {
-	cfg := DefaultRoundingConfig() // 15-minute granularity, 7-minute threshold
+	cfg := DefaultRoundingConfig() // 15-minute granularity, 1-minute threshold (always round up)
 
 	tests := []struct {
 		name        string
@@ -21,27 +21,26 @@ func TestRoundMinutes(t *testing.T) {
 		{"exact 60 minutes", 60, 60, "none"},
 		{"exact 0 minutes", 0, 0, "none"},
 
-		// Round down cases (remainder 0-6)
-		{"6 minutes rounds down to 0", 6, 0, "-6m"},
-		{"16 minutes rounds down", 16, 15, "-1m"},
-		{"21 minutes rounds down", 21, 15, "-6m"},
-		{"31 minutes rounds down", 31, 30, "-1m"},
-		{"36 minutes rounds down", 36, 30, "-6m"},
-
-		// Round up cases (remainder 7-14)
+		// With threshold=1, any remainder >= 1 rounds up
+		{"1 minute rounds up to 15", 1, 15, "+14m"},
+		{"6 minutes rounds up to 15", 6, 15, "+9m"},
 		{"7 minutes rounds up", 7, 15, "+8m"},
 		{"14 minutes rounds up", 14, 15, "+1m"},
+		{"16 minutes rounds up", 16, 30, "+14m"},
+		{"21 minutes rounds up", 21, 30, "+9m"},
 		{"22 minutes rounds up", 22, 30, "+8m"},
 		{"23 minutes rounds up", 23, 30, "+7m"},
 		{"29 minutes rounds up", 29, 30, "+1m"},
+		{"31 minutes rounds up", 31, 45, "+14m"},
+		{"36 minutes rounds up", 36, 45, "+9m"},
 		{"37 minutes rounds up", 37, 45, "+8m"},
 		{"44 minutes rounds up", 44, 45, "+1m"},
 
-		// Larger values
-		{"55 minutes (25m meeting)", 55, 60, "+5m"},
-		{"50 minutes", 50, 45, "-5m"},
-		{"51 minutes", 51, 45, "-6m"},
-		{"52 minutes", 52, 60, "+8m"},
+		// Larger values - all round up
+		{"50 minutes rounds up", 50, 60, "+10m"},
+		{"51 minutes rounds up", 51, 60, "+9m"},
+		{"52 minutes rounds up", 52, 60, "+8m"},
+		{"55 minutes rounds up", 55, 60, "+5m"},
 	}
 
 	for _, tt := range tests {

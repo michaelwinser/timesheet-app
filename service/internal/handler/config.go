@@ -153,7 +153,7 @@ func (h *ConfigHandler) ImportConfig(ctx context.Context, req api.ImportConfigRe
 				doesNotAccumulateHours = *pExport.DoesNotAccumulateHours
 			}
 
-			newProject, err := h.projects.Create(ctx, userID, pExport.Name, pExport.ShortCode, color, isBillable, isHiddenByDefault, doesNotAccumulateHours)
+			newProject, err := h.projects.Create(ctx, userID, pExport.Name, pExport.ShortCode, pExport.Client, color, isBillable, isHiddenByDefault, doesNotAccumulateHours)
 			if err != nil {
 				warnings = append(warnings, fmt.Sprintf("Failed to create project %q: %v", pExport.Name, err))
 				continue

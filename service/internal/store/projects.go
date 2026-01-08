@@ -48,12 +48,13 @@ func NewProjectStore(pool *pgxpool.Pool) *ProjectStore {
 }
 
 // Create adds a new project
-func (s *ProjectStore) Create(ctx context.Context, userID uuid.UUID, name string, shortCode *string, color string, isBillable, isHiddenByDefault, doesNotAccumulateHours bool) (*Project, error) {
+func (s *ProjectStore) Create(ctx context.Context, userID uuid.UUID, name string, shortCode, client *string, color string, isBillable, isHiddenByDefault, doesNotAccumulateHours bool) (*Project, error) {
 	project := &Project{
 		ID:                     uuid.New(),
 		UserID:                 userID,
 		Name:                   name,
 		ShortCode:              shortCode,
+		Client:                 client,
 		Color:                  color,
 		IsBillable:             isBillable,
 		IsArchived:             false,
@@ -64,9 +65,9 @@ func (s *ProjectStore) Create(ctx context.Context, userID uuid.UUID, name string
 	}
 
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO projects (id, user_id, name, short_code, color, is_billable, is_archived, is_hidden_by_default, does_not_accumulate_hours, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-	`, project.ID, project.UserID, project.Name, project.ShortCode, project.Color,
+		INSERT INTO projects (id, user_id, name, short_code, client, color, is_billable, is_archived, is_hidden_by_default, does_not_accumulate_hours, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+	`, project.ID, project.UserID, project.Name, project.ShortCode, project.Client, project.Color,
 		project.IsBillable, project.IsArchived, project.IsHiddenByDefault,
 		project.DoesNotAccumulateHours, project.CreatedAt, project.UpdatedAt)
 

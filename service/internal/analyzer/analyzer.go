@@ -64,11 +64,11 @@ type RoundingConfig struct {
 }
 
 // DefaultRoundingConfig returns the default rounding configuration.
-// 15-minute granularity with 7-minute threshold.
+// 15-minute granularity with 1-minute threshold (always round up).
 func DefaultRoundingConfig() RoundingConfig {
 	return RoundingConfig{
 		GranularityMinutes: 15,
-		ThresholdMinutes:   7,
+		ThresholdMinutes:   1,
 	}
 }
 
