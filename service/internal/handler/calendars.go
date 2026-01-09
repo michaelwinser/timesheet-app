@@ -25,7 +25,7 @@ type CalendarHandler struct {
 	events            *store.CalendarEventStore
 	entries           *store.TimeEntryStore
 	projects          *store.ProjectStore
-	google            *google.CalendarService
+	google            google.CalendarClient
 	classificationSvc *classification.Service
 	stateMu           gosync.RWMutex
 	stateStore        map[string]uuid.UUID // In production, use Redis
@@ -38,7 +38,7 @@ func NewCalendarHandler(
 	events *store.CalendarEventStore,
 	entries *store.TimeEntryStore,
 	projects *store.ProjectStore,
-	googleSvc *google.CalendarService,
+	googleSvc google.CalendarClient,
 	classificationSvc *classification.Service,
 ) *CalendarHandler {
 	return &CalendarHandler{

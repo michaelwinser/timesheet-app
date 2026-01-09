@@ -12,6 +12,31 @@ import (
 	"google.golang.org/api/option"
 )
 
+// CalendarClient defines the interface for Google Calendar API operations.
+// This interface enables mocking for testing.
+type CalendarClient interface {
+	// GetAuthURL returns the OAuth consent URL
+	GetAuthURL(state string) string
+
+	// ExchangeCode exchanges an authorization code for tokens
+	ExchangeCode(ctx context.Context, code string) (*store.OAuthCredentials, error)
+
+	// RefreshToken refreshes an expired token
+	RefreshToken(ctx context.Context, creds *store.OAuthCredentials) (*store.OAuthCredentials, error)
+
+	// ListCalendars returns all calendars the user has access to
+	ListCalendars(ctx context.Context, creds *store.OAuthCredentials) ([]*CalendarInfo, error)
+
+	// FetchEvents fetches calendar events for the given time range (full sync)
+	FetchEvents(ctx context.Context, creds *store.OAuthCredentials, calendarID string, minTime, maxTime time.Time) (*SyncResult, error)
+
+	// FetchEventsIncremental fetches only changed events since the last sync
+	FetchEventsIncremental(ctx context.Context, creds *store.OAuthCredentials, calendarID string, syncToken string) (*SyncResult, error)
+}
+
+// Ensure CalendarService implements CalendarClient
+var _ CalendarClient = (*CalendarService)(nil)
+
 // CalendarService handles Google Calendar API interactions
 type CalendarService struct {
 	config *oauth2.Config

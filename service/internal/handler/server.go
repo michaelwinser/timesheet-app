@@ -34,7 +34,7 @@ func NewServer(
 	billingPeriods *store.BillingPeriodStore,
 	invoices *store.InvoiceStore,
 	jwt *JWTService,
-	googleSvc *google.CalendarService,
+	googleSvc google.CalendarClient,
 	sheetsSvc *google.SheetsService,
 	classificationSvc *classification.Service,
 	timeEntrySvc *timeentry.Service,
