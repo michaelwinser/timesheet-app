@@ -469,4 +469,23 @@ var migrations = []migration{
 			CREATE INDEX idx_invoice_line_items_time_entry_id ON invoice_line_items(time_entry_id);
 		`,
 	},
+	{
+		version: 2,
+		sql: `
+			-- =============================================================================
+			-- CALENDAR SYNC V2: Add columns for background sync and auth tracking
+			-- =============================================================================
+
+			-- Track consecutive sync failures (stop retrying after 3)
+			ALTER TABLE calendars ADD COLUMN sync_failure_count INT NOT NULL DEFAULT 0;
+
+			-- Track if calendar needs re-authentication (OAuth token revoked)
+			ALTER TABLE calendars ADD COLUMN needs_reauth BOOLEAN NOT NULL DEFAULT FALSE;
+
+			-- Index for background sync job: find stale calendars that aren't broken
+			CREATE INDEX idx_calendars_background_sync
+				ON calendars (last_synced_at)
+				WHERE needs_reauth = FALSE AND sync_failure_count < 3;
+		`,
+	},
 }

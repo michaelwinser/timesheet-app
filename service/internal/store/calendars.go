@@ -14,20 +14,22 @@ var ErrCalendarNotFound = errors.New("calendar not found")
 
 // Calendar represents a calendar within a connection (e.g., one of multiple Google calendars)
 type Calendar struct {
-	ID            uuid.UUID
-	ConnectionID  uuid.UUID
-	UserID        uuid.UUID
-	ExternalID    string // Google Calendar ID (e.g., "primary", "user@example.com")
-	Name          string
-	Color         *string
-	IsPrimary     bool
-	IsSelected    bool
-	SyncToken     *string
-	LastSyncedAt  *time.Time
-	MinSyncedDate *time.Time // Earliest date that has been fully synced
-	MaxSyncedDate *time.Time // Latest date that has been fully synced
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID               uuid.UUID
+	ConnectionID     uuid.UUID
+	UserID           uuid.UUID
+	ExternalID       string // Google Calendar ID (e.g., "primary", "user@example.com")
+	Name             string
+	Color            *string
+	IsPrimary        bool
+	IsSelected       bool
+	SyncToken        *string
+	LastSyncedAt     *time.Time
+	MinSyncedDate    *time.Time // Earliest date that has been fully synced (low water mark)
+	MaxSyncedDate    *time.Time // Latest date that has been fully synced (high water mark)
+	SyncFailureCount int        // Consecutive sync failures (stop retrying after 3)
+	NeedsReauth      bool       // True if OAuth token refresh failed
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // CalendarStore provides PostgreSQL-backed calendar storage
@@ -73,7 +75,8 @@ func (s *CalendarStore) ListByConnection(ctx context.Context, connectionID uuid.
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, connection_id, user_id, external_id, name, color,
 		       is_primary, is_selected, sync_token, last_synced_at,
-		       min_synced_date, max_synced_date, created_at, updated_at
+		       min_synced_date, max_synced_date, sync_failure_count, needs_reauth,
+		       created_at, updated_at
 		FROM calendars
 		WHERE connection_id = $1
 		ORDER BY is_primary DESC, name ASC
@@ -89,7 +92,8 @@ func (s *CalendarStore) ListByConnection(ctx context.Context, connectionID uuid.
 		err := rows.Scan(
 			&cal.ID, &cal.ConnectionID, &cal.UserID, &cal.ExternalID, &cal.Name, &cal.Color,
 			&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt,
-			&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.CreatedAt, &cal.UpdatedAt,
+			&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.SyncFailureCount, &cal.NeedsReauth,
+			&cal.CreatedAt, &cal.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -105,7 +109,8 @@ func (s *CalendarStore) ListSelectedByConnection(ctx context.Context, connection
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, connection_id, user_id, external_id, name, color,
 		       is_primary, is_selected, sync_token, last_synced_at,
-		       min_synced_date, max_synced_date, created_at, updated_at
+		       min_synced_date, max_synced_date, sync_failure_count, needs_reauth,
+		       created_at, updated_at
 		FROM calendars
 		WHERE connection_id = $1 AND is_selected = true
 		ORDER BY is_primary DESC, name ASC
@@ -121,7 +126,8 @@ func (s *CalendarStore) ListSelectedByConnection(ctx context.Context, connection
 		err := rows.Scan(
 			&cal.ID, &cal.ConnectionID, &cal.UserID, &cal.ExternalID, &cal.Name, &cal.Color,
 			&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt,
-			&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.CreatedAt, &cal.UpdatedAt,
+			&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.SyncFailureCount, &cal.NeedsReauth,
+			&cal.CreatedAt, &cal.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -138,13 +144,15 @@ func (s *CalendarStore) GetByID(ctx context.Context, calendarID uuid.UUID) (*Cal
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, connection_id, user_id, external_id, name, color,
 		       is_primary, is_selected, sync_token, last_synced_at,
-		       min_synced_date, max_synced_date, created_at, updated_at
+		       min_synced_date, max_synced_date, sync_failure_count, needs_reauth,
+		       created_at, updated_at
 		FROM calendars
 		WHERE id = $1
 	`, calendarID).Scan(
 		&cal.ID, &cal.ConnectionID, &cal.UserID, &cal.ExternalID, &cal.Name, &cal.Color,
 		&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt,
-		&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.CreatedAt, &cal.UpdatedAt,
+		&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.SyncFailureCount, &cal.NeedsReauth,
+		&cal.CreatedAt, &cal.UpdatedAt,
 	)
 
 	if err != nil {
@@ -246,4 +254,87 @@ func (s *CalendarStore) DeleteByConnection(ctx context.Context, connectionID uui
 		DELETE FROM calendars WHERE connection_id = $1
 	`, connectionID)
 	return err
+}
+
+// IncrementSyncFailureCount increments the sync failure counter
+func (s *CalendarStore) IncrementSyncFailureCount(ctx context.Context, calendarID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE calendars
+		SET sync_failure_count = sync_failure_count + 1, updated_at = $2
+		WHERE id = $1
+	`, calendarID, time.Now().UTC())
+	return err
+}
+
+// ResetSyncFailureCount resets the sync failure counter to zero
+func (s *CalendarStore) ResetSyncFailureCount(ctx context.Context, calendarID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE calendars
+		SET sync_failure_count = 0, updated_at = $2
+		WHERE id = $1
+	`, calendarID, time.Now().UTC())
+	return err
+}
+
+// MarkNeedsReauth marks a calendar as needing re-authentication
+func (s *CalendarStore) MarkNeedsReauth(ctx context.Context, calendarID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE calendars
+		SET needs_reauth = true, updated_at = $2
+		WHERE id = $1
+	`, calendarID, time.Now().UTC())
+	return err
+}
+
+// ClearNeedsReauth clears the needs_reauth flag (after successful re-auth)
+func (s *CalendarStore) ClearNeedsReauth(ctx context.Context, calendarID uuid.UUID) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE calendars
+		SET needs_reauth = false, sync_failure_count = 0, updated_at = $2
+		WHERE id = $1
+	`, calendarID, time.Now().UTC())
+	return err
+}
+
+// ListNeedingSync returns calendars that need background sync
+// These are calendars that:
+// - Haven't synced within the staleness threshold
+// - Don't need re-auth
+// - Haven't failed too many times (< 3 consecutive failures)
+func (s *CalendarStore) ListNeedingSync(ctx context.Context, stalenessThreshold time.Duration) ([]*Calendar, error) {
+	cutoff := time.Now().Add(-stalenessThreshold)
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, connection_id, user_id, external_id, name, color,
+		       is_primary, is_selected, sync_token, last_synced_at,
+		       min_synced_date, max_synced_date, sync_failure_count, needs_reauth,
+		       created_at, updated_at
+		FROM calendars
+		WHERE is_selected = true
+		  AND needs_reauth = false
+		  AND sync_failure_count < 3
+		  AND (last_synced_at IS NULL OR last_synced_at < $1)
+		ORDER BY last_synced_at ASC NULLS FIRST
+	`, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var calendars []*Calendar
+	for rows.Next() {
+		cal := &Calendar{}
+		err := rows.Scan(
+			&cal.ID, &cal.ConnectionID, &cal.UserID, &cal.ExternalID, &cal.Name, &cal.Color,
+			&cal.IsPrimary, &cal.IsSelected, &cal.SyncToken, &cal.LastSyncedAt,
+			&cal.MinSyncedDate, &cal.MaxSyncedDate, &cal.SyncFailureCount, &cal.NeedsReauth,
+			&cal.CreatedAt, &cal.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		calendars = append(calendars, cal)
+	}
+
+	return calendars, rows.Err()
 }
