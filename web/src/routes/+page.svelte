@@ -884,19 +884,12 @@
 		return `${formatDate(start)}:${formatDate(end)}`;
 	}
 
-	// Trigger on-demand sync for dates outside the default window
-	// Syncs a wider range (-60 to +30 days around the viewed date) for efficiency
+	// Trigger on-demand sync for dates outside the synced window
+	// Per PRD: fetch only the viewed week, not a large range
 	async function onDemandSync(viewedStart: Date, viewedEnd: Date) {
-		// Expand the sync range to -60/+30 days around the viewed dates
-		// This reduces repeated syncs when users navigate through historical data
-		const syncStart = new Date(viewedStart);
-		syncStart.setDate(syncStart.getDate() - 60);
-		const syncEnd = new Date(viewedEnd);
-		syncEnd.setDate(syncEnd.getDate() + 30);
+		const rangeKey = getDateRangeKey(viewedStart, viewedEnd);
 
-		const rangeKey = getDateRangeKey(syncStart, syncEnd);
-
-		// Skip if we've already synced this range
+		// Skip if we've already synced this exact range
 		if (syncedDateRanges.has(rangeKey)) {
 			return;
 		}
@@ -908,12 +901,14 @@
 			}
 
 			syncing = true;
-			// Sync all connections with the expanded date range
+			console.log(`[SYNC] on-demand: range=${formatDate(viewedStart)} to ${formatDate(viewedEnd)}`);
+
+			// Sync all connections with just the viewed date range
 			await Promise.all(
 				connections.map((conn) =>
 					api.syncCalendar(conn.id, {
-						start_date: formatDate(syncStart),
-						end_date: formatDate(syncEnd)
+						start_date: formatDate(viewedStart),
+						end_date: formatDate(viewedEnd)
 					})
 				)
 			);
@@ -921,14 +916,14 @@
 			// Mark this range as synced
 			syncedDateRanges = new Set([...syncedDateRanges, rangeKey]);
 
-			// Reload events for the viewed range (not the full sync range)
+			// Reload events for the viewed range
 			const eventsData = await api.listCalendarEvents({
 				start_date: formatDate(viewedStart),
 				end_date: formatDate(viewedEnd)
 			});
 			calendarEvents = eventsData;
 		} catch (e) {
-			console.error('On-demand sync failed:', e);
+			console.error('[SYNC] on-demand failed:', e);
 		} finally {
 			syncing = false;
 		}

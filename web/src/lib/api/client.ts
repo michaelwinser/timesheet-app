@@ -328,6 +328,54 @@ class ApiClient {
 	async importConfig(data: ConfigImport): Promise<ConfigImportResult> {
 		return this.request('POST', '/config/import', data);
 	}
+
+	// Debug endpoints
+	async getSyncStatus(): Promise<SyncStatusResponse> {
+		return this.request('GET', '/debug/sync-status');
+	}
+}
+
+// Debug types
+export interface SyncStatusResponse {
+	timestamp: string;
+	staleness_threshold: string;
+	default_initial_window: SyncWindowInfo;
+	default_background_window: SyncWindowInfo;
+	connections: ConnectionSyncStatus[];
+	calendars: CalendarSyncStatus[];
+}
+
+export interface SyncWindowInfo {
+	start: string;
+	end: string;
+	weeks: number;
+}
+
+export interface ConnectionSyncStatus {
+	id: string;
+	provider: string;
+	last_synced_at: string | null;
+	is_stale: boolean;
+	created_at: string;
+}
+
+export interface CalendarSyncStatus {
+	id: string;
+	name: string;
+	external_id: string;
+	connection_id: string;
+	is_selected: boolean;
+	is_primary: boolean;
+	min_synced_date: string | null;
+	max_synced_date: string | null;
+	last_synced_at: string | null;
+	sync_token_set: boolean;
+	needs_reauth: boolean;
+	sync_failure_count: number;
+	is_stale: boolean;
+	synced_weeks: number;
+	created_at: string;
+	updated_at: string;
 }
 
 export class ApiClientError extends Error {

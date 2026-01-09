@@ -187,6 +187,10 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
+	// Debug endpoints (authenticated)
+	debugHandler := handler.NewDebugHandler(calendarStore, calendarConnectionStore, jwtService)
+	r.Get("/api/debug/sync-status", debugHandler.SyncStatus)
+
 	// MCP OAuth endpoints
 	mcpOAuthHandler := handler.NewMCPOAuthHandler(mcpOAuthStore, userStore, jwtService, baseURL)
 	r.Get("/.well-known/oauth-authorization-server", mcpOAuthHandler.OAuthMetadata)

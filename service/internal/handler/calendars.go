@@ -310,12 +310,12 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 		decision := sync.DecideSync(cal.MinSyncedDate, cal.MaxSyncedDate, cal.LastSyncedAt, targetStart, targetEnd)
 
 		if !decision.NeedsSync {
-			log.Printf("Skipping sync for calendar %s: %s", cal.Name, decision.Reason)
+			log.Printf("[SYNC] skip: calendar=%s reason=%s", cal.Name, decision.Reason)
 			syncSkipped = true
 			continue
 		}
 
-		log.Printf("Syncing calendar %s: reason=%s, staleRefresh=%v, missingWeeks=%d",
+		log.Printf("[SYNC] start: calendar=%s reason=%s stale=%v missing_weeks=%d",
 			cal.Name, decision.Reason, decision.IsStaleRefresh, len(decision.MissingWeeks))
 
 		var created, updated, orphaned int
@@ -325,12 +325,20 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 			// Case A': Use incremental sync to refresh stale data
 			created, updated, orphaned, syncErr = h.syncCalendarIncremental(ctx, creds, conn, cal, userID)
 		} else if len(decision.MissingWeeks) > 0 {
-			// Case B/C: Full sync for missing weeks only
-			for _, weekStart := range decision.MissingWeeks {
-				weekEnd := sync.NormalizeToWeekEnd(weekStart)
-				c, u, o, err := h.syncCalendarWeek(ctx, creds, conn, cal, userID, weekStart, weekEnd)
+			// Case B/C: Batch contiguous missing weeks into single API calls
+			batches := batchContiguousWeeks(decision.MissingWeeks)
+			log.Printf("[SYNC] batching: calendar=%s weeks=%d batches=%d", cal.Name, len(decision.MissingWeeks), len(batches))
+
+			for _, batch := range batches {
+				batchStart := batch[0]
+				batchEnd := sync.NormalizeToWeekEnd(batch[len(batch)-1])
+				log.Printf("[SYNC] batch_fetch: calendar=%s range=%s to %s weeks=%d",
+					cal.Name, batchStart.Format("2006-01-02"), batchEnd.Format("2006-01-02"), len(batch))
+
+				c, u, o, err := h.syncSingleCalendar(ctx, creds, conn, cal, userID, &batchStart, &batchEnd)
 				if err != nil {
-					log.Printf("Failed to sync week %s for calendar %s: %v", weekStart.Format("2006-01-02"), cal.Name, err)
+					log.Printf("[SYNC] batch_failed: calendar=%s range=%s to %s error=%v",
+						cal.Name, batchStart.Format("2006-01-02"), batchEnd.Format("2006-01-02"), err)
 					syncErr = err
 					continue
 				}
@@ -344,7 +352,7 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 		}
 
 		if syncErr != nil {
-			log.Printf("Failed to sync calendar %s: %v", cal.Name, syncErr)
+			log.Printf("[SYNC] calendar_failed: calendar=%s error=%v", cal.Name, syncErr)
 			h.calendars.IncrementSyncFailureCount(ctx, cal.ID)
 			continue
 		}
@@ -374,10 +382,13 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 				log.Printf("Failed to apply classification rules after sync: %v", err)
 				// Don't fail the sync, just log the error
 			} else if len(result.Classified) > 0 {
-				log.Printf("Auto-classified %d events after sync", len(result.Classified))
+				log.Printf("[SYNC] auto_classified: events=%d", len(result.Classified))
 			}
 		}
 	}
+
+	log.Printf("[SYNC] complete: connection=%s created=%d updated=%d orphaned=%d skipped=%v",
+		conn.ID, totalCreated, totalUpdated, totalOrphaned, syncSkipped)
 
 	return api.SyncCalendar200JSONResponse{
 		EventsCreated:  totalCreated,
@@ -408,7 +419,7 @@ func (h *CalendarHandler) syncCalendarIncremental(ctx context.Context, creds *st
 	syncResult, err := h.google.FetchEventsIncremental(ctx, creds, cal.ExternalID, *cal.SyncToken)
 	if err != nil {
 		// Sync token expired (410 Gone), clear it and do full sync
-		log.Printf("Incremental sync failed for calendar %s, falling back to full sync: %v", cal.Name, err)
+		log.Printf("[SYNC] incremental_failed: calendar=%s fallback=full_sync error=%v", cal.Name, err)
 		h.calendars.ClearSyncToken(ctx, cal.ID)
 		start, end := sync.DefaultInitialWindow()
 		return h.syncSingleCalendar(ctx, creds, conn, cal, userID, &start, &end)
@@ -467,7 +478,7 @@ func (h *CalendarHandler) RunBackgroundSync(ctx context.Context) error {
 		return nil
 	}
 
-	log.Printf("Background sync: found %d calendars needing sync", len(calendars))
+	log.Printf("[SYNC] background: found %d calendars needing sync", len(calendars))
 
 	// Process each calendar
 	for _, cal := range calendars {
@@ -485,12 +496,12 @@ func (h *CalendarHandler) RunBackgroundSync(ctx context.Context) error {
 
 // syncCalendarBackground syncs a single calendar during background sync
 func (h *CalendarHandler) syncCalendarBackground(ctx context.Context, cal *store.Calendar) {
-	log.Printf("Background sync: syncing calendar %s (%s)", cal.Name, cal.ID)
+	log.Printf("[SYNC] background: syncing calendar=%s id=%s", cal.Name, cal.ID)
 
 	// Get connection with credentials
 	conn, err := h.connections.GetByIDForSync(ctx, cal.ConnectionID)
 	if err != nil {
-		log.Printf("Background sync: failed to get connection for calendar %s: %v", cal.Name, err)
+		log.Printf("[SYNC] background_failed: calendar=%s error=%v", cal.Name, err)
 		h.calendars.IncrementSyncFailureCount(ctx, cal.ID)
 		return
 	}
@@ -500,7 +511,7 @@ func (h *CalendarHandler) syncCalendarBackground(ctx context.Context, cal *store
 	if time.Now().After(creds.Expiry.Add(-5 * time.Minute)) {
 		newCreds, err := h.google.RefreshToken(ctx, creds)
 		if err != nil {
-			log.Printf("Background sync: token refresh failed for calendar %s: %v", cal.Name, err)
+			log.Printf("[SYNC] background_token_failed: calendar=%s error=%v", cal.Name, err)
 			h.calendars.MarkNeedsReauth(ctx, cal.ID)
 			return
 		}
@@ -521,14 +532,14 @@ func (h *CalendarHandler) syncCalendarBackground(ctx context.Context, cal *store
 	}
 
 	if syncErr != nil {
-		log.Printf("Background sync: failed to sync calendar %s: %v", cal.Name, syncErr)
+		log.Printf("[SYNC] background_sync_failed: calendar=%s error=%v", cal.Name, syncErr)
 		h.calendars.IncrementSyncFailureCount(ctx, cal.ID)
 		return
 	}
 
 	// Reset failure count on success
 	h.calendars.ResetSyncFailureCount(ctx, cal.ID)
-	log.Printf("Background sync: calendar %s complete (created: %d, updated: %d, orphaned: %d)", cal.Name, created, updated, orphaned)
+	log.Printf("[SYNC] background_complete: calendar=%s created=%d updated=%d orphaned=%d", cal.Name, created, updated, orphaned)
 }
 
 // syncSingleCalendar syncs events from a single calendar
@@ -547,7 +558,7 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 		syncResult, err = h.google.FetchEventsIncremental(ctx, creds, cal.ExternalID, *cal.SyncToken)
 		if err != nil {
 			// Sync token expired or invalid (410 Gone), clear it and do full sync
-			log.Printf("Incremental sync failed for calendar %s, falling back to full sync: %v", cal.Name, err)
+			log.Printf("[SYNC] incremental_failed: calendar=%s fallback=full_sync error=%v", cal.Name, err)
 			h.calendars.ClearSyncToken(ctx, cal.ID)
 			syncResult = nil
 			err = nil
@@ -556,15 +567,20 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 
 	// Full sync if no token or incremental failed
 	if syncResult == nil {
-		// Use provided dates or defaults (-366 to +32 days)
-		syncMinTime = time.Now().AddDate(0, 0, -366)
-		syncMaxTime = time.Now().AddDate(0, 0, 32)
+		// Use provided dates or default initial window (-4 weeks to +1 week per PRD)
 		if minTime != nil {
 			syncMinTime = *minTime
+		} else {
+			syncMinTime, _ = sync.DefaultInitialWindow()
 		}
 		if maxTime != nil {
 			syncMaxTime = *maxTime
+		} else {
+			_, syncMaxTime = sync.DefaultInitialWindow()
 		}
+
+		log.Printf("[SYNC] fetch: calendar=%s range=%s to %s", cal.Name,
+			syncMinTime.Format("2006-01-02"), syncMaxTime.Format("2006-01-02"))
 
 		syncResult, err = h.google.FetchEvents(ctx, creds, cal.ExternalID, syncMinTime, syncMaxTime)
 		if err != nil {
@@ -645,6 +661,36 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 	h.calendars.UpdateLastSynced(ctx, cal.ID)
 
 	return created, updated, orphaned, nil
+}
+
+// batchContiguousWeeks groups contiguous weeks into batches for efficient fetching.
+// This reduces the number of Google Calendar API calls when syncing multiple weeks.
+// For example, weeks [Jan 6, Jan 13, Jan 20, Feb 10, Feb 17] becomes:
+// [[Jan 6, Jan 13, Jan 20], [Feb 10, Feb 17]]
+func batchContiguousWeeks(weeks []time.Time) [][]time.Time {
+	if len(weeks) == 0 {
+		return nil
+	}
+
+	var batches [][]time.Time
+	currentBatch := []time.Time{weeks[0]}
+
+	for i := 1; i < len(weeks); i++ {
+		// Weeks are contiguous if they're exactly 7 days apart
+		expected := currentBatch[len(currentBatch)-1].AddDate(0, 0, 7)
+		if weeks[i].Equal(expected) {
+			currentBatch = append(currentBatch, weeks[i])
+		} else {
+			// Non-contiguous, start a new batch
+			batches = append(batches, currentBatch)
+			currentBatch = []time.Time{weeks[i]}
+		}
+	}
+
+	// Don't forget the last batch
+	batches = append(batches, currentBatch)
+
+	return batches
 }
 
 // ListCalendarSources returns all available calendars for a connection
