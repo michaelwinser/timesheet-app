@@ -1,8 +1,8 @@
 # Design Doc: Calendar Sync Architecture v2
 
-**Status:** Draft (Rev 2)
+**Status:** Draft (Rev 3)
 **Author:** Claude (with Michael)
-**Date:** 2026-01-08
+**Date:** 2026-01-09
 **PRD:** `prd-calendar-sync-v2.md`
 
 ## Overview
@@ -38,6 +38,97 @@ CREATE INDEX idx_calendars_last_synced ON calendars (last_synced_at) WHERE needs
 - `last_synced_at`: Timestamp of last successful sync (for 24h staleness check)
 - `sync_failure_count`: Consecutive failures (stop retrying after 3)
 - `needs_reauth`: True if OAuth token refresh failed (user must reconnect)
+
+### Background Sync Job Queue
+
+Water mark expansion is handled by a database-backed job queue, ensuring atomicity and enabling job coalescing.
+
+```sql
+CREATE TABLE calendar_sync_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    calendar_id UUID NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+    job_type TEXT NOT NULL,  -- 'expand_watermarks', 'fill_gap'
+    target_min_date DATE NOT NULL,
+    target_max_date DATE NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',  -- pending, running, completed, failed
+    priority INT DEFAULT 0,  -- higher = more urgent
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    claimed_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    error_message TEXT
+);
+
+CREATE INDEX idx_sync_jobs_pending ON calendar_sync_jobs (calendar_id, status)
+    WHERE status = 'pending';
+```
+
+### On-Demand Fetch Flow
+
+When a user navigates to a date range outside the current water marks:
+
+```
+User navigates to June 2025 (outside current marks Dec 2025 - Jan 2026)
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ GET /api/calendar-events?start_date=2025-06-30&end_date=... │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────┐
+│ Server checks: is June 30 week within water marks?          │
+│   → No, it's outside [Dec 11, 2025 - Jan 15, 2026]          │
+└─────────────────────────────────────────────────────────────┘
+    │
+    ├──────────────────────────────────────┐
+    ▼                                      ▼
+┌──────────────────────┐    ┌─────────────────────────────────┐
+│ SYNCHRONOUS:         │    │ ASYNC: Insert job into          │
+│ Fetch June 30 week   │    │ calendar_sync_jobs table        │
+│ from Google, store   │    │                                 │
+│ events, return to    │    │ job_type: 'expand_watermarks'   │
+│ client immediately   │    │ target_min: 2025-06-30          │
+└──────────────────────┘    │ target_max: current_min - 1 day │
+                            └─────────────────────────────────┘
+                                           │
+                                           ▼
+                            ┌─────────────────────────────────┐
+                            │ Background worker picks up job  │
+                            │                                 │
+                            │ 1. Coalesce with other pending  │
+                            │    jobs for same calendar       │
+                            │ 2. Fetch events for gap         │
+                            │ 3. BEGIN TRANSACTION            │
+                            │    - Upsert events              │
+                            │    - Update water marks         │
+                            │    - Update last_synced_at      │
+                            │ 4. COMMIT                       │
+                            └─────────────────────────────────┘
+```
+
+**Key behaviors:**
+
+1. **Immediate fetch is synchronous**: The user gets events for their requested week immediately. This ensures responsive UX.
+
+2. **Gap-filling is asynchronous**: The background job fills the gap between the "island" (June 2025) and the main water mark range. This happens without blocking the user.
+
+3. **Job coalescing**: When inserting a new job, merge with overlapping/adjacent pending jobs:
+
+```sql
+-- Before inserting new job for calendar X, range [A, B]:
+-- Find pending jobs that overlap or are adjacent (within 7 days)
+UPDATE calendar_sync_jobs
+SET target_min_date = LEAST(target_min_date, $new_min),
+    target_max_date = GREATEST(target_max_date, $new_max)
+WHERE calendar_id = $calendar_id
+  AND status = 'pending'
+  AND (target_min_date <= $new_max + 7 AND target_max_date >= $new_min - 7);
+-- If no rows updated, insert new job
+```
+
+4. **Atomic updates**: The background job updates events and water marks in a single transaction. Either both succeed or neither does.
+
+5. **Events endpoint checks DB first**: Since "islands" exist temporarily (events stored but water marks not yet updated), the endpoint queries the database for events before deciding to fetch from Google.
 
 ### API Changes
 
@@ -632,6 +723,47 @@ Track these metrics:
 - Water marks are per-calendar, per-user - no cross-user data access
 - Force flag doesn't bypass auth, just skips water mark check
 - Sync token is stored encrypted (existing behavior)
+
+## Key Architectural Principles
+
+### 1. Server Owns Sync Complexity
+
+The client requests events for a date range. It is the **server's responsibility** to ensure those events are available, whether from cache or by fetching from Google. The client should not:
+- Know about water marks
+- Decide when to trigger sync
+- Track which date ranges have been synced
+
+The client simply calls `GET /api/calendar-events?start_date=...&end_date=...` and receives events.
+
+### 2. Water Marks Are Internal Server State
+
+Water marks are an optimization mechanism for the server to efficiently sync with Google Calendar. They are never exposed to the client. The client cannot distinguish between:
+- "Events fetched from cache (within water marks)"
+- "Events fetched on-demand (outside water marks)"
+
+Both cases return the same response structure.
+
+### 3. Current vs Desired Water Marks
+
+The server maintains two conceptual states:
+
+| State | Description | Stored In |
+|-------|-------------|-----------|
+| **Current water marks** | Range of weeks where events are actually synced | `min_synced_date`, `max_synced_date` |
+| **Desired water marks** | Range we want to eventually sync to | Computed from current + user navigation |
+
+When a user navigates outside current water marks:
+1. **Immediately**: Fetch the requested week, update current marks to include it (creates "island")
+2. **Async**: Background job fills the gap between old marks and new island
+3. **Eventually**: Current marks become contiguous
+
+### 4. Atomic Water Mark Updates
+
+Water mark updates must be atomic with event storage:
+- Either: events stored AND water marks updated
+- Or: neither (rollback on failure)
+
+This ensures water marks accurately reflect what's in the database.
 
 ## Open Questions
 
