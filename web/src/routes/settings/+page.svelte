@@ -149,6 +149,11 @@
 			selectedCalendarIds = new Set(calendars.filter((c) => c.is_selected).map((c) => c.id));
 			showSourcesModal = false;
 			successMessage = 'Calendar sources updated';
+
+			// Trigger sync for newly selected calendars (per PRD: additional calendars → background sync)
+			if (selectedCalendarIds.size > 0) {
+				handleSync(sourcesConnectionId);
+			}
 		} catch (e: unknown) {
 			error = e instanceof Error ? e.message : 'Failed to update calendar sources';
 		} finally {

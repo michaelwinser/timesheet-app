@@ -114,7 +114,10 @@ db-clear-time-data:
 			sync_token = NULL, \
 			last_synced_at = NULL, \
 			min_synced_date = NULL, \
-			max_synced_date = NULL;"
+			max_synced_date = NULL; \
+		UPDATE calendar_connections SET \
+			last_synced_at = NULL, \
+			sync_token = NULL;"
 	@echo "Done! All events, time entries, and invoices deleted. Calendars will re-sync."
 
 psql:
