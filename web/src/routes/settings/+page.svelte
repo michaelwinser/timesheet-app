@@ -322,9 +322,23 @@
 		}
 	}
 
-	onMount(() => {
-		loadConnections();
+	onMount(async () => {
+		await loadConnections();
 		loadApiKeys();
+
+		// Check if we just completed OAuth - trigger initial sync for new connection
+		const urlParams = new URLSearchParams(window.location.search);
+		if (urlParams.get('connected') === 'google') {
+			// Clear the query param to prevent re-triggering on refresh
+			window.history.replaceState({}, '', window.location.pathname);
+
+			// Find connections that haven't been synced yet and have selected calendars
+			// (the primary calendar is auto-selected on connection)
+			const unsyncedConnection = connections.find((c) => !c.last_synced_at);
+			if (unsyncedConnection) {
+				handleSync(unsyncedConnection.id);
+			}
+		}
 	});
 </script>
 
