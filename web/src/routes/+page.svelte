@@ -17,7 +17,7 @@
 		ProjectSidebar,
 		ReclassifyWeekModal
 	} from '$lib/components/widgets';
-	import { api } from '$lib/api/client';
+	import { api, type CalendarSyncStatus } from '$lib/api/client';
 	import type { Project, TimeEntry, CalendarEvent, CalendarConnection, SyncResult, ClassifiedEvent } from '$lib/api/types';
 	import {
 		getClassificationStyles,
@@ -77,6 +77,12 @@
 
 	// Track date ranges that have been synced on-demand
 	let syncedDateRanges = $state<Set<string>>(new Set());
+
+	// Track actual water marks from sync status (for determining if on-demand sync is needed)
+	let calendarWaterMarks = $state<{ minDate: Date | null; maxDate: Date | null }>({
+		minDate: null,
+		maxDate: null
+	});
 
 	// Navigation debounce delay (ms) - prevents rapid API calls during quick navigation
 	const NAVIGATION_DEBOUNCE_MS = 250;
@@ -566,6 +572,9 @@
 
 			// Trigger scroll after data loads (for initial load and date range changes)
 			scrollTrigger++;
+
+			// Fetch water marks for on-demand sync decisions
+			fetchWaterMarks();
 		} catch (e) {
 			console.error('Failed to load data:', e);
 		} finally {
@@ -867,16 +876,42 @@
 		return hoursSinceSync > 24;
 	}
 
-	// Check if a date range is outside the default sync window (-366 to +32 days)
-	function isOutsideDefaultSyncWindow(start: Date, end: Date): boolean {
-		const now = new Date();
-		const minDefault = new Date(now);
-		minDefault.setDate(minDefault.getDate() - 366);
-		const maxDefault = new Date(now);
-		maxDefault.setDate(maxDefault.getDate() + 32);
+	// Fetch water marks from sync status API
+	async function fetchWaterMarks() {
+		try {
+			const status = await api.getSyncStatus();
+			// Find the combined min/max across all selected calendars
+			let minDate: Date | null = null;
+			let maxDate: Date | null = null;
 
-		// If any part of the requested range is outside the default window, return true
-		return start < minDefault || end > maxDefault;
+			for (const cal of status.calendars) {
+				if (!cal.is_selected) continue;
+
+				if (cal.min_synced_date) {
+					const min = new Date(cal.min_synced_date);
+					if (!minDate || min < minDate) minDate = min;
+				}
+				if (cal.max_synced_date) {
+					const max = new Date(cal.max_synced_date);
+					if (!maxDate || max > maxDate) maxDate = max;
+				}
+			}
+
+			calendarWaterMarks = { minDate, maxDate };
+		} catch (e) {
+			console.error('Failed to fetch water marks:', e);
+		}
+	}
+
+	// Check if a date range is outside the synced water marks
+	function isOutsideSyncedWindow(start: Date, end: Date): boolean {
+		const { minDate, maxDate } = calendarWaterMarks;
+
+		// If we don't have water marks yet, we can't determine - don't trigger sync
+		if (!minDate || !maxDate) return false;
+
+		// If any part of the requested range is outside the synced window, return true
+		return start < minDate || end > maxDate;
 	}
 
 	// Generate a key for tracking synced date ranges (week granularity)
@@ -915,6 +950,9 @@
 
 			// Mark this range as synced
 			syncedDateRanges = new Set([...syncedDateRanges, rangeKey]);
+
+			// Update water marks after sync
+			await fetchWaterMarks();
 
 			// Reload events for the viewed range
 			const eventsData = await api.listCalendarEvents({
@@ -1100,7 +1138,7 @@
 
 	// Debounced on-demand sync
 	const debouncedOnDemandSync = debounce((start: Date, end: Date) => {
-		if (isOutsideDefaultSyncWindow(start, end)) {
+		if (isOutsideSyncedWindow(start, end)) {
 			onDemandSync(start, end);
 		}
 	}, NAVIGATION_DEBOUNCE_MS);
