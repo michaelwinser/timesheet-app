@@ -214,3 +214,37 @@ func (s *CalendarConnectionStore) Delete(ctx context.Context, userID, connID uui
 
 	return nil
 }
+
+// GetByIDForSync retrieves a connection by ID (with decrypted credentials) for background sync.
+// Unlike GetByID, this doesn't require a userID since background sync operates across all users.
+func (s *CalendarConnectionStore) GetByIDForSync(ctx context.Context, connID uuid.UUID) (*CalendarConnection, error) {
+	var encrypted []byte
+	conn := &CalendarConnection{}
+
+	err := s.pool.QueryRow(ctx, `
+		SELECT id, user_id, provider, credentials_encrypted, sync_token, last_synced_at, created_at, updated_at
+		FROM calendar_connections WHERE id = $1
+	`, connID).Scan(
+		&conn.ID, &conn.UserID, &conn.Provider, &encrypted,
+		&conn.SyncToken, &conn.LastSyncedAt, &conn.CreatedAt, &conn.UpdatedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrCalendarConnectionNotFound
+		}
+		return nil, err
+	}
+
+	// Decrypt credentials
+	decrypted, err := s.crypto.Decrypt(encrypted)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(decrypted, &conn.Credentials); err != nil {
+		return nil, err
+	}
+
+	return conn, nil
+}

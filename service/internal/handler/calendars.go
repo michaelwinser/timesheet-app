@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"log"
-	"sync"
+	gosync "sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +14,7 @@ import (
 	"github.com/michaelw/timesheet-app/service/internal/classification"
 	"github.com/michaelw/timesheet-app/service/internal/google"
 	"github.com/michaelw/timesheet-app/service/internal/store"
+	"github.com/michaelw/timesheet-app/service/internal/sync"
 	gcal "google.golang.org/api/calendar/v3"
 )
 
@@ -26,7 +27,7 @@ type CalendarHandler struct {
 	projects          *store.ProjectStore
 	google            *google.CalendarService
 	classificationSvc *classification.Service
-	stateMu           sync.RWMutex
+	stateMu           gosync.RWMutex
 	stateStore        map[string]uuid.UUID // In production, use Redis
 }
 
@@ -207,6 +208,10 @@ func (h *CalendarHandler) DeleteCalendarConnection(ctx context.Context, req api.
 }
 
 // SyncCalendar triggers a sync for a connection (syncs all selected calendars)
+// Uses smart sync decision based on water marks and staleness:
+// - If requested week is within synced window AND data is fresh (<24h): skip sync
+// - If data is stale: incremental sync using sync token
+// - If week is outside synced window: full sync for missing weeks only
 func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendarRequestObject) (api.SyncCalendarResponseObject, error) {
 	userID, ok := UserIDFromContext(ctx)
 	if !ok {
@@ -233,7 +238,14 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 	if time.Now().After(creds.Expiry.Add(-5 * time.Minute)) {
 		newCreds, err := h.google.RefreshToken(ctx, creds)
 		if err != nil {
-			return nil, err
+			// Mark calendars as needing reauth if token refresh fails
+			log.Printf("Token refresh failed for connection %s: %v", conn.ID, err)
+			h.markConnectionNeedsReauth(ctx, conn.ID)
+			// Return 401 to indicate auth is needed
+			return api.SyncCalendar401JSONResponse{
+				Code:    "reauth_required",
+				Message: "Google Calendar authorization has expired. Please reconnect your calendar.",
+			}, nil
 		}
 		creds = newCreds
 		h.connections.UpdateCredentials(ctx, conn.ID, *creds)
@@ -272,37 +284,85 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 		}
 	}
 
-	// Extract optional date range parameters for on-demand sync
-	var minTime, maxTime *time.Time
+	// Determine target sync window from request params or defaults
+	var targetStart, targetEnd time.Time
 	if req.Params.StartDate != nil {
-		t := req.Params.StartDate.Time
-		minTime = &t
+		targetStart = req.Params.StartDate.Time
+	} else {
+		targetStart = time.Now().AddDate(0, 0, -90)
 	}
 	if req.Params.EndDate != nil {
-		// Add a day to end_date to include the full day
-		t := req.Params.EndDate.Time.AddDate(0, 0, 1)
-		maxTime = &t
+		targetEnd = req.Params.EndDate.Time
+	} else {
+		targetEnd = time.Now().AddDate(0, 0, 30)
 	}
 
-	var totalCreated, totalUpdated, totalOrphaned int
+	// Normalize to week boundaries
+	targetStart = sync.NormalizeToWeekStart(targetStart)
+	targetEnd = sync.NormalizeToWeekEnd(targetEnd)
 
-	// Sync each selected calendar
+	var totalCreated, totalUpdated, totalOrphaned int
+	var syncSkipped bool
+
+	// Sync each selected calendar with smart sync decision
 	for _, cal := range selectedCalendars {
-		created, updated, orphaned, err := h.syncSingleCalendar(ctx, creds, conn, cal, userID, minTime, maxTime)
-		if err != nil {
-			log.Printf("Failed to sync calendar %s: %v", cal.Name, err)
+		// Check if sync is needed for this calendar
+		decision := sync.DecideSync(cal.MinSyncedDate, cal.MaxSyncedDate, cal.LastSyncedAt, targetStart, targetEnd)
+
+		if !decision.NeedsSync {
+			log.Printf("Skipping sync for calendar %s: %s", cal.Name, decision.Reason)
+			syncSkipped = true
 			continue
 		}
+
+		log.Printf("Syncing calendar %s: reason=%s, staleRefresh=%v, missingWeeks=%d",
+			cal.Name, decision.Reason, decision.IsStaleRefresh, len(decision.MissingWeeks))
+
+		var created, updated, orphaned int
+		var syncErr error
+
+		if decision.IsStaleRefresh {
+			// Case A': Use incremental sync to refresh stale data
+			created, updated, orphaned, syncErr = h.syncCalendarIncremental(ctx, creds, conn, cal, userID)
+		} else if len(decision.MissingWeeks) > 0 {
+			// Case B/C: Full sync for missing weeks only
+			for _, weekStart := range decision.MissingWeeks {
+				weekEnd := sync.NormalizeToWeekEnd(weekStart)
+				c, u, o, err := h.syncCalendarWeek(ctx, creds, conn, cal, userID, weekStart, weekEnd)
+				if err != nil {
+					log.Printf("Failed to sync week %s for calendar %s: %v", weekStart.Format("2006-01-02"), cal.Name, err)
+					syncErr = err
+					continue
+				}
+				created += c
+				updated += u
+				orphaned += o
+			}
+		} else {
+			// First sync or full range sync
+			created, updated, orphaned, syncErr = h.syncSingleCalendar(ctx, creds, conn, cal, userID, &targetStart, &targetEnd)
+		}
+
+		if syncErr != nil {
+			log.Printf("Failed to sync calendar %s: %v", cal.Name, syncErr)
+			h.calendars.IncrementSyncFailureCount(ctx, cal.ID)
+			continue
+		}
+
+		// Reset failure count on success
+		h.calendars.ResetSyncFailureCount(ctx, cal.ID)
 		totalCreated += created
 		totalUpdated += updated
 		totalOrphaned += orphaned
 	}
 
-	// Update connection last synced
-	h.connections.UpdateLastSynced(ctx, conn.ID)
+	// Update connection last synced (only if we actually synced something)
+	if !syncSkipped || totalCreated > 0 || totalUpdated > 0 {
+		h.connections.UpdateLastSynced(ctx, conn.ID)
+	}
 
 	// Auto-apply classification rules to newly synced events
-	if h.classificationSvc != nil {
+	if h.classificationSvc != nil && (totalCreated > 0 || totalUpdated > 0) {
 		// Fetch projects and convert to targets for classification
 		projects, err := h.projects.List(ctx, userID, true) // Include archived
 		if err != nil {
@@ -324,6 +384,151 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 		EventsUpdated:  totalUpdated,
 		EventsOrphaned: totalOrphaned,
 	}, nil
+}
+
+// markConnectionNeedsReauth marks all calendars in a connection as needing re-authentication
+func (h *CalendarHandler) markConnectionNeedsReauth(ctx context.Context, connectionID uuid.UUID) {
+	calendars, err := h.calendars.ListByConnection(ctx, connectionID)
+	if err != nil {
+		return
+	}
+	for _, cal := range calendars {
+		h.calendars.MarkNeedsReauth(ctx, cal.ID)
+	}
+}
+
+// syncCalendarIncremental performs incremental sync using sync token (for stale data refresh)
+func (h *CalendarHandler) syncCalendarIncremental(ctx context.Context, creds *store.OAuthCredentials, conn *store.CalendarConnection, cal *store.Calendar, userID uuid.UUID) (created, updated, orphaned int, err error) {
+	if cal.SyncToken == nil || *cal.SyncToken == "" {
+		// No sync token, fall back to default window sync
+		start, end := sync.DefaultInitialWindow()
+		return h.syncSingleCalendar(ctx, creds, conn, cal, userID, &start, &end)
+	}
+
+	syncResult, err := h.google.FetchEventsIncremental(ctx, creds, cal.ExternalID, *cal.SyncToken)
+	if err != nil {
+		// Sync token expired (410 Gone), clear it and do full sync
+		log.Printf("Incremental sync failed for calendar %s, falling back to full sync: %v", cal.Name, err)
+		h.calendars.ClearSyncToken(ctx, cal.ID)
+		start, end := sync.DefaultInitialWindow()
+		return h.syncSingleCalendar(ctx, creds, conn, cal, userID, &start, &end)
+	}
+
+	// Process events
+	for _, ge := range syncResult.Events {
+		if ge.Status == "cancelled" {
+			markErr := h.events.MarkOrphanedByExternalIDAndCalendar(ctx, cal.ID, ge.Id)
+			if markErr != nil {
+				log.Printf("Failed to mark event as orphaned: %v", markErr)
+			}
+			orphaned++
+			continue
+		}
+
+		event := googleEventToStore(ge, conn.ID, cal.ID, userID)
+		_, upsertErr := h.events.Upsert(ctx, event)
+		if upsertErr != nil {
+			return created, updated, orphaned, upsertErr
+		}
+		updated++
+	}
+
+	// Save the new sync token
+	if syncResult.NextSyncToken != "" {
+		h.calendars.UpdateSyncToken(ctx, cal.ID, syncResult.NextSyncToken)
+	}
+
+	// Update calendar last synced
+	h.calendars.UpdateLastSynced(ctx, cal.ID)
+
+	return created, updated, orphaned, nil
+}
+
+// syncCalendarWeek syncs a specific week for a calendar (for expanding water marks)
+func (h *CalendarHandler) syncCalendarWeek(ctx context.Context, creds *store.OAuthCredentials, conn *store.CalendarConnection, cal *store.Calendar, userID uuid.UUID, weekStart, weekEnd time.Time) (created, updated, orphaned int, err error) {
+	return h.syncSingleCalendar(ctx, creds, conn, cal, userID, &weekStart, &weekEnd)
+}
+
+// RunBackgroundSync implements sync.BackgroundSyncRunner for periodic background sync
+func (h *CalendarHandler) RunBackgroundSync(ctx context.Context) error {
+	if h.google == nil {
+		log.Println("Background sync: Google Calendar not configured, skipping")
+		return nil
+	}
+
+	// Find all calendars that need sync
+	calendars, err := h.calendars.ListNeedingSync(ctx, sync.StalenessThreshold)
+	if err != nil {
+		return err
+	}
+
+	if len(calendars) == 0 {
+		log.Println("Background sync: no calendars need sync")
+		return nil
+	}
+
+	log.Printf("Background sync: found %d calendars needing sync", len(calendars))
+
+	// Process each calendar
+	for _, cal := range calendars {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		h.syncCalendarBackground(ctx, cal)
+	}
+
+	return nil
+}
+
+// syncCalendarBackground syncs a single calendar during background sync
+func (h *CalendarHandler) syncCalendarBackground(ctx context.Context, cal *store.Calendar) {
+	log.Printf("Background sync: syncing calendar %s (%s)", cal.Name, cal.ID)
+
+	// Get connection with credentials
+	conn, err := h.connections.GetByIDForSync(ctx, cal.ConnectionID)
+	if err != nil {
+		log.Printf("Background sync: failed to get connection for calendar %s: %v", cal.Name, err)
+		h.calendars.IncrementSyncFailureCount(ctx, cal.ID)
+		return
+	}
+
+	// Refresh token if needed
+	creds := &conn.Credentials
+	if time.Now().After(creds.Expiry.Add(-5 * time.Minute)) {
+		newCreds, err := h.google.RefreshToken(ctx, creds)
+		if err != nil {
+			log.Printf("Background sync: token refresh failed for calendar %s: %v", cal.Name, err)
+			h.calendars.MarkNeedsReauth(ctx, cal.ID)
+			return
+		}
+		creds = newCreds
+		h.connections.UpdateCredentials(ctx, conn.ID, *creds)
+	}
+
+	// Use incremental sync if we have a sync token
+	var created, updated, orphaned int
+	var syncErr error
+
+	if cal.SyncToken != nil && *cal.SyncToken != "" {
+		created, updated, orphaned, syncErr = h.syncCalendarIncremental(ctx, creds, conn, cal, cal.UserID)
+	} else {
+		// No sync token, do initial window sync
+		start, end := sync.DefaultInitialWindow()
+		created, updated, orphaned, syncErr = h.syncSingleCalendar(ctx, creds, conn, cal, cal.UserID, &start, &end)
+	}
+
+	if syncErr != nil {
+		log.Printf("Background sync: failed to sync calendar %s: %v", cal.Name, syncErr)
+		h.calendars.IncrementSyncFailureCount(ctx, cal.ID)
+		return
+	}
+
+	// Reset failure count on success
+	h.calendars.ResetSyncFailureCount(ctx, cal.ID)
+	log.Printf("Background sync: calendar %s complete (created: %d, updated: %d, orphaned: %d)", cal.Name, created, updated, orphaned)
 }
 
 // syncSingleCalendar syncs events from a single calendar

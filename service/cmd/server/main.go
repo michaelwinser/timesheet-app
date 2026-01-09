@@ -19,6 +19,7 @@ import (
 	"github.com/michaelw/timesheet-app/service/internal/google"
 	"github.com/michaelw/timesheet-app/service/internal/handler"
 	"github.com/michaelw/timesheet-app/service/internal/store"
+	"github.com/michaelw/timesheet-app/service/internal/sync"
 	"github.com/michaelw/timesheet-app/service/internal/timeentry"
 )
 
@@ -37,6 +38,9 @@ func main() {
 
 	// MCP OAuth config
 	baseURL := getEnv("BASE_URL", fmt.Sprintf("http://localhost:%s", port))
+
+	// Background sync config
+	backgroundSyncEnabled := getEnv("BACKGROUND_SYNC_ENABLED", "true") == "true"
 
 	ctx := context.Background()
 
@@ -112,6 +116,15 @@ func main() {
 		jwtService, googleService, sheetsService,
 		classificationService, timeEntryService,
 	)
+
+	// Initialize background sync scheduler
+	var backgroundSync *sync.BackgroundScheduler
+	if googleService != nil && backgroundSyncEnabled {
+		syncConfig := sync.DefaultBackgroundSyncConfig()
+		backgroundSync = sync.NewBackgroundScheduler(syncConfig, serverHandler.CalendarHandler)
+		backgroundSync.Start(ctx)
+		log.Printf("Background sync scheduler started (interval: %v)", syncConfig.Interval)
+	}
 
 	// Create router
 	r := chi.NewRouter()
@@ -231,6 +244,13 @@ func main() {
 		<-sigChan
 
 		log.Printf("Shutting down server...")
+
+		// Stop background sync first
+		if backgroundSync != nil {
+			log.Printf("Stopping background sync scheduler...")
+			backgroundSync.Stop()
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 

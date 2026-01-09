@@ -217,6 +217,93 @@ func TestMissingWeeks(t *testing.T) {
 	})
 }
 
+func TestDecideSync(t *testing.T) {
+	// Set up a synced window: Jan 6-26, 2025 (3 weeks)
+	minSynced := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
+	maxSynced := time.Date(2025, 1, 26, 23, 59, 59, 0, time.UTC)
+	freshSync := timePtr(time.Now().Add(-1 * time.Hour)) // 1 hour ago
+	staleSync := timePtr(time.Now().Add(-25 * time.Hour)) // 25 hours ago
+
+	t.Run("Case A: fresh data within window", func(t *testing.T) {
+		targetStart := time.Date(2025, 1, 13, 0, 0, 0, 0, time.UTC)
+		targetEnd := time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC)
+
+		decision := DecideSync(&minSynced, &maxSynced, freshSync, targetStart, targetEnd)
+
+		if decision.NeedsSync {
+			t.Error("Expected no sync needed for fresh data within window")
+		}
+		if decision.Reason != "fresh_data" {
+			t.Errorf("Expected reason 'fresh_data', got %s", decision.Reason)
+		}
+	})
+
+	t.Run("Case A': stale data within window", func(t *testing.T) {
+		targetStart := time.Date(2025, 1, 13, 0, 0, 0, 0, time.UTC)
+		targetEnd := time.Date(2025, 1, 19, 0, 0, 0, 0, time.UTC)
+
+		decision := DecideSync(&minSynced, &maxSynced, staleSync, targetStart, targetEnd)
+
+		if !decision.NeedsSync {
+			t.Error("Expected sync needed for stale data")
+		}
+		if decision.Reason != "stale_data" {
+			t.Errorf("Expected reason 'stale_data', got %s", decision.Reason)
+		}
+		if !decision.IsStaleRefresh {
+			t.Error("Expected IsStaleRefresh to be true")
+		}
+	})
+
+	t.Run("Case B: week before synced window", func(t *testing.T) {
+		targetStart := time.Date(2024, 12, 30, 0, 0, 0, 0, time.UTC) // Week of Dec 30
+		targetEnd := time.Date(2025, 1, 5, 0, 0, 0, 0, time.UTC)
+
+		decision := DecideSync(&minSynced, &maxSynced, freshSync, targetStart, targetEnd)
+
+		if !decision.NeedsSync {
+			t.Error("Expected sync needed for week before window")
+		}
+		if decision.Reason != "outside_window" {
+			t.Errorf("Expected reason 'outside_window', got %s", decision.Reason)
+		}
+		if len(decision.MissingWeeks) != 1 {
+			t.Errorf("Expected 1 missing week, got %d", len(decision.MissingWeeks))
+		}
+	})
+
+	t.Run("Case C: week after synced window", func(t *testing.T) {
+		targetStart := time.Date(2025, 1, 27, 0, 0, 0, 0, time.UTC) // Week of Jan 27
+		targetEnd := time.Date(2025, 2, 2, 0, 0, 0, 0, time.UTC)
+
+		decision := DecideSync(&minSynced, &maxSynced, freshSync, targetStart, targetEnd)
+
+		if !decision.NeedsSync {
+			t.Error("Expected sync needed for week after window")
+		}
+		if decision.Reason != "outside_window" {
+			t.Errorf("Expected reason 'outside_window', got %s", decision.Reason)
+		}
+	})
+
+	t.Run("nil synced range returns all target weeks", func(t *testing.T) {
+		targetStart := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
+		targetEnd := time.Date(2025, 1, 20, 0, 0, 0, 0, time.UTC)
+
+		decision := DecideSync(nil, nil, nil, targetStart, targetEnd)
+
+		if !decision.NeedsSync {
+			t.Error("Expected sync needed for nil synced range")
+		}
+		if decision.Reason != "no_synced_range" {
+			t.Errorf("Expected reason 'no_synced_range', got %s", decision.Reason)
+		}
+		if len(decision.MissingWeeks) != 3 {
+			t.Errorf("Expected 3 missing weeks, got %d", len(decision.MissingWeeks))
+		}
+	})
+}
+
 func timePtr(t time.Time) *time.Time {
 	return &t
 }
