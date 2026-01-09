@@ -25,6 +25,7 @@ type CalendarHandler struct {
 	events            *store.CalendarEventStore
 	entries           *store.TimeEntryStore
 	projects          *store.ProjectStore
+	syncJobs          *store.SyncJobStore
 	google            google.CalendarClient
 	classificationSvc *classification.Service
 	stateMu           gosync.RWMutex
@@ -38,6 +39,7 @@ func NewCalendarHandler(
 	events *store.CalendarEventStore,
 	entries *store.TimeEntryStore,
 	projects *store.ProjectStore,
+	syncJobs *store.SyncJobStore,
 	googleSvc google.CalendarClient,
 	classificationSvc *classification.Service,
 ) *CalendarHandler {
@@ -47,6 +49,7 @@ func NewCalendarHandler(
 		events:            events,
 		entries:           entries,
 		projects:          projects,
+		syncJobs:          syncJobs,
 		google:            googleSvc,
 		classificationSvc: classificationSvc,
 		stateStore:        make(map[string]uuid.UUID),
@@ -815,7 +818,9 @@ func (h *CalendarHandler) UpdateCalendarSources(ctx context.Context, req api.Upd
 	return api.UpdateCalendarSources200JSONResponse(result), nil
 }
 
-// ListCalendarEvents returns events with filters
+// ListCalendarEvents returns events with filters.
+// This endpoint transparently handles on-demand sync when the requested date range
+// is outside the current water marks. The client never needs to know about water marks.
 func (h *CalendarHandler) ListCalendarEvents(ctx context.Context, req api.ListCalendarEventsRequestObject) (api.ListCalendarEventsResponseObject, error) {
 	userID, ok := UserIDFromContext(ctx)
 	if !ok {
@@ -835,6 +840,14 @@ func (h *CalendarHandler) ListCalendarEvents(ctx context.Context, req api.ListCa
 		endDate = &t
 	}
 
+	// If date range is provided and Google Calendar is configured, check if we need to sync
+	if h.google != nil && startDate != nil && endDate != nil {
+		if err := h.ensureEventsInRange(ctx, userID, *startDate, *endDate); err != nil {
+			// Log error but continue - we'll return whatever we have cached
+			log.Printf("[SYNC] ensureEventsInRange failed: %v", err)
+		}
+	}
+
 	var status *store.ClassificationStatus
 	if req.Params.ClassificationStatus != nil {
 		s := store.ClassificationStatus(*req.Params.ClassificationStatus)
@@ -852,6 +865,87 @@ func (h *CalendarHandler) ListCalendarEvents(ctx context.Context, req api.ListCa
 	}
 
 	return api.ListCalendarEvents200JSONResponse(result), nil
+}
+
+// ensureEventsInRange checks if the requested date range is within water marks.
+// If not, it fetches events from Google synchronously and queues a background job
+// to expand water marks. This implements the "server owns sync complexity" principle.
+func (h *CalendarHandler) ensureEventsInRange(ctx context.Context, userID uuid.UUID, startDate, endDate time.Time) error {
+	// Get all connections for the user
+	connections, err := h.connections.List(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	// Normalize to week boundaries for consistent water mark handling
+	targetStart := sync.NormalizeToWeekStart(startDate)
+	targetEnd := sync.NormalizeToWeekEnd(endDate)
+
+	for _, conn := range connections {
+		// Get selected calendars for this connection
+		calendars, err := h.calendars.ListSelectedByConnection(ctx, conn.ID)
+		if err != nil {
+			log.Printf("[SYNC] failed to list calendars for connection %s: %v", conn.ID, err)
+			continue
+		}
+
+		for _, cal := range calendars {
+			// Skip calendars that need re-auth or have too many failures
+			if cal.NeedsReauth || cal.SyncFailureCount >= 3 {
+				continue
+			}
+
+			// Check if requested range is outside water marks
+			decision := sync.DecideSync(cal.MinSyncedDate, cal.MaxSyncedDate, cal.LastSyncedAt, targetStart, targetEnd)
+			if !decision.NeedsSync {
+				continue
+			}
+
+			log.Printf("[SYNC] on-demand fetch needed: calendar=%s reason=%s range=%s to %s",
+				cal.Name, decision.Reason, targetStart.Format("2006-01-02"), targetEnd.Format("2006-01-02"))
+
+			// Refresh token if needed
+			creds := &conn.Credentials
+			if time.Now().After(creds.Expiry.Add(-5 * time.Minute)) {
+				newCreds, err := h.google.RefreshToken(ctx, creds)
+				if err != nil {
+					log.Printf("[SYNC] token refresh failed for calendar %s: %v", cal.Name, err)
+					h.calendars.MarkNeedsReauth(ctx, cal.ID)
+					continue
+				}
+				creds = newCreds
+				h.connections.UpdateCredentials(ctx, conn.ID, *creds)
+			}
+
+			// Fetch events synchronously for the requested range
+			_, _, _, err = h.syncSingleCalendar(ctx, creds, conn, cal, userID, &targetStart, &targetEnd)
+			if err != nil {
+				log.Printf("[SYNC] on-demand fetch failed for calendar %s: %v", cal.Name, err)
+				h.calendars.IncrementSyncFailureCount(ctx, cal.ID)
+				continue
+			}
+
+			// Reset failure count on success
+			h.calendars.ResetSyncFailureCount(ctx, cal.ID)
+
+			// Queue a background job to fill any gaps (if the range was "island" sync)
+			// The job worker will coalesce this with other pending jobs
+			if h.syncJobs != nil && len(decision.MissingWeeks) > 0 {
+				job := &store.SyncJob{
+					CalendarID:    cal.ID,
+					JobType:       store.SyncJobTypeExpandWatermarks,
+					TargetMinDate: targetStart,
+					TargetMaxDate: targetEnd,
+					Priority:      10, // High priority for user-initiated
+				}
+				if _, err := h.syncJobs.Create(ctx, job); err != nil {
+					log.Printf("[SYNC] failed to queue background job for calendar %s: %v", cal.Name, err)
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 // ClassifyCalendarEvent classifies an event (assigns to project or skips)

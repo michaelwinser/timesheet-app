@@ -101,6 +101,7 @@ func main() {
 	mcpOAuthStore := store.NewMCPOAuthStore(db.Pool)
 	billingPeriodStore := store.NewBillingPeriodStore(db.Pool)
 	invoiceStore := store.NewInvoiceStore(db.Pool, timeEntryStore, billingPeriodStore, projectStore)
+	syncJobStore := store.NewSyncJobStore(db.Pool)
 
 	// Initialize services
 	jwtService := handler.NewJWTService(jwtSecret, jwtExpiration)
@@ -112,18 +113,32 @@ func main() {
 		userStore, projectStore, timeEntryStore,
 		calendarConnectionStore, calendarStore, calendarEventStore,
 		classificationRuleStore, apiKeyStore,
-		billingPeriodStore, invoiceStore,
+		billingPeriodStore, invoiceStore, syncJobStore,
 		jwtService, googleService, sheetsService,
 		classificationService, timeEntryService,
 	)
 
-	// Initialize background sync scheduler
+	// Initialize background sync scheduler (periodic incremental sync)
 	var backgroundSync *sync.BackgroundScheduler
 	if googleService != nil && backgroundSyncEnabled {
 		syncConfig := sync.DefaultBackgroundSyncConfig()
 		backgroundSync = sync.NewBackgroundScheduler(syncConfig, serverHandler.CalendarHandler)
 		backgroundSync.Start(ctx)
 		log.Printf("Background sync scheduler started (interval: %v)", syncConfig.Interval)
+	}
+
+	// Initialize job worker (processes on-demand sync job queue)
+	var jobWorker *sync.JobWorker
+	if googleService != nil && backgroundSyncEnabled {
+		jobWorkerConfig := sync.DefaultJobWorkerConfig()
+		jobWorker = sync.NewJobWorker(
+			jobWorkerConfig, db.Pool, syncJobStore,
+			calendarStore, calendarConnectionStore, calendarEventStore,
+			googleService,
+		)
+		jobWorker.Start(ctx)
+		log.Printf("Job worker started (poll interval: %v, worker ID: %s)",
+			jobWorkerConfig.PollInterval, jobWorkerConfig.WorkerID)
 	}
 
 	// Create router
@@ -249,10 +264,14 @@ func main() {
 
 		log.Printf("Shutting down server...")
 
-		// Stop background sync first
+		// Stop background workers first
 		if backgroundSync != nil {
 			log.Printf("Stopping background sync scheduler...")
 			backgroundSync.Stop()
+		}
+		if jobWorker != nil {
+			log.Printf("Stopping job worker...")
+			jobWorker.Stop()
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
