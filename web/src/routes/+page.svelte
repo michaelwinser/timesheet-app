@@ -17,7 +17,7 @@
 		ProjectSidebar,
 		ReclassifyWeekModal
 	} from '$lib/components/widgets';
-	import { api, type CalendarSyncStatus } from '$lib/api/client';
+	import { api } from '$lib/api/client';
 	import type { Project, TimeEntry, CalendarEvent, CalendarConnection, SyncResult, ClassifiedEvent } from '$lib/api/types';
 	import {
 		getClassificationStyles,
@@ -74,15 +74,6 @@
 
 	// Project visibility filtering
 	let visibleProjectIds = $state<Set<string>>(new Set());
-
-	// Track date ranges that have been synced on-demand
-	let syncedDateRanges = $state<Set<string>>(new Set());
-
-	// Track actual water marks from sync status (for determining if on-demand sync is needed)
-	let calendarWaterMarks = $state<{ minDate: Date | null; maxDate: Date | null }>({
-		minDate: null,
-		maxDate: null
-	});
 
 	// Navigation debounce delay (ms) - prevents rapid API calls during quick navigation
 	const NAVIGATION_DEBOUNCE_MS = 250;
@@ -572,9 +563,6 @@
 
 			// Trigger scroll after data loads (for initial load and date range changes)
 			scrollTrigger++;
-
-			// Fetch water marks for on-demand sync decisions
-			fetchWaterMarks();
 		} catch (e) {
 			console.error('Failed to load data:', e);
 		} finally {
@@ -876,97 +864,6 @@
 		return hoursSinceSync > 24;
 	}
 
-	// Fetch water marks from sync status API
-	async function fetchWaterMarks() {
-		try {
-			const status = await api.getSyncStatus();
-			// Find the combined min/max across all selected calendars
-			let minDate: Date | null = null;
-			let maxDate: Date | null = null;
-
-			for (const cal of status.calendars) {
-				if (!cal.is_selected) continue;
-
-				if (cal.min_synced_date) {
-					const min = new Date(cal.min_synced_date);
-					if (!minDate || min < minDate) minDate = min;
-				}
-				if (cal.max_synced_date) {
-					const max = new Date(cal.max_synced_date);
-					if (!maxDate || max > maxDate) maxDate = max;
-				}
-			}
-
-			calendarWaterMarks = { minDate, maxDate };
-		} catch (e) {
-			console.error('Failed to fetch water marks:', e);
-		}
-	}
-
-	// Check if a date range is outside the synced water marks
-	function isOutsideSyncedWindow(start: Date, end: Date): boolean {
-		const { minDate, maxDate } = calendarWaterMarks;
-
-		// If we don't have water marks yet, we can't determine - don't trigger sync
-		if (!minDate || !maxDate) return false;
-
-		// If any part of the requested range is outside the synced window, return true
-		return start < minDate || end > maxDate;
-	}
-
-	// Generate a key for tracking synced date ranges (week granularity)
-	function getDateRangeKey(start: Date, end: Date): string {
-		return `${formatDate(start)}:${formatDate(end)}`;
-	}
-
-	// Trigger on-demand sync for dates outside the synced window
-	// Per PRD: fetch only the viewed week, not a large range
-	async function onDemandSync(viewedStart: Date, viewedEnd: Date) {
-		const rangeKey = getDateRangeKey(viewedStart, viewedEnd);
-
-		// Skip if we've already synced this exact range
-		if (syncedDateRanges.has(rangeKey)) {
-			return;
-		}
-
-		try {
-			const connections = await api.listCalendarConnections();
-			if (connections.length === 0) {
-				return;
-			}
-
-			syncing = true;
-			console.log(`[SYNC] on-demand: range=${formatDate(viewedStart)} to ${formatDate(viewedEnd)}`);
-
-			// Sync all connections with just the viewed date range
-			await Promise.all(
-				connections.map((conn) =>
-					api.syncCalendar(conn.id, {
-						start_date: formatDate(viewedStart),
-						end_date: formatDate(viewedEnd)
-					})
-				)
-			);
-
-			// Mark this range as synced
-			syncedDateRanges = new Set([...syncedDateRanges, rangeKey]);
-
-			// Update water marks after sync
-			await fetchWaterMarks();
-
-			// Reload events for the viewed range
-			const eventsData = await api.listCalendarEvents({
-				start_date: formatDate(viewedStart),
-				end_date: formatDate(viewedEnd)
-			});
-			calendarEvents = eventsData;
-		} catch (e) {
-			console.error('[SYNC] on-demand failed:', e);
-		} finally {
-			syncing = false;
-		}
-	}
-
 	// Auto-sync stale connections in the background
 	async function autoSyncStaleConnections() {
 		try {
@@ -1136,13 +1033,6 @@
 		loadData();
 	}, NAVIGATION_DEBOUNCE_MS);
 
-	// Debounced on-demand sync
-	const debouncedOnDemandSync = debounce((start: Date, end: Date) => {
-		if (isOutsideSyncedWindow(start, end)) {
-			onDemandSync(start, end);
-		}
-	}, NAVIGATION_DEBOUNCE_MS);
-
 	// Visibility change handler - refresh when tab becomes visible
 	function handleVisibilityChange() {
 		if (document.visibilityState === 'visible') {
@@ -1176,14 +1066,12 @@
 	});
 
 	// Reload when date range changes (debounced to prevent rapid API calls)
+	// The server now handles on-demand sync transparently, so we just need to reload data
 	$effect(() => {
-		// Track the date range
-		const start = startDate;
-		const end = endDate;
+		// Track dependencies on date range
+		const _start = startDate;
+		const _end = endDate;
 		debouncedLoadData();
-
-		// Trigger on-demand sync if viewing dates outside the default window (debounced)
-		debouncedOnDemandSync(start, end);
 	});
 </script>
 
