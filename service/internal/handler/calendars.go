@@ -285,7 +285,10 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 	}
 
 	// Determine target sync window from request params or defaults
+	// If explicit dates provided, this is an "on-demand" sync (fetch only requested range as island)
 	var targetStart, targetEnd time.Time
+	isOnDemandSync := req.Params.StartDate != nil && req.Params.EndDate != nil
+
 	if req.Params.StartDate != nil {
 		targetStart = req.Params.StartDate.Time
 	} else {
@@ -304,51 +307,59 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 	var totalCreated, totalUpdated, totalOrphaned int
 	var syncSkipped bool
 
-	// Sync each selected calendar with smart sync decision
+	// Sync each selected calendar
 	for _, cal := range selectedCalendars {
-		// Check if sync is needed for this calendar
-		decision := sync.DecideSync(cal.MinSyncedDate, cal.MaxSyncedDate, cal.LastSyncedAt, targetStart, targetEnd)
-
-		if !decision.NeedsSync {
-			log.Printf("[SYNC] skip: calendar=%s reason=%s", cal.Name, decision.Reason)
-			syncSkipped = true
-			continue
-		}
-
-		log.Printf("[SYNC] start: calendar=%s reason=%s stale=%v missing_weeks=%d",
-			cal.Name, decision.Reason, decision.IsStaleRefresh, len(decision.MissingWeeks))
-
 		var created, updated, orphaned int
 		var syncErr error
 
-		if decision.IsStaleRefresh {
-			// Case A': Use incremental sync to refresh stale data
-			created, updated, orphaned, syncErr = h.syncCalendarIncremental(ctx, creds, conn, cal, userID)
-		} else if len(decision.MissingWeeks) > 0 {
-			// Case B/C: Batch contiguous missing weeks into single API calls
-			batches := batchContiguousWeeks(decision.MissingWeeks)
-			log.Printf("[SYNC] batching: calendar=%s weeks=%d batches=%d", cal.Name, len(decision.MissingWeeks), len(batches))
-
-			for _, batch := range batches {
-				batchStart := batch[0]
-				batchEnd := sync.NormalizeToWeekEnd(batch[len(batch)-1])
-				log.Printf("[SYNC] batch_fetch: calendar=%s range=%s to %s weeks=%d",
-					cal.Name, batchStart.Format("2006-01-02"), batchEnd.Format("2006-01-02"), len(batch))
-
-				c, u, o, err := h.syncSingleCalendar(ctx, creds, conn, cal, userID, &batchStart, &batchEnd)
-				if err != nil {
-					log.Printf("[SYNC] batch_failed: calendar=%s range=%s to %s error=%v",
-						cal.Name, batchStart.Format("2006-01-02"), batchEnd.Format("2006-01-02"), err)
-					syncErr = err
-					continue
-				}
-				created += c
-				updated += u
-				orphaned += o
-			}
-		} else {
-			// First sync or full range sync
+		if isOnDemandSync {
+			// On-demand sync: fetch only the requested range as an "island"
+			// Don't fill gaps - background sync will catch up later
+			log.Printf("[SYNC] on-demand: calendar=%s range=%s to %s",
+				cal.Name, targetStart.Format("2006-01-02"), targetEnd.Format("2006-01-02"))
 			created, updated, orphaned, syncErr = h.syncSingleCalendar(ctx, creds, conn, cal, userID, &targetStart, &targetEnd)
+		} else {
+			// Regular sync: use smart decision logic to determine what to fetch
+			decision := sync.DecideSync(cal.MinSyncedDate, cal.MaxSyncedDate, cal.LastSyncedAt, targetStart, targetEnd)
+
+			if !decision.NeedsSync {
+				log.Printf("[SYNC] skip: calendar=%s reason=%s", cal.Name, decision.Reason)
+				syncSkipped = true
+				continue
+			}
+
+			log.Printf("[SYNC] start: calendar=%s reason=%s stale=%v missing_weeks=%d",
+				cal.Name, decision.Reason, decision.IsStaleRefresh, len(decision.MissingWeeks))
+
+			if decision.IsStaleRefresh {
+				// Case A': Use incremental sync to refresh stale data
+				created, updated, orphaned, syncErr = h.syncCalendarIncremental(ctx, creds, conn, cal, userID)
+			} else if len(decision.MissingWeeks) > 0 {
+				// Case B/C: Batch contiguous missing weeks into single API calls
+				batches := batchContiguousWeeks(decision.MissingWeeks)
+				log.Printf("[SYNC] batching: calendar=%s weeks=%d batches=%d", cal.Name, len(decision.MissingWeeks), len(batches))
+
+				for _, batch := range batches {
+					batchStart := batch[0]
+					batchEnd := sync.NormalizeToWeekEnd(batch[len(batch)-1])
+					log.Printf("[SYNC] batch_fetch: calendar=%s range=%s to %s weeks=%d",
+						cal.Name, batchStart.Format("2006-01-02"), batchEnd.Format("2006-01-02"), len(batch))
+
+					c, u, o, err := h.syncSingleCalendar(ctx, creds, conn, cal, userID, &batchStart, &batchEnd)
+					if err != nil {
+						log.Printf("[SYNC] batch_failed: calendar=%s range=%s to %s error=%v",
+							cal.Name, batchStart.Format("2006-01-02"), batchEnd.Format("2006-01-02"), err)
+						syncErr = err
+						continue
+					}
+					created += c
+					updated += u
+					orphaned += o
+				}
+			} else {
+				// First sync or full range sync
+				created, updated, orphaned, syncErr = h.syncSingleCalendar(ctx, creds, conn, cal, userID, &targetStart, &targetEnd)
+			}
 		}
 
 		if syncErr != nil {
