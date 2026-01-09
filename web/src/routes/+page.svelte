@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
+	import { debounce } from '$lib/utils/debounce';
 	import AppShell from '$lib/components/AppShell.svelte';
 	import { Button, Modal, Input, ToastContainer } from '$lib/components/primitives';
 	import {
@@ -76,6 +77,9 @@
 
 	// Track date ranges that have been synced on-demand
 	let syncedDateRanges = $state<Set<string>>(new Set());
+
+	// Navigation debounce delay (ms) - prevents rapid API calls during quick navigation
+	const NAVIGATION_DEBOUNCE_MS = 250;
 
 	// Go to date modal
 	let showGoToDateModal = $state(false);
@@ -1094,6 +1098,28 @@
 		}
 	});
 
+	// Debounced data loading - prevents rapid API calls during quick navigation
+	const debouncedLoadData = debounce(() => {
+		loadData();
+	}, NAVIGATION_DEBOUNCE_MS);
+
+	// Debounced on-demand sync
+	const debouncedOnDemandSync = debounce((start: Date, end: Date) => {
+		if (isOutsideDefaultSyncWindow(start, end)) {
+			onDemandSync(start, end);
+		}
+	}, NAVIGATION_DEBOUNCE_MS);
+
+	// Visibility change handler - refresh when tab becomes visible
+	function handleVisibilityChange() {
+		if (document.visibilityState === 'visible') {
+			// Refresh data when user returns to this tab
+			loadData();
+			// Also check for stale connections
+			autoSyncStaleConnections();
+		}
+	}
+
 	// Load on mount
 	onMount(() => {
 		// Set URL if not already set
@@ -1106,20 +1132,25 @@
 
 		// Add keyboard listener
 		window.addEventListener('keydown', handleKeydown);
-		return () => window.removeEventListener('keydown', handleKeydown);
+
+		// Add visibility change listener for multi-tab sync
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
+		return () => {
+			window.removeEventListener('keydown', handleKeydown);
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+		};
 	});
 
-	// Reload when date range changes
+	// Reload when date range changes (debounced to prevent rapid API calls)
 	$effect(() => {
 		// Track the date range
 		const start = startDate;
 		const end = endDate;
-		loadData();
+		debouncedLoadData();
 
-		// Trigger on-demand sync if viewing dates outside the default window
-		if (isOutsideDefaultSyncWindow(start, end)) {
-			onDemandSync(start, end);
-		}
+		// Trigger on-demand sync if viewing dates outside the default window (debounced)
+		debouncedOnDemandSync(start, end);
 	});
 </script>
 
@@ -1181,7 +1212,16 @@
 	</div>
 
 	<!-- Calendar Panel -->
-	<div class="mb-6 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg p-4">
+	<div class="mb-6 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg p-4 relative">
+			<!-- Sync loading overlay -->
+			{#if syncing}
+				<div class="absolute inset-0 bg-white/80 dark:bg-zinc-800/80 rounded-lg flex items-center justify-center z-10">
+					<div class="flex items-center gap-3 bg-white dark:bg-zinc-700 px-4 py-3 rounded-lg shadow-lg border border-gray-200 dark:border-zinc-600">
+						<div class="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-600"></div>
+						<span class="text-sm font-medium text-gray-700 dark:text-gray-200">Syncing calendar...</span>
+					</div>
+				</div>
+			{/if}
 			{#if displayMode === 'calendar'}
 				<!-- Time Grid View -->
 				{#if scopeMode === 'day'}
