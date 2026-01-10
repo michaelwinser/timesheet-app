@@ -148,7 +148,7 @@ func generateTargetRules(targets []Target) ([]Rule, map[string]bool) {
 				ruleID := fmt.Sprintf("fp:keyword:%s:%s", target.ID, keyword)
 				rules = append(rules, Rule{
 					ID:       ruleID,
-					Query:    "title:" + quoteIfNeeded(keyword),
+					Query:    "text:" + quoteIfNeeded(keyword),
 					TargetID: target.ID,
 					Weight:   1.0,
 				})
