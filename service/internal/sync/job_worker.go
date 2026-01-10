@@ -299,11 +299,19 @@ func googleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUI
 	}
 
 	// Attendees - extract emails and find user's response status
+	attendeeSet := make(map[string]bool)
 	for _, a := range ge.Attendees {
 		event.Attendees = append(event.Attendees, a.Email)
+		attendeeSet[a.Email] = true
 		if a.Self && a.ResponseStatus != "" {
 			event.ResponseStatus = &a.ResponseStatus
 		}
+	}
+
+	// Add organizer email to attendees if not already present
+	// Google Calendar doesn't always include the organizer in the attendees list
+	if ge.Organizer != nil && ge.Organizer.Email != "" && !attendeeSet[ge.Organizer.Email] {
+		event.Attendees = append(event.Attendees, ge.Organizer.Email)
 	}
 
 	event.IsRecurring = ge.RecurringEventId != ""
