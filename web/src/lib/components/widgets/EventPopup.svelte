@@ -8,11 +8,12 @@
 		anchorElement: HTMLElement | null;
 		onclassify?: (projectId: string) => void;
 		onskip?: () => void;
+		onunskip?: () => void;
 		onmouseenter?: () => void;
 		onmouseleave?: () => void;
 	}
 
-	let { event, projects, anchorElement, onclassify, onskip, onmouseenter, onmouseleave }: Props =
+	let { event, projects, anchorElement, onclassify, onskip, onunskip, onmouseenter, onmouseleave }: Props =
 		$props();
 
 	// Sort projects alphabetically by name
@@ -176,7 +177,7 @@
 						<button
 							type="button"
 							class="text-xs text-gray-500 hover:text-gray-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-							onclick={() => onskip?.()}
+							onclick={() => onunskip?.()}
 						>
 							Undo
 						</button>

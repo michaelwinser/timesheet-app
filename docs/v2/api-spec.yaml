@@ -2564,14 +2564,19 @@ components:
 
     ClassifyEventRequest:
       type: object
+      description: |
+        Classify an event by assigning it to a project, skipping it, or unskipping it.
+        - To assign to project: provide project_id
+        - To skip (mark as "did not attend"): set skip to true
+        - To unskip (reset to pending): set skip to false with no project_id
       properties:
         project_id:
           type: string
           format: uuid
-          description: Project to assign this event to. Omit or null to skip the event.
+          description: Project to assign this event to.
         skip:
           type: boolean
-          description: Set to true to mark as "did not attend" (skipped)
+          description: Set to true to skip, or false to unskip (reset to pending state).
 
     ClassifyEventResponse:
       type: object

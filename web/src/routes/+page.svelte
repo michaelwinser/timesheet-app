@@ -66,9 +66,12 @@
 		return latest;
 	});
 
-	// Hover popup state
-	let hoveredEvent = $state<CalendarEvent | null>(null);
+	// Hover popup state - store ID only, derive event to stay in sync with calendarEvents
+	let hoveredEventId = $state<string | null>(null);
 	let hoveredElement = $state<HTMLElement | null>(null);
+	const hoveredEvent = $derived(
+		hoveredEventId ? calendarEvents.find((e) => e.id === hoveredEventId) ?? null : null
+	);
 	let hoverShowTimeout: ReturnType<typeof setTimeout>;
 	let hoverHideTimeout: ReturnType<typeof setTimeout>;
 
@@ -674,13 +677,13 @@
 		if (event && element) {
 			// Show popup after short delay
 			hoverShowTimeout = setTimeout(() => {
-				hoveredEvent = event;
+				hoveredEventId = event.id;
 				hoveredElement = element;
 			}, 150);
 		} else {
 			// Hide popup after longer delay (allows moving to popup)
 			hoverHideTimeout = setTimeout(() => {
-				hoveredEvent = null;
+				hoveredEventId = null;
 				hoveredElement = null;
 			}, 300);
 		}
@@ -694,14 +697,14 @@
 	function handlePopupMouseLeave() {
 		// Hide after delay when leaving popup
 		hoverHideTimeout = setTimeout(() => {
-			hoveredEvent = null;
+			hoveredEventId = null;
 			hoveredElement = null;
 		}, 100);
 	}
 
 	function handlePopupClose() {
 		clearTimeout(hoverHideTimeout);
-		hoveredEvent = null;
+		hoveredEventId = null;
 		hoveredElement = null;
 	}
 
@@ -1609,6 +1612,7 @@
 			anchorElement={hoveredElement}
 			onclassify={handlePopupClassify}
 			onskip={handlePopupSkip}
+			onunskip={handlePopupUnskip}
 			onmouseenter={handlePopupMouseEnter}
 			onmouseleave={handlePopupMouseLeave}
 		/>

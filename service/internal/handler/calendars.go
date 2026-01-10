@@ -1041,8 +1041,12 @@ func (h *CalendarHandler) ClassifyCalendarEvent(ctx context.Context, req api.Cla
 		projectID = req.Body.ProjectId
 	}
 
-	// Validate: must either skip or provide project_id
-	if !isSkip && projectID == nil {
+	// If skip is explicitly set to false with no project_id, this is an "unskip" operation
+	// that resets the event to pending state. This is valid.
+	isUnskip := req.Body.Skip != nil && !*req.Body.Skip && projectID == nil
+
+	// Validate: must either skip, provide project_id, or be an explicit unskip
+	if !isSkip && projectID == nil && !isUnskip {
 		return api.ClassifyCalendarEvent400JSONResponse{
 			Code:    "invalid_request",
 			Message: "Must provide project_id or set skip to true",

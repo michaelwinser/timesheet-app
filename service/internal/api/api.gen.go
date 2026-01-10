@@ -372,12 +372,15 @@ type ClassifiedEvent struct {
 	ProjectId   openapi_types.UUID `json:"project_id"`
 }
 
-// ClassifyEventRequest defines model for ClassifyEventRequest.
+// ClassifyEventRequest Classify an event by assigning it to a project, skipping it, or unskipping it.
+// - To assign to project: provide project_id
+// - To skip (mark as "did not attend"): set skip to true
+// - To unskip (reset to pending): set skip to false with no project_id
 type ClassifyEventRequest struct {
-	// ProjectId Project to assign this event to. Omit or null to skip the event.
+	// ProjectId Project to assign this event to.
 	ProjectId *openapi_types.UUID `json:"project_id,omitempty"`
 
-	// Skip Set to true to mark as "did not attend" (skipped)
+	// Skip Set to true to skip, or false to unskip (reset to pending state).
 	Skip *bool `json:"skip,omitempty"`
 }
 
