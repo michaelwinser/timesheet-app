@@ -309,16 +309,15 @@
 
 	// Get the calendar date for an event, handling all-day events correctly
 	// All-day events are stored as midnight UTC but should be interpreted as the calendar date
-	function getEventCalendarDate(startTime: string): Date {
-		// All-day events from Google Calendar are midnight UTC (e.g., "2025-10-27T00:00:00Z")
-		// These should be interpreted as "on this calendar date" without timezone conversion
-		if (startTime.endsWith('T00:00:00Z') || startTime.endsWith('T00:00:00.000Z')) {
+	function getEventCalendarDate(event: CalendarEvent): Date {
+		// All-day events should be interpreted as "on this calendar date" without timezone conversion
+		if (event.is_all_day) {
 			// Extract just the date part and create a local date
-			const datePart = startTime.slice(0, 10); // "2025-10-27"
+			const datePart = event.start_time.slice(0, 10); // "2025-10-27"
 			return new Date(datePart + 'T00:00:00'); // Local midnight
 		}
 		// For regular events, use local timezone conversion
-		return new Date(startTime);
+		return new Date(event.start_time);
 	}
 
 	// Weekend events (for warning when in week mode)
@@ -326,7 +325,7 @@
 	const weekendEvents = $derived.by(() => {
 		if (scopeMode !== 'week') return [];
 		return filteredCalendarEvents.filter(e => {
-			const eventDate = getEventCalendarDate(e.start_time);
+			const eventDate = getEventCalendarDate(e);
 			const day = eventDate.getDay();
 			return day === 0 || day === 6; // Sunday or Saturday
 		});
@@ -373,7 +372,7 @@
 		const byDate: Record<string, CalendarEvent[]> = {};
 		for (const event of filteredCalendarEvents) {
 			// Use getEventCalendarDate to handle all-day events correctly
-			const eventDate = getEventCalendarDate(event.start_time);
+			const eventDate = getEventCalendarDate(event);
 			const dateStr = formatDate(eventDate);
 			if (!byDate[dateStr]) {
 				byDate[dateStr] = [];
@@ -437,17 +436,7 @@
 
 	// Detect all-day events
 	function isAllDayEvent(event: CalendarEvent): boolean {
-		const start = new Date(event.start_time);
-		const end = new Date(event.end_time);
-		const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-		if (durationHours >= 23) return true;
-		if (start.getHours() === 0 && start.getMinutes() === 0) {
-			if ((end.getHours() === 0 && end.getMinutes() === 0) ||
-				(end.getHours() === 23 && end.getMinutes() >= 59)) {
-				return true;
-			}
-		}
-		return false;
+		return event.is_all_day === true;
 	}
 
 	// Calculate position and height for an event

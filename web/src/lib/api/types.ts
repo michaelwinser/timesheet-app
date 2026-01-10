@@ -153,6 +153,7 @@ export interface CalendarEvent {
 	end_time: string;
 	attendees?: string[];
 	is_recurring?: boolean;
+	is_all_day?: boolean;
 	response_status?: string | null;
 	transparency?: string | null;
 	is_orphaned?: boolean;

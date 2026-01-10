@@ -77,26 +77,9 @@
 		}
 	});
 
-	// Detect all-day events (>= 23 hours or spans midnight to midnight)
+	// Detect all-day events using the is_all_day flag from the API
 	function isAllDayEvent(event: CalendarEvent): boolean {
-		const start = new Date(event.start_time);
-		const end = new Date(event.end_time);
-		const durationHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-
-		// If >= 23 hours, treat as all-day
-		if (durationHours >= 23) return true;
-
-		// Check if it spans midnight to midnight (00:00 to 00:00 or 23:59)
-		if (start.getHours() === 0 && start.getMinutes() === 0) {
-			if (
-				(end.getHours() === 0 && end.getMinutes() === 0) ||
-				(end.getHours() === 23 && end.getMinutes() >= 59)
-			) {
-				return true;
-			}
-		}
-
-		return false;
+		return event.is_all_day === true;
 	}
 
 	// Separate all-day and timed events

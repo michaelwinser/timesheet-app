@@ -276,8 +276,11 @@ type CalendarEvent struct {
 	EndTime                  time.Time                          `json:"end_time"`
 	ExternalId               string                             `json:"external_id"`
 	Id                       openapi_types.UUID                 `json:"id"`
-	IsOrphaned               *bool                              `json:"is_orphaned,omitempty"`
-	IsRecurring              *bool                              `json:"is_recurring,omitempty"`
+
+	// IsAllDay Whether this is an all-day event (no specific start/end times)
+	IsAllDay    *bool `json:"is_all_day,omitempty"`
+	IsOrphaned  *bool `json:"is_orphaned,omitempty"`
+	IsRecurring *bool `json:"is_recurring,omitempty"`
 
 	// IsSkipped Whether this event is marked as skipped (excluded from time entries)
 	IsSkipped    *bool `json:"is_skipped,omitempty"`

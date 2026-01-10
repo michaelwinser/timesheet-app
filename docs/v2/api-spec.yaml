@@ -2481,6 +2481,9 @@ components:
             type: string
         is_recurring:
           type: boolean
+        is_all_day:
+          type: boolean
+          description: Whether this is an all-day event (no specific start/end times)
         response_status:
           type: string
           nullable: true

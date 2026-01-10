@@ -40,6 +40,7 @@ type CalendarEvent struct {
 	EndTime                  time.Time
 	Attendees                []string
 	IsRecurring              bool
+	IsAllDay                 bool
 	ResponseStatus           *string
 	Transparency             *string
 	IsOrphaned               bool
@@ -79,10 +80,10 @@ func (s *CalendarEventStore) Upsert(ctx context.Context, event *CalendarEvent) (
 	err := s.pool.QueryRow(ctx, `
 		INSERT INTO calendar_events (
 			id, connection_id, calendar_id, user_id, external_id, title, description,
-			start_time, end_time, attendees, is_recurring, response_status,
+			start_time, end_time, attendees, is_recurring, is_all_day, response_status,
 			transparency, is_orphaned, is_suppressed, classification_status,
 			classification_source, project_id, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 		ON CONFLICT (connection_id, external_id) DO UPDATE SET
 			calendar_id = EXCLUDED.calendar_id,
 			title = EXCLUDED.title,
@@ -91,6 +92,7 @@ func (s *CalendarEventStore) Upsert(ctx context.Context, event *CalendarEvent) (
 			end_time = EXCLUDED.end_time,
 			attendees = EXCLUDED.attendees,
 			is_recurring = EXCLUDED.is_recurring,
+			is_all_day = EXCLUDED.is_all_day,
 			response_status = EXCLUDED.response_status,
 			transparency = EXCLUDED.transparency,
 			is_orphaned = false,
@@ -99,7 +101,7 @@ func (s *CalendarEventStore) Upsert(ctx context.Context, event *CalendarEvent) (
 	`,
 		newID, event.ConnectionID, event.CalendarID, event.UserID, event.ExternalID,
 		event.Title, event.Description, event.StartTime, event.EndTime,
-		attendeesJSON, event.IsRecurring, event.ResponseStatus,
+		attendeesJSON, event.IsRecurring, event.IsAllDay, event.ResponseStatus,
 		event.Transparency, false, event.IsSuppressed, event.ClassificationStatus,
 		event.ClassificationSource, event.ProjectID, now, now,
 	).Scan(&event.ID, &event.CreatedAt, &event.UpdatedAt)
@@ -212,7 +214,7 @@ func (s *CalendarEventStore) GetExternalIDsForConnection(ctx context.Context, co
 func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, status *ClassificationStatus, connectionID *uuid.UUID) ([]*CalendarEvent, error) {
 	query := `
 		SELECT ce.id, ce.connection_id, ce.calendar_id, ce.user_id, ce.external_id, ce.title, ce.description,
-		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.response_status,
+		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.is_all_day, ce.response_status,
 		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_locked, ce.is_skipped,
 		       ce.classification_status, ce.classification_source, ce.classification_confidence, ce.needs_review,
 		       ce.project_id, ce.created_at, ce.updated_at,
@@ -269,7 +271,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 
 		err := rows.Scan(
 			&e.ID, &e.ConnectionID, &e.CalendarID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
-			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
+			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.IsAllDay, &e.ResponseStatus,
 			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.IsSkipped,
 			&e.ClassificationStatus, &e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
@@ -347,7 +349,7 @@ func (s *CalendarEventStore) CountByStatus(ctx context.Context, connectionID uui
 func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time) ([]*CalendarEvent, error) {
 	query := `
 		SELECT ce.id, ce.connection_id, ce.calendar_id, ce.user_id, ce.external_id, ce.title, ce.description,
-		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.response_status,
+		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.is_all_day, ce.response_status,
 		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_locked, ce.is_skipped,
 		       ce.classification_status, ce.classification_source, ce.classification_confidence, ce.needs_review,
 		       ce.project_id, ce.created_at, ce.updated_at,
@@ -398,7 +400,7 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 
 		err := rows.Scan(
 			&e.ID, &e.ConnectionID, &e.CalendarID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
-			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
+			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.IsAllDay, &e.ResponseStatus,
 			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.IsSkipped,
 			&e.ClassificationStatus, &e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
@@ -470,7 +472,7 @@ func (s *CalendarEventStore) GetByID(ctx context.Context, userID, eventID uuid.U
 
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, connection_id, user_id, external_id, title, description,
-		       start_time, end_time, attendees, is_recurring, response_status,
+		       start_time, end_time, attendees, is_recurring, is_all_day, response_status,
 		       transparency, is_orphaned, is_suppressed, is_locked, is_skipped,
 		       classification_status, classification_source, classification_confidence, needs_review,
 		       project_id, created_at, updated_at
@@ -478,7 +480,7 @@ func (s *CalendarEventStore) GetByID(ctx context.Context, userID, eventID uuid.U
 		WHERE id = $1 AND user_id = $2
 	`, eventID, userID).Scan(
 		&e.ID, &e.ConnectionID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
-		&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.ResponseStatus,
+		&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.IsAllDay, &e.ResponseStatus,
 		&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsLocked, &e.IsSkipped,
 		&e.ClassificationStatus, &e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 		&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,

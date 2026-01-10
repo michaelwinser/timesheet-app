@@ -1363,6 +1363,7 @@ func calendarEventToAPI(e *store.CalendarEvent) api.CalendarEvent {
 		EndTime:              e.EndTime,
 		Attendees:            &e.Attendees,
 		IsRecurring:          &e.IsRecurring,
+		IsAllDay:             &e.IsAllDay,
 		ResponseStatus:       e.ResponseStatus,
 		Transparency:         e.Transparency,
 		IsOrphaned:           &e.IsOrphaned,
@@ -1428,12 +1429,13 @@ func googleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUI
 		event.Description = &ge.Description
 	}
 
-	// Parse times
+	// Parse times - all-day events use Date, timed events use DateTime
 	if ge.Start != nil {
 		if ge.Start.DateTime != "" {
 			event.StartTime, _ = time.Parse(time.RFC3339, ge.Start.DateTime)
 		} else if ge.Start.Date != "" {
 			event.StartTime, _ = time.Parse("2006-01-02", ge.Start.Date)
+			event.IsAllDay = true
 		}
 	}
 
