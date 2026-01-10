@@ -545,4 +545,37 @@ var migrations = []migration{
 			  AND computed_hours IS NOT NULL;
 		`,
 	},
+	{
+		version: 5,
+		sql: `
+			-- =============================================================================
+			-- ALL-DAY EVENT FLAG: Proper timezone handling for calendar events
+			-- =============================================================================
+
+			ALTER TABLE calendar_events ADD COLUMN is_all_day BOOLEAN NOT NULL DEFAULT FALSE;
+
+			-- Backfill: events spanning 24+ hours with midnight boundaries are likely all-day
+			UPDATE calendar_events
+			SET is_all_day = true
+			WHERE is_all_day = false
+			  AND EXTRACT(HOUR FROM start_time AT TIME ZONE 'UTC') = 0
+			  AND EXTRACT(MINUTE FROM start_time AT TIME ZONE 'UTC') = 0
+			  AND EXTRACT(HOUR FROM end_time AT TIME ZONE 'UTC') = 0
+			  AND EXTRACT(MINUTE FROM end_time AT TIME ZONE 'UTC') = 0
+			  AND end_time - start_time >= INTERVAL '24 hours';
+		`,
+	},
+	{
+		version: 6,
+		sql: `
+			-- =============================================================================
+			-- UNIQUE SHORT CODES: Enforce unique project short codes per user
+			-- =============================================================================
+
+			-- Partial unique index: only applies to non-NULL short codes
+			CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_user_short_code_unique
+			ON projects (user_id, short_code)
+			WHERE short_code IS NOT NULL;
+		`,
+	},
 }
