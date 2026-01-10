@@ -12,24 +12,27 @@ import (
 	"github.com/michaelw/timesheet-app/service/internal/api"
 	"github.com/michaelw/timesheet-app/service/internal/google"
 	"github.com/michaelw/timesheet-app/service/internal/store"
+	"github.com/michaelw/timesheet-app/service/internal/timeentry"
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
 // InvoiceHandler implements the invoice endpoints
 type InvoiceHandler struct {
-	invoices  *store.InvoiceStore
-	projects  *store.ProjectStore
-	sheets    *google.SheetsService
-	calendars *store.CalendarConnectionStore
+	invoices         *store.InvoiceStore
+	projects         *store.ProjectStore
+	sheets           *google.SheetsService
+	calendars        *store.CalendarConnectionStore
+	timeEntryService *timeentry.Service
 }
 
 // NewInvoiceHandler creates a new invoice handler
-func NewInvoiceHandler(invoices *store.InvoiceStore, projects *store.ProjectStore, sheets *google.SheetsService, calendars *store.CalendarConnectionStore) *InvoiceHandler {
+func NewInvoiceHandler(invoices *store.InvoiceStore, projects *store.ProjectStore, sheets *google.SheetsService, calendars *store.CalendarConnectionStore, timeEntrySvc *timeentry.Service) *InvoiceHandler {
 	return &InvoiceHandler{
-		invoices:  invoices,
-		projects:  projects,
-		sheets:    sheets,
-		calendars: calendars,
+		invoices:         invoices,
+		projects:         projects,
+		sheets:           sheets,
+		calendars:        calendars,
+		timeEntryService: timeEntrySvc,
 	}
 }
 
@@ -98,6 +101,13 @@ func (h *InvoiceHandler) CreateInvoice(ctx context.Context, req api.CreateInvoic
 			}, nil
 		}
 		return nil, err
+	}
+
+	// Materialize any ephemeral time entries for this project/date range
+	// This ensures all classified events have corresponding time_entry records before invoicing
+	_, err = h.timeEntryService.MaterializeForRange(ctx, userID, req.Body.ProjectId, periodStart, periodEnd)
+	if err != nil {
+		return nil, fmt.Errorf("materializing time entries: %w", err)
 	}
 
 	// Create invoice

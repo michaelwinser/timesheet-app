@@ -488,4 +488,61 @@ var migrations = []migration{
 				WHERE needs_reauth = FALSE AND sync_failure_count < 3;
 		`,
 	},
+	{
+		version: 3,
+		sql: `
+			-- =============================================================================
+			-- CALENDAR SYNC JOBS: Background job queue for watermark expansion
+			-- =============================================================================
+
+			CREATE TABLE calendar_sync_jobs (
+				id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+				calendar_id UUID NOT NULL REFERENCES calendars(id) ON DELETE CASCADE,
+				job_type TEXT NOT NULL,
+				target_min_date DATE NOT NULL,
+				target_max_date DATE NOT NULL,
+				status TEXT NOT NULL DEFAULT 'pending',
+				priority INT NOT NULL DEFAULT 0,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				claimed_at TIMESTAMPTZ,
+				completed_at TIMESTAMPTZ,
+				error_message TEXT,
+				claimed_by TEXT,
+				CONSTRAINT valid_date_range CHECK (target_min_date <= target_max_date)
+			);
+
+			CREATE INDEX idx_sync_jobs_pending ON calendar_sync_jobs (calendar_id, priority DESC, created_at ASC)
+				WHERE status = 'pending';
+			CREATE INDEX idx_sync_jobs_calendar ON calendar_sync_jobs (calendar_id, status);
+			CREATE INDEX idx_sync_jobs_completed ON calendar_sync_jobs (completed_at)
+				WHERE status IN ('completed', 'failed');
+		`,
+	},
+	{
+		version: 4,
+		sql: `
+			-- =============================================================================
+			-- EPHEMERAL TIME ENTRIES: Support for computed-on-demand time entries
+			-- =============================================================================
+
+			-- Snapshot of computed_hours at materialization time (for staleness detection)
+			ALTER TABLE time_entries ADD COLUMN snapshot_computed_hours DECIMAL(5,2);
+
+			-- Flag for user-suppressed entries (prevents re-computation from recreating)
+			ALTER TABLE time_entries ADD COLUMN is_suppressed BOOLEAN NOT NULL DEFAULT FALSE;
+
+			-- Backfill snapshot for existing materialized entries
+			UPDATE time_entries
+			SET snapshot_computed_hours = computed_hours
+			WHERE has_user_edits = true
+			  AND snapshot_computed_hours IS NULL
+			  AND computed_hours IS NOT NULL;
+
+			UPDATE time_entries
+			SET snapshot_computed_hours = computed_hours
+			WHERE invoice_id IS NOT NULL
+			  AND snapshot_computed_hours IS NULL
+			  AND computed_hours IS NOT NULL;
+		`,
+	},
 }

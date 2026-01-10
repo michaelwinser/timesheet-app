@@ -73,10 +73,12 @@ export interface TimeEntry {
 	is_pinned?: boolean;
 	is_locked?: boolean;
 	is_stale?: boolean;
+	is_suppressed?: boolean;
 	// Computed fields (from analyzer)
 	computed_hours?: number;
 	computed_title?: string;
 	computed_description?: string;
+	snapshot_computed_hours?: number; // Computed hours at materialization (for staleness)
 	calculation_details?: CalculationDetails;
 	contributing_events?: string[];
 	created_at: string;

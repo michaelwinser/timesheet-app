@@ -348,13 +348,18 @@ func (s *InvoiceStore) GetByID(ctx context.Context, userID, invoiceID uuid.UUID)
 		return nil, err
 	}
 
-	// Load line items
+	// Load line items - JOIN to time_entries for current hours/date/description
+	// Amount is recalculated as hours × rate to stay in sync with time entry
+	// (for sent/paid invoices, time entries are locked so values won't change)
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, invoice_id, time_entry_id, date, description,
-		       hours, hourly_rate, amount
-		FROM invoice_line_items
-		WHERE invoice_id = $1
-		ORDER BY date ASC
+		SELECT ili.id, ili.invoice_id, ili.time_entry_id,
+		       te.date,
+		       COALESCE(te.title || CASE WHEN te.description IS NOT NULL AND te.description != '' THEN ' - ' || te.description ELSE '' END, te.description, 'Time entry') as description,
+		       te.hours, ili.hourly_rate, te.hours * ili.hourly_rate as amount
+		FROM invoice_line_items ili
+		JOIN time_entries te ON ili.time_entry_id = te.id
+		WHERE ili.invoice_id = $1
+		ORDER BY te.date ASC
 	`, invoiceID)
 	if err != nil {
 		return nil, err

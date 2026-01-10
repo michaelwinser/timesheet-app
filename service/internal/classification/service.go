@@ -366,16 +366,9 @@ func (s *Service) ApplyRules(ctx context.Context, userID uuid.UUID, targets []Ta
 		}
 	}
 
-	// Recalculate time entries for all affected dates
-	if !dryRun && len(affectedDates) > 0 {
-		for date := range affectedDates {
-			// Recalculate time entries for this date using the analyzer
-			if err := s.timeEntryService.RecalculateForDate(ctx, userID, date); err != nil {
-				// Log but don't fail - classification succeeded
-				continue
-			}
-		}
-	}
+	// With ephemeral time entries, we don't reactively create/update entries.
+	// Time entries are computed on-demand when ListTimeEntries is called.
+	// The affectedDates tracking was for reactive updates, now unused.
 
 	return applyResult, nil
 }

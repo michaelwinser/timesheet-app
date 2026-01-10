@@ -2299,6 +2299,10 @@ components:
           type: boolean
           default: false
           description: Computed values differ from current values
+        is_suppressed:
+          type: boolean
+          default: false
+          description: User explicitly suppressed this entry
         # Computed fields
         computed_hours:
           type: number
@@ -2310,6 +2314,10 @@ components:
         computed_description:
           type: string
           description: Generated description from events
+        snapshot_computed_hours:
+          type: number
+          format: float
+          description: Computed hours at the time of materialization (for staleness detection)
         calculation_details:
           $ref: '#/components/schemas/CalculationDetails'
         contributing_events:

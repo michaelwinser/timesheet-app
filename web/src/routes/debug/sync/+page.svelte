@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import AppShell from '$lib/components/AppShell.svelte';
 	import { Button } from '$lib/components/primitives';
 	import { api, type SyncStatusResponse, type CalendarSyncStatus } from '$lib/api/client';
@@ -8,6 +8,8 @@
 	let loading = $state(true);
 	let error = $state<string | null>(null);
 	let lastRefresh = $state<Date | null>(null);
+	let autoRefresh = $state(true);
+	let refreshInterval: ReturnType<typeof setInterval> | null = null;
 
 	async function loadStatus() {
 		loading = true;
@@ -20,6 +22,31 @@
 			error = e instanceof Error ? e.message : 'Failed to load sync status';
 		} finally {
 			loading = false;
+		}
+	}
+
+	function startAutoRefresh() {
+		if (refreshInterval) return;
+		refreshInterval = setInterval(() => {
+			if (!loading) {
+				loadStatus();
+			}
+		}, 5000);
+	}
+
+	function stopAutoRefresh() {
+		if (refreshInterval) {
+			clearInterval(refreshInterval);
+			refreshInterval = null;
+		}
+	}
+
+	function toggleAutoRefresh() {
+		autoRefresh = !autoRefresh;
+		if (autoRefresh) {
+			startAutoRefresh();
+		} else {
+			stopAutoRefresh();
 		}
 	}
 

@@ -44,11 +44,11 @@ func NewServer(
 		AuthHandler:      NewAuthHandler(users, jwt),
 		ProjectHandler:   NewProjectHandler(projects),
 		TimeEntryHandler: NewTimeEntryHandler(entries, projects, timeEntrySvc),
-		CalendarHandler:  NewCalendarHandler(calendarConns, calendars, calendarEvents, entries, projects, syncJobs, googleSvc, classificationSvc),
+		CalendarHandler:  NewCalendarHandler(calendarConns, calendars, calendarEvents, entries, projects, syncJobs, googleSvc, classificationSvc, timeEntrySvc),
 		RulesHandler:     NewRulesHandler(classificationRules, projects, classificationSvc),
 		APIKeyHandler:    NewAPIKeyHandler(apiKeys),
 		BillingHandler:   NewBillingHandler(billingPeriods),
-		InvoiceHandler:   NewInvoiceHandler(invoices, projects, sheetsSvc, calendarConns),
+		InvoiceHandler:   NewInvoiceHandler(invoices, projects, sheetsSvc, calendarConns, timeEntrySvc),
 		ConfigHandler:    NewConfigHandler(projects, classificationRules),
 	}
 }

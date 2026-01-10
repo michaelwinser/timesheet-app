@@ -795,14 +795,8 @@ func (h *MCPHandler) bulkClassify(ctx context.Context, userID uuid.UUID, args ma
 		}
 	}
 
-	// Recalculate time entries for all affected dates
-	// This uses the analyzer to properly compute hours with overlap handling and rounding
-	entriesUpdated := 0
-	for date := range affectedDates {
-		if err := h.classificationSvc.RecalculateTimeEntries(ctx, userID, date); err == nil {
-			entriesUpdated++
-		}
-	}
+	// With ephemeral time entries, we don't reactively create/update entries.
+	// Time entries are computed on-demand when ListTimeEntries is called.
 
 	projectName := ""
 	if projectID != nil {
@@ -815,7 +809,7 @@ func (h *MCPHandler) bulkClassify(ctx context.Context, userID uuid.UUID, args ma
 	if skip {
 		result = fmt.Sprintf("Bulk skip complete:\n- Query: `%s`\n- Events skipped: %d", query, skippedCount)
 	} else {
-		result = fmt.Sprintf("Bulk classification complete:\n- Query: `%s`\n- Project: %s\n- Events classified: %d\n- Days with time entries updated: %d", query, projectName, classifiedCount, entriesUpdated)
+		result = fmt.Sprintf("Bulk classification complete:\n- Query: `%s`\n- Project: %s\n- Events classified: %d\n- Time entries will be computed on demand", query, projectName, classifiedCount)
 	}
 
 	return map[string]any{

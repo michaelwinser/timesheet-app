@@ -28,16 +28,18 @@ type TimeEntry struct {
 	InvoiceID    *uuid.UUID
 	HasUserEdits bool
 	// Protection model fields
-	IsPinned bool
-	IsLocked bool
-	IsStale  bool
+	IsPinned     bool
+	IsLocked     bool
+	IsStale      bool
+	IsSuppressed bool // User explicitly suppressed this entry
 	// Computed fields (from analyzer)
-	ComputedHours       *float64
-	ComputedTitle       *string
-	ComputedDescription *string
-	CalculationDetails  []byte // JSONB stored as bytes
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ComputedHours         *float64
+	ComputedTitle         *string
+	ComputedDescription   *string
+	SnapshotComputedHours *float64 // Computed hours at materialization time
+	CalculationDetails    []byte   // JSONB stored as bytes
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 	// Joined data
 	Project            *Project
 	ContributingEvents []uuid.UUID // From junction table
@@ -54,6 +56,7 @@ func NewTimeEntryStore(pool *pgxpool.Pool) *TimeEntryStore {
 }
 
 // Create adds a new time entry or updates if one exists for the same project/date
+// On upsert, captures snapshot_computed_hours for staleness detection
 func (s *TimeEntryStore) Create(ctx context.Context, userID, projectID uuid.UUID, date time.Time, hours float64, description *string) (*TimeEntry, error) {
 	entry := &TimeEntry{
 		ID:           uuid.New(),
@@ -69,6 +72,7 @@ func (s *TimeEntryStore) Create(ctx context.Context, userID, projectID uuid.UUID
 	}
 
 	// Use upsert - if entry exists for same project/date, add hours
+	// On conflict, capture snapshot_computed_hours to anchor staleness detection
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO time_entries (id, user_id, project_id, date, hours, description, source, has_user_edits, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -76,6 +80,7 @@ func (s *TimeEntryStore) Create(ctx context.Context, userID, projectID uuid.UUID
 			hours = time_entries.hours + EXCLUDED.hours,
 			description = COALESCE(EXCLUDED.description, time_entries.description),
 			has_user_edits = true,
+			snapshot_computed_hours = time_entries.computed_hours,
 			updated_at = EXCLUDED.updated_at
 	`, entry.ID, entry.UserID, entry.ProjectID, entry.Date, entry.Hours,
 		entry.Description, entry.Source, entry.HasUserEdits, entry.CreatedAt, entry.UpdatedAt)
@@ -93,14 +98,15 @@ func (s *TimeEntryStore) GetByID(ctx context.Context, userID, entryID uuid.UUID)
 	entry := &TimeEntry{}
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, user_id, project_id, date, hours, title, description, source, invoice_id, has_user_edits,
-		       is_pinned, is_locked, is_stale, computed_hours, computed_title, computed_description,
+		       is_pinned, is_locked, is_stale, is_suppressed,
+		       computed_hours, computed_title, computed_description, snapshot_computed_hours,
 		       calculation_details, created_at, updated_at
 		FROM time_entries WHERE id = $1 AND user_id = $2
 	`, entryID, userID).Scan(
 		&entry.ID, &entry.UserID, &entry.ProjectID, &entry.Date, &entry.Hours,
 		&entry.Title, &entry.Description, &entry.Source, &entry.InvoiceID, &entry.HasUserEdits,
-		&entry.IsPinned, &entry.IsLocked, &entry.IsStale,
-		&entry.ComputedHours, &entry.ComputedTitle, &entry.ComputedDescription,
+		&entry.IsPinned, &entry.IsLocked, &entry.IsStale, &entry.IsSuppressed,
+		&entry.ComputedHours, &entry.ComputedTitle, &entry.ComputedDescription, &entry.SnapshotComputedHours,
 		&entry.CalculationDetails, &entry.CreatedAt, &entry.UpdatedAt,
 	)
 
@@ -118,14 +124,15 @@ func (s *TimeEntryStore) GetByProjectAndDate(ctx context.Context, userID, projec
 	entry := &TimeEntry{}
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, user_id, project_id, date, hours, title, description, source, invoice_id, has_user_edits,
-		       is_pinned, is_locked, is_stale, computed_hours, computed_title, computed_description,
+		       is_pinned, is_locked, is_stale, is_suppressed,
+		       computed_hours, computed_title, computed_description, snapshot_computed_hours,
 		       calculation_details, created_at, updated_at
 		FROM time_entries WHERE user_id = $1 AND project_id = $2 AND date = $3
 	`, userID, projectID, date).Scan(
 		&entry.ID, &entry.UserID, &entry.ProjectID, &entry.Date, &entry.Hours,
 		&entry.Title, &entry.Description, &entry.Source, &entry.InvoiceID, &entry.HasUserEdits,
-		&entry.IsPinned, &entry.IsLocked, &entry.IsStale,
-		&entry.ComputedHours, &entry.ComputedTitle, &entry.ComputedDescription,
+		&entry.IsPinned, &entry.IsLocked, &entry.IsStale, &entry.IsSuppressed,
+		&entry.ComputedHours, &entry.ComputedTitle, &entry.ComputedDescription, &entry.SnapshotComputedHours,
 		&entry.CalculationDetails, &entry.CreatedAt, &entry.UpdatedAt,
 	)
 
@@ -143,9 +150,9 @@ func (s *TimeEntryStore) List(ctx context.Context, userID uuid.UUID, startDate, 
 	query := `
 		SELECT te.id, te.user_id, te.project_id, te.date, te.hours, te.title, te.description,
 		       te.source, te.invoice_id, te.has_user_edits,
-		       te.is_pinned, te.is_locked, te.is_stale,
-		       te.computed_hours, te.computed_title, te.computed_description, te.calculation_details,
-		       te.created_at, te.updated_at,
+		       te.is_pinned, te.is_locked, te.is_stale, te.is_suppressed,
+		       te.computed_hours, te.computed_title, te.computed_description, te.snapshot_computed_hours,
+		       te.calculation_details, te.created_at, te.updated_at,
 		       p.id, p.user_id, p.name, p.short_code, p.color, p.is_billable, p.is_archived,
 		       p.is_hidden_by_default, p.does_not_accumulate_hours, p.created_at, p.updated_at
 		FROM time_entries te
@@ -184,9 +191,9 @@ func (s *TimeEntryStore) List(ctx context.Context, userID uuid.UUID, startDate, 
 		err := rows.Scan(
 			&e.ID, &e.UserID, &e.ProjectID, &e.Date, &e.Hours, &e.Title, &e.Description,
 			&e.Source, &e.InvoiceID, &e.HasUserEdits,
-			&e.IsPinned, &e.IsLocked, &e.IsStale,
-			&e.ComputedHours, &e.ComputedTitle, &e.ComputedDescription, &e.CalculationDetails,
-			&e.CreatedAt, &e.UpdatedAt,
+			&e.IsPinned, &e.IsLocked, &e.IsStale, &e.IsSuppressed,
+			&e.ComputedHours, &e.ComputedTitle, &e.ComputedDescription, &e.SnapshotComputedHours,
+			&e.CalculationDetails, &e.CreatedAt, &e.UpdatedAt,
 			&e.Project.ID, &e.Project.UserID, &e.Project.Name, &e.Project.ShortCode,
 			&e.Project.Color, &e.Project.IsBillable, &e.Project.IsArchived,
 			&e.Project.IsHiddenByDefault, &e.Project.DoesNotAccumulateHours,
@@ -202,6 +209,7 @@ func (s *TimeEntryStore) List(ctx context.Context, userID uuid.UUID, startDate, 
 }
 
 // Update modifies an existing time entry
+// When user edits, we capture snapshot_computed_hours for staleness detection
 func (s *TimeEntryStore) Update(ctx context.Context, userID, entryID uuid.UUID, hours *float64, description *string) (*TimeEntry, error) {
 	// Check if invoiced
 	entry, err := s.GetByID(ctx, userID, entryID)
@@ -223,8 +231,15 @@ func (s *TimeEntryStore) Update(ctx context.Context, userID, entryID uuid.UUID, 
 	entry.HasUserEdits = true
 	entry.UpdatedAt = now
 
+	// Capture snapshot_computed_hours at materialization time
+	// This anchors the staleness check to know what computed_hours was when user made their edit
 	_, err = s.pool.Exec(ctx, `
-		UPDATE time_entries SET hours = $3, description = $4, has_user_edits = true, updated_at = $5
+		UPDATE time_entries
+		SET hours = $3,
+		    description = $4,
+		    has_user_edits = true,
+		    snapshot_computed_hours = computed_hours,
+		    updated_at = $5
 		WHERE id = $1 AND user_id = $2
 	`, entryID, userID, entry.Hours, entry.Description, now)
 
@@ -232,7 +247,8 @@ func (s *TimeEntryStore) Update(ctx context.Context, userID, entryID uuid.UUID, 
 		return nil, err
 	}
 
-	return entry, nil
+	// Re-fetch to get the updated snapshot value
+	return s.GetByID(ctx, userID, entryID)
 }
 
 // CreateFromCalendar creates or updates a time entry from a calendar event
@@ -389,12 +405,14 @@ func (s *TimeEntryStore) Unpin(ctx context.Context, userID, entryID uuid.UUID) e
 }
 
 // Refresh accepts computed values for a protected time entry (stays protected)
+// Updates snapshot_computed_hours to clear staleness
 func (s *TimeEntryStore) Refresh(ctx context.Context, userID, entryID uuid.UUID) error {
 	result, err := s.pool.Exec(ctx, `
 		UPDATE time_entries
 		SET hours = COALESCE(computed_hours, hours),
 		    title = COALESCE(computed_title, title),
 		    description = COALESCE(computed_description, description),
+		    snapshot_computed_hours = computed_hours,
 		    is_stale = false,
 		    updated_at = $3
 		WHERE id = $1 AND user_id = $2
@@ -413,10 +431,12 @@ func (s *TimeEntryStore) Refresh(ctx context.Context, userID, entryID uuid.UUID)
 // This is used for the "Reset to Computed" feature.
 // It updates all fields and removes the pinned status, returning the entry to auto-update mode.
 // Preserves is_locked but clears is_stale and is_pinned.
+// Updates snapshot_computed_hours to the new computed value.
 func (s *TimeEntryStore) ResetToComputed(ctx context.Context, userID, entryID uuid.UUID, hours float64, title, description string, details []byte, eventIDs []uuid.UUID) (*TimeEntry, error) {
 	now := time.Now().UTC()
 
 	// Update to computed values and unpin
+	// Also update snapshot to match, clearing any staleness
 	_, err := s.pool.Exec(ctx, `
 		UPDATE time_entries
 		SET hours = $3,
@@ -426,6 +446,7 @@ func (s *TimeEntryStore) ResetToComputed(ctx context.Context, userID, entryID uu
 		    computed_title = $4,
 		    computed_description = $5,
 		    calculation_details = $6,
+		    snapshot_computed_hours = $3,
 		    is_pinned = false,
 		    is_stale = false,
 		    updated_at = $7
@@ -525,6 +546,18 @@ func (s *TimeEntryStore) UpdateComputed(ctx context.Context, userID uuid.UUID, e
 
 	// Update contributing events
 	return s.SetContributingEvents(ctx, entryID, eventIDs)
+}
+
+// RefreshComputedValues updates only the computed_hours field with a fresh value.
+// This is called before Update to ensure snapshot_computed_hours captures the
+// current computed value, which is needed for correct staleness detection.
+func (s *TimeEntryStore) RefreshComputedValues(ctx context.Context, userID, entryID uuid.UUID, computedHours float64) error {
+	_, err := s.pool.Exec(ctx, `
+		UPDATE time_entries
+		SET computed_hours = $3
+		WHERE id = $1 AND user_id = $2
+	`, entryID, userID, computedHours)
+	return err
 }
 
 // UpsertFromComputed creates or updates a time entry from computed values.

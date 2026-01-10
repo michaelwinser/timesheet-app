@@ -28,7 +28,9 @@ func NewTimeEntryHandler(entries *store.TimeEntryStore, projects *store.ProjectS
 	}
 }
 
-// ListTimeEntries returns time entries for the authenticated user
+// ListTimeEntries returns time entries for the authenticated user.
+// Combines materialized entries (with user state) and ephemeral entries
+// (computed on-demand from classified events).
 func (h *TimeEntryHandler) ListTimeEntries(ctx context.Context, req api.ListTimeEntriesRequestObject) (api.ListTimeEntriesResponseObject, error) {
 	userID, ok := UserIDFromContext(ctx)
 	if !ok {
@@ -48,7 +50,8 @@ func (h *TimeEntryHandler) ListTimeEntries(ctx context.Context, req api.ListTime
 		endDate = &t
 	}
 
-	entries, err := h.entries.List(ctx, userID, startDate, endDate, req.Params.ProjectId)
+	// Use the service to get merged materialized + ephemeral entries
+	entries, err := h.timeEntryService.ListWithEphemeral(ctx, userID, startDate, endDate, req.Params.ProjectId)
 	if err != nil {
 		return nil, err
 	}
@@ -160,10 +163,34 @@ func (h *TimeEntryHandler) UpdateTimeEntry(ctx context.Context, req api.UpdateTi
 		}, nil
 	}
 
+	// Get the existing entry to refresh computed values before updating
+	// This ensures snapshot_computed_hours captures the fresh computed value
+	existing, err := h.entries.GetByID(ctx, userID, req.Id)
+	if err != nil {
+		if errors.Is(err, store.ErrTimeEntryNotFound) {
+			return api.UpdateTimeEntry404JSONResponse{
+				Code:    "not_found",
+				Message: "Time entry not found",
+			}, nil
+		}
+		return nil, err
+	}
+
+	// Refresh computed values before updating so snapshot captures fresh values
+	// This makes "Keep" correctly clear staleness by acknowledging the drift
+	computed, err := h.timeEntryService.ComputeForProjectAndDate(ctx, userID, existing.ProjectID, existing.Date)
+	if err != nil {
+		return nil, err
+	}
+	if computed != nil {
+		// Update computed values in DB (non-blocking if fails)
+		_ = h.entries.RefreshComputedValues(ctx, userID, req.Id, computed.Hours)
+	}
+
 	var hours *float64
 	if req.Body.Hours != nil {
-		h := float64(*req.Body.Hours)
-		hours = &h
+		hVal := float64(*req.Body.Hours)
+		hours = &hVal
 	}
 
 	entry, err := h.entries.Update(ctx, userID, req.Id, hours, req.Body.Description)
@@ -290,8 +317,39 @@ func (h *TimeEntryHandler) RefreshTimeEntry(ctx context.Context, req api.Refresh
 	return api.RefreshTimeEntry200JSONResponse(timeEntryToAPI(refreshed)), nil
 }
 
+// computeStale determines if a time entry is stale based on the ephemeral model formula:
+// stale = materialized AND (hours != computed_hours) AND (computed_hours != snapshot_computed_hours)
+//
+// This means:
+// - Entry must be materialized (has snapshot_computed_hours)
+// - User hours differ from current computed hours
+// - Computed hours have drifted since materialization
+func computeStale(e *store.TimeEntry) bool {
+	// Not materialized = not stale
+	if e.SnapshotComputedHours == nil {
+		return false
+	}
+	// No computed hours = can't determine staleness
+	if e.ComputedHours == nil {
+		return false
+	}
+	// User hours match computed = not stale
+	if e.Hours == *e.ComputedHours {
+		return false
+	}
+	// Computed hasn't drifted from snapshot = not stale (user intentionally differs)
+	if *e.ComputedHours == *e.SnapshotComputedHours {
+		return false
+	}
+	// All conditions met: materialized, user differs, and computed has drifted
+	return true
+}
+
 // timeEntryToAPI converts a store.TimeEntry to an api.TimeEntry
 func timeEntryToAPI(e *store.TimeEntry) api.TimeEntry {
+	// Compute staleness using the ephemeral model formula
+	isStale := computeStale(e)
+
 	entry := api.TimeEntry{
 		Id:           e.ID,
 		UserId:       e.UserID,
@@ -306,15 +364,20 @@ func timeEntryToAPI(e *store.TimeEntry) api.TimeEntry {
 		HasUserEdits: &e.HasUserEdits,
 		UpdatedAt:    &e.UpdatedAt,
 		// Protection model fields
-		IsPinned: &e.IsPinned,
-		IsLocked: &e.IsLocked,
-		IsStale:  &e.IsStale,
+		IsPinned:     &e.IsPinned,
+		IsLocked:     &e.IsLocked,
+		IsStale:      &isStale, // Computed, not from DB
+		IsSuppressed: &e.IsSuppressed,
 	}
 
 	// Computed fields
 	if e.ComputedHours != nil {
 		hours := float32(*e.ComputedHours)
 		entry.ComputedHours = &hours
+	}
+	if e.SnapshotComputedHours != nil {
+		hours := float32(*e.SnapshotComputedHours)
+		entry.SnapshotComputedHours = &hours
 	}
 	entry.ComputedTitle = e.ComputedTitle
 	entry.ComputedDescription = e.ComputedDescription

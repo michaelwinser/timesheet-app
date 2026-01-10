@@ -875,15 +875,25 @@
 				syncing = true;
 				// Sync all stale connections in parallel
 				await Promise.all(staleConnections.map((conn) => api.syncCalendar(conn.id)));
-				// Reload events and connections after sync
-				const [eventsData, updatedConnections] = await Promise.all([
+				// Reload events, entries, and connections after sync
+				// (entries are computed from events in the ephemeral model)
+				const [eventsData, entriesData, updatedConnections] = await Promise.all([
 					api.listCalendarEvents({
+						start_date: formatDate(startDate),
+						end_date: formatDate(endDate)
+					}),
+					api.listTimeEntries({
 						start_date: formatDate(startDate),
 						end_date: formatDate(endDate)
 					}),
 					api.listCalendarConnections()
 				]);
 				calendarEvents = eventsData;
+				// Attach project objects to entries
+				entries = entriesData.map(e => ({
+					...e,
+					project: projects.find(p => p.id === e.project_id)
+				}));
 				calendarConnections = updatedConnections;
 			}
 		} catch (e) {
@@ -914,15 +924,25 @@
 				{ created: 0, updated: 0, orphaned: 0 }
 			);
 
-			// Reload events and connections
-			const [eventsData, updatedConnections] = await Promise.all([
+			// Reload events, entries, and connections
+			// (entries are computed from events in the ephemeral model)
+			const [eventsData, entriesData, updatedConnections] = await Promise.all([
 				api.listCalendarEvents({
+					start_date: formatDate(startDate),
+					end_date: formatDate(endDate)
+				}),
+				api.listTimeEntries({
 					start_date: formatDate(startDate),
 					end_date: formatDate(endDate)
 				}),
 				api.listCalendarConnections()
 			]);
 			calendarEvents = eventsData;
+			// Attach project objects to entries
+			entries = entriesData.map(e => ({
+				...e,
+				project: projects.find(p => p.id === e.project_id)
+			}));
 			calendarConnections = updatedConnections;
 
 			// Show success toast
@@ -934,9 +954,19 @@
 			} else {
 				toastContainer?.info('Sync complete: Calendar is up to date');
 			}
-		} catch (e) {
+		} catch (e: unknown) {
 			console.error('Manual sync failed:', e);
-			toastContainer?.error('Sync failed. Please try again.');
+			// Show specific error message for reauth issues
+			if (e && typeof e === 'object' && 'error' in e) {
+				const apiError = e as { error: { code: string; message: string } };
+				if (apiError.error.code === 'reauth_required') {
+					toastContainer?.error(apiError.error.message);
+				} else {
+					toastContainer?.error('Sync failed. Please try again.');
+				}
+			} else {
+				toastContainer?.error('Sync failed. Please try again.');
+			}
 		} finally {
 			syncing = false;
 		}

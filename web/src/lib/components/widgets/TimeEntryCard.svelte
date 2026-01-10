@@ -217,6 +217,48 @@
 			</div>
 		</div>
 
+		<!-- Staleness warning banner -->
+		{#if isStale && entry.computed_hours !== undefined && entry.snapshot_computed_hours !== undefined}
+			<div class="mt-2 rounded bg-orange-100 dark:bg-orange-900/30 px-3 py-2 text-sm">
+				<div class="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+					<svg class="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+						<path
+							fill-rule="evenodd"
+							d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+							clip-rule="evenodd"
+						/>
+					</svg>
+					<span class="font-medium">Events have changed</span>
+				</div>
+				<p class="mt-1 text-xs text-orange-600 dark:text-orange-300">
+					You set {entry.hours}h when computed was {entry.snapshot_computed_hours}h.
+					Now computed is {entry.computed_hours}h.
+				</p>
+				<div class="mt-2 flex gap-2">
+					<button
+						type="button"
+						class="text-xs px-2 py-1 rounded bg-orange-200 dark:bg-orange-800 text-orange-700 dark:text-orange-200 hover:bg-orange-300 dark:hover:bg-orange-700"
+						onclick={(e) => {
+							e.stopPropagation();
+							onupdate?.({ hours: entry.computed_hours });
+						}}
+					>
+						Accept {entry.computed_hours}h
+					</button>
+					<button
+						type="button"
+						class="text-xs px-2 py-1 rounded text-orange-600 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-800"
+						onclick={(e) => {
+							e.stopPropagation();
+							onupdate?.({ hours: entry.hours });
+						}}
+					>
+						Keep {entry.hours}h
+					</button>
+				</div>
+			</div>
+		{/if}
+
 		<!-- Calculation details panel -->
 		{#if showDetails && entry.calculation_details}
 			<div class="mt-3 border-t pt-3 text-xs border-border text-text-secondary">

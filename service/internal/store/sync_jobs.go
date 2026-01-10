@@ -133,7 +133,7 @@ func (s *SyncJobStore) ClaimNextJob(ctx context.Context, workerID string) (*Sync
 	job := &SyncJob{}
 	err := s.pool.QueryRow(ctx, `
 		UPDATE calendar_sync_jobs
-		SET status = 'running', claimed_at = $2, claimed_by = $3
+		SET status = 'running', claimed_at = $1, claimed_by = $2
 		WHERE id = (
 			SELECT id FROM calendar_sync_jobs
 			WHERE status = 'pending'
@@ -144,7 +144,7 @@ func (s *SyncJobStore) ClaimNextJob(ctx context.Context, workerID string) (*Sync
 		RETURNING id, calendar_id, job_type, target_min_date, target_max_date,
 		          status, priority, created_at, claimed_at, completed_at,
 		          error_message, claimed_by
-	`, now, now, workerID).Scan(
+	`, now, workerID).Scan(
 		&job.ID, &job.CalendarID, &job.JobType, &job.TargetMinDate, &job.TargetMaxDate,
 		&job.Status, &job.Priority, &job.CreatedAt, &job.ClaimedAt, &job.CompletedAt,
 		&job.ErrorMessage, &job.ClaimedBy,
@@ -168,7 +168,7 @@ func (s *SyncJobStore) ClaimNextJobForCalendar(ctx context.Context, calendarID u
 	job := &SyncJob{}
 	err := s.pool.QueryRow(ctx, `
 		UPDATE calendar_sync_jobs
-		SET status = 'running', claimed_at = $3, claimed_by = $4
+		SET status = 'running', claimed_at = $2, claimed_by = $3
 		WHERE id = (
 			SELECT id FROM calendar_sync_jobs
 			WHERE calendar_id = $1 AND status = 'pending'
@@ -179,7 +179,7 @@ func (s *SyncJobStore) ClaimNextJobForCalendar(ctx context.Context, calendarID u
 		RETURNING id, calendar_id, job_type, target_min_date, target_max_date,
 		          status, priority, created_at, claimed_at, completed_at,
 		          error_message, claimed_by
-	`, calendarID, now, now, workerID).Scan(
+	`, calendarID, now, workerID).Scan(
 		&job.ID, &job.CalendarID, &job.JobType, &job.TargetMinDate, &job.TargetMaxDate,
 		&job.Status, &job.Priority, &job.CreatedAt, &job.ClaimedAt, &job.CompletedAt,
 		&job.ErrorMessage, &job.ClaimedBy,

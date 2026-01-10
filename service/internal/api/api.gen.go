@@ -797,9 +797,15 @@ type TimeEntry struct {
 	IsPinned *bool `json:"is_pinned,omitempty"`
 
 	// IsStale Computed values differ from current values
-	IsStale   *bool              `json:"is_stale,omitempty"`
-	Project   *Project           `json:"project,omitempty"`
-	ProjectId openapi_types.UUID `json:"project_id"`
+	IsStale *bool `json:"is_stale,omitempty"`
+
+	// IsSuppressed User explicitly suppressed this entry
+	IsSuppressed *bool              `json:"is_suppressed,omitempty"`
+	Project      *Project           `json:"project,omitempty"`
+	ProjectId    openapi_types.UUID `json:"project_id"`
+
+	// SnapshotComputedHours Computed hours at the time of materialization (for staleness detection)
+	SnapshotComputedHours *float32 `json:"snapshot_computed_hours,omitempty"`
 
 	// Source How this entry was created
 	Source TimeEntrySource `json:"source"`

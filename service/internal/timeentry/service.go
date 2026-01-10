@@ -228,6 +228,271 @@ func (s *Service) ComputeForProjectAndDate(ctx context.Context, userID, projectI
 	return nil, nil
 }
 
+// ListWithEphemeral returns time entries for a date range, combining:
+// - Materialized entries (stored in DB with user state)
+// - Ephemeral entries (computed on-demand from classified events)
+//
+// Materialized entries take precedence. Ephemeral entries fill gaps where
+// no materialized entry exists for a (project, date) combination.
+// Suppressed entries are excluded from the result.
+func (s *Service) ListWithEphemeral(ctx context.Context, userID uuid.UUID, startDate, endDate *time.Time, projectID *uuid.UUID) ([]*store.TimeEntry, error) {
+	// Get materialized entries from DB
+	materialized, err := s.timeEntryStore.List(ctx, userID, startDate, endDate, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build a map of materialized entries by (project_id, date) for quick lookup
+	materializedMap := make(map[string]*store.TimeEntry)
+	for _, e := range materialized {
+		key := e.ProjectID.String() + "|" + e.Date.Format("2006-01-02")
+		materializedMap[key] = e
+	}
+
+	// If no date range provided, just return materialized entries
+	// (can't compute ephemeral without knowing the range)
+	if startDate == nil || endDate == nil {
+		// Filter out suppressed entries
+		result := make([]*store.TimeEntry, 0, len(materialized))
+		for _, e := range materialized {
+			if !e.IsSuppressed {
+				result = append(result, e)
+			}
+		}
+		return result, nil
+	}
+
+	// Compute ephemeral entries from classified events
+	ephemeral, err := s.computeEphemeralForRange(ctx, userID, *startDate, *endDate, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build ephemeral map for updating computed values on materialized entries
+	ephemeralMap := make(map[string]*store.TimeEntry)
+	for _, e := range ephemeral {
+		key := e.ProjectID.String() + "|" + e.Date.Format("2006-01-02")
+		ephemeralMap[key] = e
+	}
+
+	// Merge: start with ephemeral, override with materialized
+	result := make([]*store.TimeEntry, 0, len(materialized)+len(ephemeral))
+
+	// Add ephemeral entries that don't have a materialized counterpart
+	for _, e := range ephemeral {
+		key := e.ProjectID.String() + "|" + e.Date.Format("2006-01-02")
+		if _, exists := materializedMap[key]; !exists {
+			result = append(result, e)
+		}
+	}
+
+	// Add materialized entries with fresh computed values (excluding suppressed)
+	for _, e := range materialized {
+		if e.IsSuppressed {
+			continue
+		}
+		// Update computed values from ephemeral if available
+		key := e.ProjectID.String() + "|" + e.Date.Format("2006-01-02")
+		if eph, exists := ephemeralMap[key]; exists {
+			// Copy fresh computed values to materialized entry
+			e.ComputedHours = eph.ComputedHours
+			e.ComputedTitle = eph.ComputedTitle
+			e.ComputedDescription = eph.ComputedDescription
+			e.CalculationDetails = eph.CalculationDetails
+			e.ContributingEvents = eph.ContributingEvents
+		} else {
+			// No events for this entry anymore - computed is 0
+			zero := 0.0
+			empty := ""
+			e.ComputedHours = &zero
+			e.ComputedTitle = &empty
+			e.ComputedDescription = &empty
+			e.ContributingEvents = nil
+		}
+		result = append(result, e)
+	}
+
+	return result, nil
+}
+
+// computeEphemeralForRange computes ephemeral time entries from classified events
+// for a date range. These are not persisted - they exist only in memory.
+func (s *Service) computeEphemeralForRange(ctx context.Context, userID uuid.UUID, startDate, endDate time.Time, projectID *uuid.UUID) ([]*store.TimeEntry, error) {
+	// Get classified events for the date range
+	classifiedStatus := store.StatusClassified
+	events, err := s.eventStore.List(ctx, userID, &startDate, &endDate, &classifiedStatus, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter events: must have project, not skipped, optionally filter by projectID
+	var projectEvents []store.CalendarEvent
+	for _, e := range events {
+		if e.ProjectID == nil || e.IsSkipped {
+			continue
+		}
+		if projectID != nil && *e.ProjectID != *projectID {
+			continue
+		}
+		projectEvents = append(projectEvents, *e)
+	}
+
+	if len(projectEvents) == 0 {
+		return nil, nil
+	}
+
+	// Group events by date and compute entries for each date
+	eventsByDate := make(map[string][]store.CalendarEvent)
+	for _, e := range projectEvents {
+		dateKey := e.StartTime.Format("2006-01-02")
+		eventsByDate[dateKey] = append(eventsByDate[dateKey], e)
+	}
+
+	var result []*store.TimeEntry
+	for dateStr, dayEvents := range eventsByDate {
+		date, _ := time.Parse("2006-01-02", dateStr)
+		startOfDay := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+
+		// Convert to analyzer events
+		analyzerEvents := make([]analyzer.Event, 0, len(dayEvents))
+		for _, e := range dayEvents {
+			isAllDay := isAllDayEvent(e.StartTime, e.EndTime)
+			analyzerEvents = append(analyzerEvents, analyzer.Event{
+				ID:        e.ID,
+				ProjectID: *e.ProjectID,
+				Title:     e.Title,
+				StartTime: e.StartTime,
+				EndTime:   e.EndTime,
+				IsAllDay:  isAllDay,
+			})
+		}
+
+		// Compute time entries for this day
+		computed := analyzer.Compute(startOfDay, analyzerEvents, s.roundingConfig)
+
+		// Convert to store.TimeEntry (ephemeral - no ID, not persisted)
+		for _, c := range computed {
+			details, _ := json.Marshal(c.CalculationDetails)
+			hours := c.Hours
+			entry := &store.TimeEntry{
+				// No ID - ephemeral entry
+				UserID:              userID,
+				ProjectID:           c.ProjectID,
+				Date:                c.Date,
+				Hours:               c.Hours,
+				Title:               &c.Title,
+				Description:         &c.Description,
+				Source:              "calendar",
+				HasUserEdits:        false,
+				ComputedHours:       &hours,
+				ComputedTitle:       &c.Title,
+				ComputedDescription: &c.Description,
+				CalculationDetails:  details,
+				ContributingEvents:  c.ContributingEvents,
+				CreatedAt:           time.Now().UTC(),
+				UpdatedAt:           time.Now().UTC(),
+			}
+			result = append(result, entry)
+		}
+	}
+
+	return result, nil
+}
+
+// MaterializeForRange ensures all computed time entries for a date range are
+// persisted in the database. This is called before invoice creation to ensure
+// entries exist with proper IDs for invoice line items.
+//
+// Returns the list of materialized entry IDs (both newly created and existing).
+func (s *Service) MaterializeForRange(ctx context.Context, userID uuid.UUID, projectID uuid.UUID, startDate, endDate time.Time) ([]uuid.UUID, error) {
+	// Get materialized entries from DB
+	materialized, err := s.timeEntryStore.List(ctx, userID, &startDate, &endDate, &projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build map of existing entries by date
+	existingByDate := make(map[string]*store.TimeEntry)
+	for _, e := range materialized {
+		key := e.Date.Format("2006-01-02")
+		existingByDate[key] = e
+	}
+
+	// Compute ephemeral entries
+	ephemeral, err := s.computeEphemeralForRange(ctx, userID, startDate, endDate, &projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	var resultIDs []uuid.UUID
+
+	// Materialize any ephemeral entries that don't exist
+	for _, eph := range ephemeral {
+		dateKey := eph.Date.Format("2006-01-02")
+		if existing, exists := existingByDate[dateKey]; exists {
+			// Entry already exists - use its ID
+			resultIDs = append(resultIDs, existing.ID)
+		} else {
+			// Need to materialize this ephemeral entry
+			entry, err := s.materializeEntry(ctx, userID, eph)
+			if err != nil {
+				return nil, err
+			}
+			resultIDs = append(resultIDs, entry.ID)
+		}
+	}
+
+	// Also include existing materialized entries that might not have computed values
+	// (e.g., user-created entries without events)
+	for _, existing := range materialized {
+		dateKey := existing.Date.Format("2006-01-02")
+		// Check if we already added this one
+		found := false
+		for _, eph := range ephemeral {
+			if eph.Date.Format("2006-01-02") == dateKey {
+				found = true
+				break
+			}
+		}
+		if !found {
+			resultIDs = append(resultIDs, existing.ID)
+		}
+	}
+
+	return resultIDs, nil
+}
+
+// materializeEntry creates a time entry in the database from computed values.
+// This is used when invoicing to ensure ephemeral entries have proper IDs.
+func (s *Service) materializeEntry(ctx context.Context, userID uuid.UUID, eph *store.TimeEntry) (*store.TimeEntry, error) {
+	title := ""
+	if eph.Title != nil {
+		title = *eph.Title
+	}
+	description := ""
+	if eph.Description != nil {
+		description = *eph.Description
+	}
+
+	// Use UpsertFromComputed to create the entry with proper computed fields
+	entry, err := s.timeEntryStore.UpsertFromComputed(
+		ctx,
+		userID,
+		eph.ProjectID,
+		eph.Date,
+		eph.Hours,
+		title,
+		description,
+		eph.CalculationDetails,
+		eph.ContributingEvents,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return entry, nil
+}
+
 // isAllDayEvent heuristically determines if an event is all-day.
 // All-day events typically span exactly 24 hours starting at midnight.
 func isAllDayEvent(start, end time.Time) bool {

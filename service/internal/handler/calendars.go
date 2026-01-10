@@ -15,6 +15,8 @@ import (
 	"github.com/michaelw/timesheet-app/service/internal/google"
 	"github.com/michaelw/timesheet-app/service/internal/store"
 	"github.com/michaelw/timesheet-app/service/internal/sync"
+	"github.com/michaelw/timesheet-app/service/internal/timeentry"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	gcal "google.golang.org/api/calendar/v3"
 )
 
@@ -28,6 +30,7 @@ type CalendarHandler struct {
 	syncJobs          *store.SyncJobStore
 	google            google.CalendarClient
 	classificationSvc *classification.Service
+	timeEntryService  *timeentry.Service
 	stateMu           gosync.RWMutex
 	stateStore        map[string]uuid.UUID // In production, use Redis
 }
@@ -42,6 +45,7 @@ func NewCalendarHandler(
 	syncJobs *store.SyncJobStore,
 	googleSvc google.CalendarClient,
 	classificationSvc *classification.Service,
+	timeEntryService *timeentry.Service,
 ) *CalendarHandler {
 	return &CalendarHandler{
 		connections:       connections,
@@ -52,6 +56,7 @@ func NewCalendarHandler(
 		syncJobs:          syncJobs,
 		google:            googleSvc,
 		classificationSvc: classificationSvc,
+		timeEntryService:  timeEntryService,
 		stateStore:        make(map[string]uuid.UUID),
 	}
 }
@@ -258,6 +263,22 @@ func (h *CalendarHandler) SyncCalendar(ctx context.Context, req api.SyncCalendar
 	selectedCalendars, err := h.calendars.ListSelectedByConnection(ctx, conn.ID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Check if all selected calendars need re-auth
+	// This catches cases where the needs_reauth flag was set by previous sync failures
+	allNeedReauth := len(selectedCalendars) > 0
+	for _, cal := range selectedCalendars {
+		if !cal.NeedsReauth {
+			allNeedReauth = false
+			break
+		}
+	}
+	if allNeedReauth {
+		return api.SyncCalendar401JSONResponse{
+			Code:    "reauth_required",
+			Message: "Google Calendar authorization has expired. Please reconnect your calendar.",
+		}, nil
 	}
 
 	// If no calendars selected, ensure we have at least primary
@@ -871,7 +892,7 @@ func (h *CalendarHandler) ListCalendarEvents(ctx context.Context, req api.ListCa
 // If not, it fetches events from Google synchronously and queues a background job
 // to expand water marks. This implements the "server owns sync complexity" principle.
 func (h *CalendarHandler) ensureEventsInRange(ctx context.Context, userID uuid.UUID, startDate, endDate time.Time) error {
-	// Get all connections for the user
+	// Get all connections for the user (without credentials for initial list)
 	connections, err := h.connections.List(ctx, userID)
 	if err != nil {
 		return err
@@ -889,6 +910,8 @@ func (h *CalendarHandler) ensureEventsInRange(ctx context.Context, userID uuid.U
 			continue
 		}
 
+		// Check if any calendars need sync before fetching credentials
+		var calendarsNeedingSync []*store.Calendar
 		for _, cal := range calendars {
 			// Skip calendars that need re-auth or have too many failures
 			if cal.NeedsReauth || cal.SyncFailureCount >= 3 {
@@ -897,15 +920,31 @@ func (h *CalendarHandler) ensureEventsInRange(ctx context.Context, userID uuid.U
 
 			// Check if requested range is outside water marks
 			decision := sync.DecideSync(cal.MinSyncedDate, cal.MaxSyncedDate, cal.LastSyncedAt, targetStart, targetEnd)
-			if !decision.NeedsSync {
-				continue
+			if decision.NeedsSync {
+				calendarsNeedingSync = append(calendarsNeedingSync, cal)
 			}
+		}
+
+		// Skip this connection if no calendars need sync
+		if len(calendarsNeedingSync) == 0 {
+			continue
+		}
+
+		// Fetch full connection with credentials (only if we need to sync)
+		fullConn, err := h.connections.GetByID(ctx, userID, conn.ID)
+		if err != nil {
+			log.Printf("[SYNC] failed to get credentials for connection %s: %v", conn.ID, err)
+			continue
+		}
+
+		for _, cal := range calendarsNeedingSync {
+			decision := sync.DecideSync(cal.MinSyncedDate, cal.MaxSyncedDate, cal.LastSyncedAt, targetStart, targetEnd)
 
 			log.Printf("[SYNC] on-demand fetch needed: calendar=%s reason=%s range=%s to %s",
 				cal.Name, decision.Reason, targetStart.Format("2006-01-02"), targetEnd.Format("2006-01-02"))
 
 			// Refresh token if needed
-			creds := &conn.Credentials
+			creds := &fullConn.Credentials
 			if time.Now().After(creds.Expiry.Add(-5 * time.Minute)) {
 				newCreds, err := h.google.RefreshToken(ctx, creds)
 				if err != nil {
@@ -914,11 +953,11 @@ func (h *CalendarHandler) ensureEventsInRange(ctx context.Context, userID uuid.U
 					continue
 				}
 				creds = newCreds
-				h.connections.UpdateCredentials(ctx, conn.ID, *creds)
+				h.connections.UpdateCredentials(ctx, fullConn.ID, *creds)
 			}
 
 			// Fetch events synchronously for the requested range
-			_, _, _, err = h.syncSingleCalendar(ctx, creds, conn, cal, userID, &targetStart, &targetEnd)
+			_, _, _, err = h.syncSingleCalendar(ctx, creds, fullConn, cal, userID, &targetStart, &targetEnd)
 			if err != nil {
 				log.Printf("[SYNC] on-demand fetch failed for calendar %s: %v", cal.Name, err)
 				h.calendars.IncrementSyncFailureCount(ctx, cal.ID)
@@ -928,19 +967,44 @@ func (h *CalendarHandler) ensureEventsInRange(ctx context.Context, userID uuid.U
 			// Reset failure count on success
 			h.calendars.ResetSyncFailureCount(ctx, cal.ID)
 
-			// Queue a background job to fill any gaps (if the range was "island" sync)
-			// The job worker will coalesce this with other pending jobs
-			if h.syncJobs != nil && len(decision.MissingWeeks) > 0 {
+			// Queue a background job to fill any gaps (if there are more missing weeks beyond what we just fetched)
+			// The job covers the full range of missing weeks to fill gaps between the "island" and existing water marks
+			if h.syncJobs != nil && len(decision.MissingWeeks) > 1 {
+				// MissingWeeks contains week start dates (Mondays)
+				// Job range: first missing week to end of last missing week
+				jobMinDate := decision.MissingWeeks[0]
+				jobMaxDate := decision.MissingWeeks[len(decision.MissingWeeks)-1].AddDate(0, 0, 6) // End of last week (Sunday)
+
+				log.Printf("[SYNC] queuing background job to fill gap: calendar=%s range=%s to %s (%d weeks)",
+					cal.Name, jobMinDate.Format("2006-01-02"), jobMaxDate.Format("2006-01-02"), len(decision.MissingWeeks))
+
 				job := &store.SyncJob{
 					CalendarID:    cal.ID,
 					JobType:       store.SyncJobTypeExpandWatermarks,
-					TargetMinDate: targetStart,
-					TargetMaxDate: targetEnd,
+					TargetMinDate: jobMinDate,
+					TargetMaxDate: jobMaxDate,
 					Priority:      10, // High priority for user-initiated
 				}
 				if _, err := h.syncJobs.Create(ctx, job); err != nil {
 					log.Printf("[SYNC] failed to queue background job for calendar %s: %v", cal.Name, err)
 				}
+			}
+		}
+	}
+
+	// Auto-apply classification rules to newly synced events in the requested range
+	// This ensures events fetched by on-demand sync get classified like regular sync
+	if h.classificationSvc != nil {
+		projects, err := h.projects.List(ctx, userID, false)
+		if err != nil {
+			log.Printf("[SYNC] on-demand: failed to fetch projects for classification: %v", err)
+		} else if len(projects) > 0 {
+			targets := projectsToTargetsWithNames(projects)
+			result, err := h.classificationSvc.ApplyRules(ctx, userID, targets, &startDate, &endDate, false)
+			if err != nil {
+				log.Printf("[SYNC] on-demand: failed to apply classification rules: %v", err)
+			} else if len(result.Classified) > 0 {
+				log.Printf("[SYNC] on-demand: auto_classified=%d events", len(result.Classified))
 			}
 		}
 	}
@@ -995,22 +1059,41 @@ func (h *CalendarHandler) ClassifyCalendarEvent(ctx context.Context, req api.Cla
 		Event: calendarEventToAPI(updatedEvent),
 	}
 
-	// Recalculate time entries for this event's date
-	// This uses the analyzer to properly compute hours with overlap handling and rounding
-	if err := h.classificationSvc.RecalculateTimeEntriesForEvent(ctx, userID, updatedEvent); err != nil {
-		// Log but don't fail - classification succeeded
-		// In production, we might want to log this error
-	}
-
-	// If classified to a project (not skipped), fetch the updated time entry
+	// With ephemeral time entries, we don't reactively create/update entries.
+	// Instead, compute the current entry value for this project/date.
 	if !isSkip && projectID != nil {
 		eventDate := time.Date(event.StartTime.Year(), event.StartTime.Month(), event.StartTime.Day(), 0, 0, 0, 0, time.UTC)
+		// First check if there's a materialized entry
 		entry, err := h.entries.GetByProjectAndDate(ctx, userID, *projectID, eventDate)
 		if err == nil {
+			// Materialized entry exists - compute fresh values and update computed fields
+			computed, _ := h.timeEntryService.ComputeForProjectAndDate(ctx, userID, *projectID, eventDate)
+			if computed != nil {
+				entry.ComputedHours = &computed.Hours
+				entry.ComputedTitle = &computed.Title
+				entry.ComputedDescription = &computed.Description
+			}
 			apiEntry := timeEntryToAPI(entry)
 			response.TimeEntry = &apiEntry
+		} else {
+			// No materialized entry - compute ephemeral entry
+			computed, err := h.timeEntryService.ComputeForProjectAndDate(ctx, userID, *projectID, eventDate)
+			if err == nil && computed != nil {
+				hours32 := float32(computed.Hours)
+				apiEntry := api.TimeEntry{
+					ProjectId:           *projectID,
+					Date:                openapi_types.Date{Time: eventDate},
+					Hours:               hours32,
+					Title:               &computed.Title,
+					Description:         &computed.Description,
+					Source:              api.TimeEntrySourceCalendar,
+					ComputedHours:       &hours32,
+					ComputedTitle:       &computed.Title,
+					ComputedDescription: &computed.Description,
+				}
+				response.TimeEntry = &apiEntry
+			}
 		}
-		// If entry not found (unlikely after recalculation), just omit from response
 	}
 
 	return response, nil
@@ -1084,19 +1167,14 @@ func (h *CalendarHandler) BulkClassifyEvents(ctx context.Context, req api.BulkCl
 		}
 	}
 
-	// Recalculate time entries for all affected dates
-	// This uses the analyzer to properly compute hours with overlap handling and rounding
-	timeEntriesUpdated := 0
-	for date := range affectedDates {
-		if err := h.classificationSvc.RecalculateTimeEntries(ctx, userID, date); err == nil {
-			timeEntriesUpdated++
-		}
-	}
+	// With ephemeral time entries, we don't reactively create/update entries.
+	// Time entries are computed on-demand when ListTimeEntries is called.
+	// The affectedDates tracking is no longer needed for time entry creation.
 
 	return api.BulkClassifyEvents200JSONResponse{
-		ClassifiedCount:    classifiedCount,
-		SkippedCount:       skippedCount,
-		TimeEntriesCreated: &timeEntriesUpdated,
+		ClassifiedCount: classifiedCount,
+		SkippedCount:    skippedCount,
+		// TimeEntriesCreated is no longer relevant with ephemeral model
 	}, nil
 }
 
