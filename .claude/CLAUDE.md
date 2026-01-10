@@ -34,3 +34,14 @@ const hoveredEvent = $derived(events.find(e => e.id === hoveredEventId) ?? null)
 ```
 
 See `docs/ui-coding-guidelines.md` for full guidelines.
+
+## Database Migrations
+
+Migrations are defined **only** in Go code at `service/internal/database/database.go`. The service runs migrations automatically on startup.
+
+**To add a new migration:**
+1. Add a new entry to the `migrations` slice in `database.go`
+2. Use the next sequential version number
+3. Write idempotent SQL (use `IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`, etc.)
+
+**Do NOT create separate SQL files** - there is no `migrations/` directory. All migration SQL lives in the Go code.

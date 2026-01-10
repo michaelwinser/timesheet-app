@@ -1,0 +1,143 @@
+                                                                                
+▗ ▗   ▖ ▖  Claude Code v2.1.3                                                   
+           Opus 4.5 · Claude Max                                                
+  ▘▘ ▝▝    ~/claude/projects/timesheet-app                                      
+                                                                                
+❯ I'd like to work on Issue 64. I believe I have a path forward. I'll share     
+  my thinking here and then we can scope out the work.                          
+                                                                                
+⏺ Let me fetch the details of Issue 64 first.                                   
+                                                                                
+⏺ Bash(gh issue view 64 --json title,body,labels,state)                         
+  ⎿ {                                                                           
+      "body": "Several scenarios at work here:\n\n- Reclassifying an event:     
+     a new time entry is created but the old time entry is left behind\n- D     
+    … +10 lines (ctrl+o to expand)                                              
+                                                                                
+                                                                                
+                                                                                
+⏺ Got it. Issue 64 is about time entries becoming stale when events change:     
+                                                                                
+  Problem scenarios:                                                            
+  1. Reclassifying an event - creates a new time entry but leaves the old one   
+  orphaned                                                                      
+  2. Deleting a calendar - events disappear but time entries remain             
+                                                                                
+  Expected behavior (per PRD):                                                  
+  - Time entries are derived from events                                        
+  - Recalculate time entries when events change                                 
+  - Delete orphaned time entries that have no user modifications                
+  - Flag time entries with manual state that conflicts with event changes       
+                                                                                
+  Go ahead and share your thinking on the approach.                             
+                                                                                
+❯ I want to anchor on user scenarios before going into the mechanics of how     
+  it works.                                                                     
+  The most common scenario is that the user reviews a week/day, sees the        
+  automatically generated time entries for each day, makes adjustments to       
+  event classification until it looks right.                                    
+  A slightly less common scenario is that the user reviews a week/day, sees     
+  the automatically generated time entries for each day and overrides some      
+  of the automatically generated time entries until it looks right.             
+  Sometime later the user creates an invoice and may make changes to time       
+  entries either by editing or by choosing a different summarization option     
+  for the invoice.                                                              
+                                                                                
+  That's the relatively simple but important base. Now onto what happens to     
+  make time entries "stale."                                                    
+                                                                                
+  The following scenarios are when a time entry *could* become stale:           
+  - The calendar changes. Although changes to the calendar in the past are      
+  rare, it does happen. Sometimes this is intentional, the user is "trueing     
+  up" their calendar to reflect the work explicitly so that the timesheet       
+  is accurate. Sometimes this is unintentional. The organizer of a meeting      
+  deletes the entire meeting series and the past record of the event goes       
+  away. This is really annoying and can cause the user to "lose" billable       
+  time.                                                                         
+  - A calendar is removed. All the events from that calendar go away.           
+  - Manual classification changes. The user manually edits an event to          
+  change its classification. This is probably the most common case. It has      
+  the advantage of being obvious to the user. They made the change, they        
+  can see (and we can highlight) the impact on the time entry.                  
+  - Automatic classification changes. Whether its via rules updates or          
+  asking an LLM to reclassify events via the MCP interface, it's possible       
+  for many events to change across a large span of time.                        
+                                                                                
+  So what does stale mean? In my mind, stale is when what we would compute      
+  automatically differs from what the user thinks is the current state.         
+  Yes, that's a bit vague. I think a time entry is stale when what the user     
+  has explicitly or implicitly approved would change.                           
+                                                                                
+  What will the user do about it?                                               
+  If a time entry has been invoiced then it's not the time entry that is        
+  stale, it's the invoice. An invoice is stale only if the hours would          
+  change significantly. The user has implicitly accepted any titles and         
+  descriptions in the invoice when it is created.                               
+  If a time entry has not yet been invoiced but the user has not made any       
+  changes to it, then it is not stale. Even if the user has viewed it.          
+  While user might be a bit surprised if a time entry's hours changed a         
+  lot, the app makes it very easy to review and understand any given day.       
+  The hard case is if the user has edited the time entry and the computed       
+  values have changed. We could snapshot the computed values at the time of     
+  the user edit and then compare them to the newly generated values. This       
+  is probably the most accurate way to determine that it is stale but it        
+  feels complicated. I would like to keep it simple. I think if we limit        
+  the scope of this to just the hours we'll be fine. A time entry is stale      
+  if the user hours are different from the computed hours AND the computed      
+  hours are different from the computed hours when the user hours were          
+  input.                                                                        
+                                                                                
+  Edge cases and questions:                                                     
+  The user deletes a computed time entry instead of zeroing it out. This,       
+  ironically, is actually creating a time entry with a user hours of 0 so       
+  that subsequent queries don't recreate it.                                    
+                                                                                
+  Cascading deletes of calendars. Do allow events to be deleted if they are     
+  referenced by a time entry? My sense is that we do. Otherwise adding the      
+  calendar back will create even messier edge cases.                            
+                                                                                
+  I have deliberately avoided implementation aspects like whether a time        
+  entry is ephemeral until materialized through user input or invoicing.        
+  These should largely be implementation details behind the API. The API        
+  client asks for the time entries on a particulate date and gets back time     
+  entries. The client may then (or not) update the user values of time          
+  entries.                                                                      
+                                                                                
+⏺ This is a thoughtful breakdown. Let me engage with a few aspects:             
+                                                                                
+  The staleness formula is clear and scoped appropriately. Focusing on hours    
+  avoids the complexity of diffing titles/descriptions. The formula:            
+                                                                                
+  stale if user_hours ≠ computed_hours AND computed_hours ≠                     
+  snapshot_computed_hours                                                       
+                                                                                
+  This means we need to store snapshot_computed_hours when the user sets        
+  user_hours. That's a small addition to the data model and captures intent     
+  well.                                                                         
+                                                                                
+  The "delete = user_hours of 0" pattern is elegant but worth being explicit    
+  about. If a user deletes a 2-hour entry and later the computed hours become 3,
+   that's stale by your formula—which feels correct. The user explicitly        
+  rejected those hours.                                                         
+                                                                                
+  Questions/pushback:                                                           
+                                                                                
+  1. Invoice staleness threshold — You said "only if hours change               
+  significantly." Is this a hard threshold (e.g., ±5 minutes ignored) or just   
+  conceptual? Rounding noise could create false positives.                      
+  2. What triggers snapshotting? Is it specifically when user_hours is set, or  
+  any user edit to the time entry (e.g., changing the description)? Your formula
+   only references hours, so I'd assume only when user_hours is modified.       
+  3. You've defined staleness but not resolution. Once flagged, what can the    
+  user do? Accept new computed values (clear the override)? Keep their override 
+  (acknowledge and dismiss the flag)? This affects whether we need additional   
+  state like acknowledged_at.                                                   
+  4. Uninvoiced, unedited entries "not stale" — I agree. But to be clear: these 
+  entries get silently recomputed without any flag, correct? The user just sees 
+  updated values next time they look.                                           
+                                                                                
+  Do you want to nail down the resolution UX before scoping implementation, or  
+  treat that as a follow-on?                                                    
+                                                                                
+✻ Worked for 32s                                                                
+
