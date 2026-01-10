@@ -307,12 +307,26 @@
 		})
 	);
 
+	// Get the calendar date for an event, handling all-day events correctly
+	// All-day events are stored as midnight UTC but should be interpreted as the calendar date
+	function getEventCalendarDate(startTime: string): Date {
+		// All-day events from Google Calendar are midnight UTC (e.g., "2025-10-27T00:00:00Z")
+		// These should be interpreted as "on this calendar date" without timezone conversion
+		if (startTime.endsWith('T00:00:00Z') || startTime.endsWith('T00:00:00.000Z')) {
+			// Extract just the date part and create a local date
+			const datePart = startTime.slice(0, 10); // "2025-10-27"
+			return new Date(datePart + 'T00:00:00'); // Local midnight
+		}
+		// For regular events, use local timezone conversion
+		return new Date(startTime);
+	}
+
 	// Weekend events (for warning when in week mode)
 	// Uses filteredCalendarEvents so count matches what would be displayed in full-week view
 	const weekendEvents = $derived.by(() => {
 		if (scopeMode !== 'week') return [];
 		return filteredCalendarEvents.filter(e => {
-			const eventDate = new Date(e.start_time);
+			const eventDate = getEventCalendarDate(e.start_time);
 			const day = eventDate.getDay();
 			return day === 0 || day === 6; // Sunday or Saturday
 		});
@@ -358,8 +372,8 @@
 	const eventsByDate = $derived.by(() => {
 		const byDate: Record<string, CalendarEvent[]> = {};
 		for (const event of filteredCalendarEvents) {
-			// Parse the event time and use local date to match formatDate()
-			const eventDate = new Date(event.start_time);
+			// Use getEventCalendarDate to handle all-day events correctly
+			const eventDate = getEventCalendarDate(event.start_time);
 			const dateStr = formatDate(eventDate);
 			if (!byDate[dateStr]) {
 				byDate[dateStr] = [];
