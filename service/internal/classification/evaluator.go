@@ -130,7 +130,8 @@ func evaluateCondition(cond *ConditionNode, props *EventProperties) bool {
 		return containsWordIgnoreCase(props.CalendarName, cond.Value)
 
 	case "text":
-		// Text search across title, description, and attendees (word boundary)
+		// Text search across title, description, and attendees
+		// Use word boundary for title/description, substring for attendees (emails)
 		if containsWordIgnoreCase(props.Title, cond.Value) {
 			return true
 		}
@@ -138,7 +139,7 @@ func evaluateCondition(cond *ConditionNode, props *EventProperties) bool {
 			return true
 		}
 		for _, attendee := range props.Attendees {
-			if containsWordIgnoreCase(attendee, cond.Value) {
+			if containsIgnoreCase(attendee, cond.Value) {
 				return true
 			}
 		}
