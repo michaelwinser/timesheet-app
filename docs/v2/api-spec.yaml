@@ -221,6 +221,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - short code already in use
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /api/projects/{id}:
     get:
@@ -296,6 +302,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Project not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Conflict - short code already in use
           content:
             application/json:
               schema:

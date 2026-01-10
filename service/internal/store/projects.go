@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,8 +13,9 @@ import (
 )
 
 var (
-	ErrProjectNotFound = errors.New("project not found")
-	ErrProjectHasEntries = errors.New("project has time entries")
+	ErrProjectNotFound       = errors.New("project not found")
+	ErrProjectHasEntries     = errors.New("project has time entries")
+	ErrDuplicateShortCode    = errors.New("short code already in use")
 )
 
 // Project represents a stored project
@@ -72,6 +74,9 @@ func (s *ProjectStore) Create(ctx context.Context, userID uuid.UUID, name string
 		project.DoesNotAccumulateHours, project.CreatedAt, project.UpdatedAt)
 
 	if err != nil {
+		if isShortCodeDuplicateError(err) {
+			return nil, ErrDuplicateShortCode
+		}
 		return nil, err
 	}
 
@@ -180,6 +185,9 @@ func (s *ProjectStore) Update(ctx context.Context, userID, projectID uuid.UUID, 
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrProjectNotFound
 		}
+		if isShortCodeDuplicateError(err) {
+			return nil, ErrDuplicateShortCode
+		}
 		return nil, err
 	}
 
@@ -214,4 +222,15 @@ func (s *ProjectStore) Delete(ctx context.Context, userID, projectID uuid.UUID) 
 	}
 
 	return nil
+}
+
+// isShortCodeDuplicateError checks if the error is a unique constraint violation on short_code
+func isShortCodeDuplicateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	// Check for PostgreSQL unique violation (23505) on the short_code index
+	return strings.Contains(errStr, "idx_projects_user_short_code_unique") ||
+		(strings.Contains(errStr, "23505") && strings.Contains(errStr, "short_code"))
 }

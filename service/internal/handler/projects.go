@@ -85,6 +85,12 @@ func (h *ProjectHandler) CreateProject(ctx context.Context, req api.CreateProjec
 
 	project, err := h.projects.Create(ctx, userID, req.Body.Name, req.Body.ShortCode, req.Body.Client, color, isBillable, isHiddenByDefault, doesNotAccumulateHours)
 	if err != nil {
+		if errors.Is(err, store.ErrDuplicateShortCode) {
+			return api.CreateProject409JSONResponse{
+				Code:    "duplicate_short_code",
+				Message: "A project with this short code already exists",
+			}, nil
+		}
 		return nil, err
 	}
 
@@ -173,6 +179,12 @@ func (h *ProjectHandler) UpdateProject(ctx context.Context, req api.UpdateProjec
 			return api.UpdateProject404JSONResponse{
 				Code:    "not_found",
 				Message: "Project not found",
+			}, nil
+		}
+		if errors.Is(err, store.ErrDuplicateShortCode) {
+			return api.UpdateProject409JSONResponse{
+				Code:    "duplicate_short_code",
+				Message: "A project with this short code already exists",
 			}, nil
 		}
 		return nil, err

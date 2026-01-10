@@ -4291,6 +4291,15 @@ func (response CreateProject401JSONResponse) VisitCreateProjectResponse(w http.R
 	return json.NewEncoder(w).Encode(response)
 }
 
+type CreateProject409JSONResponse Error
+
+func (response CreateProject409JSONResponse) VisitCreateProjectResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
 type DeleteProjectRequestObject struct {
 	Id openapi_types.UUID `json:"id"`
 }
@@ -4410,6 +4419,15 @@ type UpdateProject404JSONResponse Error
 func (response UpdateProject404JSONResponse) VisitUpdateProjectResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateProject409JSONResponse Error
+
+func (response UpdateProject409JSONResponse) VisitUpdateProjectResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
 
 	return json.NewEncoder(w).Encode(response)
 }
