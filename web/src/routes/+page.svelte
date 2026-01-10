@@ -534,18 +534,12 @@
 	async function loadData() {
 		loading = true;
 		try {
-			const [projectsData, entriesData, eventsData, connectionsData] = await Promise.all([
+			// Load projects and connections in parallel (don't depend on sync)
+			const [projectsData, connectionsData] = await Promise.all([
 				api.listProjects(),
-				api.listTimeEntries({
-					start_date: formatDate(startDate),
-					end_date: formatDate(endDate)
-				}),
-				api.listCalendarEvents({
-					start_date: formatDate(startDate),
-					end_date: formatDate(endDate)
-				}),
 				api.listCalendarConnections()
 			]);
+
 			// Initialize visible projects BEFORE setting events to ensure correct filtering
 			const initialVisible = new Set<string>();
 			for (const p of projectsData) {
@@ -554,12 +548,23 @@
 				}
 			}
 			visibleProjectIds = initialVisible;
-
-			// Now set the data - filtering will use the correct visibility
 			projects = projectsData;
-			entries = entriesData;
-			calendarEvents = eventsData;
 			calendarConnections = connectionsData;
+
+			// Load calendar events first - this may trigger on-demand sync and classification
+			// for dates outside water marks. Must complete before loading time entries.
+			const eventsData = await api.listCalendarEvents({
+				start_date: formatDate(startDate),
+				end_date: formatDate(endDate)
+			});
+			calendarEvents = eventsData;
+
+			// Now load time entries - computed from classified events
+			const entriesData = await api.listTimeEntries({
+				start_date: formatDate(startDate),
+				end_date: formatDate(endDate)
+			});
+			entries = entriesData;
 
 			// Trigger scroll after data loads (for initial load and date range changes)
 			scrollTrigger++;
