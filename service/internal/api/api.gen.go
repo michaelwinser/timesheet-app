@@ -835,8 +835,13 @@ type TimeEntryCreate struct {
 
 // TimeEntryUpdate defines model for TimeEntryUpdate.
 type TimeEntryUpdate struct {
-	Description *string  `json:"description,omitempty"`
-	Hours       *float32 `json:"hours,omitempty"`
+	// Date Required when updating an ephemeral entry (to materialize it)
+	Date        *openapi_types.Date `json:"date,omitempty"`
+	Description *string             `json:"description,omitempty"`
+	Hours       *float32            `json:"hours,omitempty"`
+
+	// ProjectId Required when updating an ephemeral entry (to materialize it)
+	ProjectId *openapi_types.UUID `json:"project_id,omitempty"`
 }
 
 // UpdateCalendarSourcesRequest defines model for UpdateCalendarSourcesRequest.

@@ -114,6 +114,8 @@ export interface TimeEntryCreate {
 export interface TimeEntryUpdate {
 	hours?: number;
 	description?: string;
+	project_id?: string;
+	date?: string;
 }
 
 export interface CalendarConnection {

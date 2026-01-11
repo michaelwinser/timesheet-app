@@ -370,12 +370,15 @@ func (s *Service) computeEphemeralForRange(ctx context.Context, userID uuid.UUID
 		// Compute time entries for this day
 		computed := analyzer.Compute(startOfDay, analyzerEvents, s.roundingConfig)
 
-		// Convert to store.TimeEntry (ephemeral - no ID, not persisted)
+		// Convert to store.TimeEntry (ephemeral - deterministic ID, not persisted)
 		for _, c := range computed {
 			details, _ := json.Marshal(c.CalculationDetails)
 			hours := c.Hours
+			// Generate a deterministic ID for ephemeral entries using UUID v5
+			// This ensures the same (user, project, date) always gets the same ID
+			ephemeralID := generateEphemeralID(userID, c.ProjectID, c.Date)
 			entry := &store.TimeEntry{
-				// No ID - ephemeral entry
+				ID:                  ephemeralID,
 				UserID:              userID,
 				ProjectID:           c.ProjectID,
 				Date:                c.Date,
@@ -504,4 +507,17 @@ func isAllDayEvent(start, end time.Time) bool {
 		}
 	}
 	return false
+}
+
+// Namespace UUID for generating ephemeral time entry IDs.
+// This is a fixed UUID used as the namespace for UUID v5 generation.
+var ephemeralNamespace = uuid.MustParse("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
+// generateEphemeralID creates a deterministic UUID for ephemeral time entries.
+// The same (userID, projectID, date) will always produce the same ID.
+// This allows the frontend to work with ephemeral entries consistently.
+func generateEphemeralID(userID, projectID uuid.UUID, date time.Time) uuid.UUID {
+	// Create a unique name from the combination of user, project, and date
+	name := userID.String() + "|" + projectID.String() + "|" + date.Format("2006-01-02")
+	return uuid.NewSHA1(ephemeralNamespace, []byte(name))
 }

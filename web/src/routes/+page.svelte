@@ -14,8 +14,9 @@
 		EventPopup,
 		GoToDateModal,
 		DateNavigator,
-		ProjectSidebar,
-		ReclassifyWeekModal
+		ReclassifyWeekModal,
+		TimeEntryBarChart,
+		TimeEntryPopup
 	} from '$lib/components/widgets';
 	import { api } from '$lib/api/client';
 	import type { Project, TimeEntry, CalendarEvent, CalendarConnection, SyncResult, ClassifiedEvent } from '$lib/api/types';
@@ -35,7 +36,6 @@
 	type ScopeMode = 'day' | 'week' | 'full-week';
 	// Display: how to render events
 	type DisplayMode = 'calendar' | 'list';
-
 	// State
 	let projects = $state<Project[]>([]);
 	let entries = $state<TimeEntry[]>([]);
@@ -45,6 +45,7 @@
 	let currentDate = $state(getDateFromUrl());
 	let scopeMode = $state<ScopeMode>(getScopeModeFromUrl());
 	let displayMode = $state<DisplayMode>(getDisplayModeFromUrl());
+	let entryDisplayMode = $state<'list' | 'graph'>('graph');
 	let showClassificationPanel = $state(true);
 	let classifyingId = $state<string | null>(null);
 	let syncing = $state(false);
@@ -77,6 +78,13 @@
 
 	// Project visibility filtering
 	let visibleProjectIds = $state<Set<string>>(new Set());
+
+	// Time entry popup state - store ID only, derive entry to stay in sync
+	let selectedEntryId = $state<string | null>(null);
+	let selectedEntryAnchor = $state<{ x: number; y: number } | null>(null);
+	const selectedEntry = $derived(
+		selectedEntryId ? entries.find((e) => e.id === selectedEntryId) ?? null : null
+	);
 
 	// Navigation debounce delay (ms) - prevents rapid API calls during quick navigation
 	const NAVIGATION_DEBOUNCE_MS = 250;
@@ -292,6 +300,7 @@
 		}
 		return byDate;
 	});
+
 
 	// Pending events (for the count)
 	const pendingEvents = $derived(calendarEvents.filter(e => e.classification_status === 'pending'));
@@ -570,7 +579,11 @@
 				start_date: formatDate(startDate),
 				end_date: formatDate(endDate)
 			});
-			entries = entriesData;
+			// Attach project objects to entries
+			entries = entriesData.map(e => ({
+				...e,
+				project: projectsData.find(p => p.id === e.project_id)
+			}));
 
 			// Trigger scroll after data loads (for initial load and date range changes)
 			scrollTrigger++;
@@ -603,19 +616,16 @@
 			calendarEvents = calendarEvents.map((e) =>
 				e.id === eventId ? result.event : e
 			);
-			// Add or update time entry if returned
-			if (result.time_entry) {
-				result.time_entry.project = projects.find((p) => p.id === result.time_entry?.project_id);
-				// Check if entry for same date/project exists
-				const existingIdx = entries.findIndex(
-					(e) => e.project_id === result.time_entry?.project_id && e.date === result.time_entry?.date
-				);
-				if (existingIdx >= 0) {
-					entries = entries.map((e, i) => (i === existingIdx ? result.time_entry! : e));
-				} else {
-					entries = [...entries, result.time_entry];
-				}
-			}
+			// Reload time entries since classification affects computed hours
+			// (both the new project's entry and potentially the old project's entry)
+			const entriesData = await api.listTimeEntries({
+				start_date: formatDate(startDate),
+				end_date: formatDate(endDate)
+			});
+			entries = entriesData.map(e => ({
+				...e,
+				project: projects.find(p => p.id === e.project_id)
+			}));
 		} catch (e) {
 			console.error('Failed to classify event:', e);
 		} finally {
@@ -631,6 +641,15 @@
 			calendarEvents = calendarEvents.map((e) =>
 				e.id === eventId ? result.event : e
 			);
+			// Reload time entries since skipping affects computed hours
+			const entriesData = await api.listTimeEntries({
+				start_date: formatDate(startDate),
+				end_date: formatDate(endDate)
+			});
+			entries = entriesData.map(e => ({
+				...e,
+				project: projects.find(p => p.id === e.project_id)
+			}));
 		} catch (e) {
 			console.error('Failed to skip event:', e);
 		} finally {
@@ -650,18 +669,15 @@
 			calendarEvents = calendarEvents.map((e) =>
 				e.id === eventId ? result.event : e
 			);
-			// Add or update time entry if returned
-			if (result.time_entry) {
-				result.time_entry.project = projects.find((p) => p.id === result.time_entry?.project_id);
-				const existingIdx = entries.findIndex(
-					(e) => e.project_id === result.time_entry?.project_id && e.date === result.time_entry?.date
-				);
-				if (existingIdx >= 0) {
-					entries = entries.map((e, i) => (i === existingIdx ? result.time_entry! : e));
-				} else {
-					entries = [...entries, result.time_entry];
-				}
-			}
+			// Reload time entries since unskipping affects computed hours
+			const entriesData = await api.listTimeEntries({
+				start_date: formatDate(startDate),
+				end_date: formatDate(endDate)
+			});
+			entries = entriesData.map(e => ({
+				...e,
+				project: projects.find(p => p.id === e.project_id)
+			}));
 		} catch (e) {
 			console.error('Failed to unskip event:', e);
 		} finally {
@@ -838,11 +854,24 @@
 		}
 	}
 
-	async function handleUpdateEntry(entryId: string, data: { hours?: number; description?: string }) {
+	async function handleUpdateEntry(entryId: string, data: { hours?: number; description?: string; project_id?: string; date?: string }) {
 		try {
 			const updated = await api.updateTimeEntry(entryId, data);
-			updated.project = entries.find((e) => e.id === entryId)?.project;
-			entries = entries.map((e) => (e.id === entryId ? updated : e));
+			// Find the original entry to preserve project data
+			const original = entries.find((e) => e.id === entryId);
+			if (original) {
+				updated.project = original.project;
+			}
+			// After materialization, the returned entry may have a new ID.
+			// Match by (project_id, date) to correctly replace ephemeral entries.
+			entries = entries.map((e) => {
+				if (e.id === entryId || (e.project_id === updated.project_id && e.date === updated.date)) {
+					return updated;
+				}
+				return e;
+			});
+			// Close the popup since the entry ID may have changed
+			closeEntryPopup();
 		} catch (e) {
 			console.error('Failed to update entry:', e);
 		}
@@ -865,6 +894,17 @@
 		} catch (e) {
 			console.error('Failed to refresh entry:', e);
 		}
+	}
+
+	// Time entry popup handlers
+	function openEntryPopup(entryId: string, event: MouseEvent) {
+		selectedEntryId = entryId;
+		selectedEntryAnchor = { x: event.clientX, y: event.clientY };
+	}
+
+	function closeEntryPopup() {
+		selectedEntryId = null;
+		selectedEntryAnchor = null;
 	}
 
 	// Check if a connection is stale (last synced > 24 hours ago or never synced)
@@ -1531,78 +1571,77 @@
 					</div>
 				{/if}
 			{/if}
-	</div>
 
-	<div class="flex flex-col lg:flex-row gap-6">
-		<!-- Time entries view -->
-		<div class="flex-1">
-			{#if loading}
-				<div class="flex items-center justify-center py-12">
-					<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+			<!-- Time Entries Section -->
+			<div class="mt-4 pt-3 border-t border-gray-200 dark:border-zinc-700">
+				<!-- Header with mode toggle -->
+				<div class="flex items-center mb-2">
+					<div class="w-12 flex-shrink-0"></div>
+					<div class="flex-1 flex items-center justify-between">
+						<span class="text-sm font-medium text-gray-700 dark:text-gray-300">Time Entries</span>
+						<div class="flex items-center gap-1 bg-gray-100 dark:bg-zinc-700 rounded p-0.5">
+							<button
+								type="button"
+								class="p-1 rounded transition-colors {entryDisplayMode === 'graph' ? 'bg-white dark:bg-zinc-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-zinc-600'}"
+								onclick={() => entryDisplayMode = 'graph'}
+								title="Graph view"
+							>
+								<svg class="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+								</svg>
+							</button>
+							<button
+								type="button"
+								class="p-1 rounded transition-colors {entryDisplayMode === 'list' ? 'bg-white dark:bg-zinc-600 shadow-sm' : 'hover:bg-gray-200 dark:hover:bg-zinc-600'}"
+								onclick={() => entryDisplayMode = 'list'}
+								title="List view"
+							>
+								<svg class="w-4 h-4 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+								</svg>
+							</button>
+						</div>
+					</div>
 				</div>
-			{:else}
-				<!-- Day columns -->
-				<div class="space-y-4">
-					{#each visibleDays as day}
-						{@const dateStr = formatDate(day)}
-						{@const dayEntries = entriesByDate[dateStr] || []}
-						{@const dayTotal = dayEntries.reduce((sum, e) => sum + e.hours, 0)}
-						{@const isToday = formatDate(new Date()) === dateStr}
 
-						<div class="bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg p-4 {isToday ? 'ring-2 ring-primary-500' : ''}">
-							<div class="flex items-center justify-between mb-3">
-								<div class="flex items-center gap-3">
-									<span class="font-medium text-gray-900 dark:text-white">
-										{scopeMode === 'day' ? 'Time Entries' : formatDayLabel(day)}
-									</span>
-									{#if dayTotal > 0}
-										<span class="text-sm text-gray-500 dark:text-gray-400">{dayTotal}h</span>
+				<!-- Graph view -->
+				{#if entryDisplayMode === 'graph'}
+					<div class="flex">
+						<div class="w-12 flex-shrink-0"></div>
+						<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
+							{#each visibleDays as day}
+								<TimeEntryBarChart
+									{entriesByDate}
+									date={day}
+									maxHours={8}
+									containerHeight={250}
+									onentryclick={openEntryPopup}
+									onaddclick={() => openAddModal(day)}
+								/>
+							{/each}
+						</div>
+					</div>
+				{:else}
+					<!-- List view -->
+					<div class="flex">
+						<div class="w-12 flex-shrink-0"></div>
+						<div class="flex-1 grid gap-2" style="grid-template-columns: repeat({visibleDays.length}, minmax(0, 1fr));">
+							{#each visibleDays as day}
+								<div class="space-y-1">
+									{#each entriesByDate[formatDate(day)] || [] as entry}
+										<TimeEntryCard {entry} {projects} onupdate={() => loadData()} />
+									{/each}
+									{#if (entriesByDate[formatDate(day)] || []).length === 0}
+										<p class="text-xs text-gray-400 dark:text-zinc-500 text-center py-2">No entries</p>
 									{/if}
 								</div>
-								<button
-									type="button"
-									class="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 text-sm font-medium"
-									onclick={() => openAddModal(day)}
-								>
-									+ Add
-								</button>
-							</div>
-
-							{#if dayEntries.length > 0}
-								<div class="space-y-2">
-									{#each dayEntries as entry (entry.id)}
-										<TimeEntryCard
-											{entry}
-											onupdate={(data) => handleUpdateEntry(entry.id, data)}
-											ondelete={() => handleDeleteEntry(entry.id)}
-											onrefresh={() => handleRefreshEntry(entry.id)}
-										/>
-									{/each}
-								</div>
-							{:else}
-								<p class="text-sm text-gray-400 dark:text-gray-500">No entries</p>
-							{/if}
+							{/each}
 						</div>
-					{/each}
-				</div>
-			{/if}
-		</div>
-
-		<!-- Sidebar with project totals -->
-		<div class="lg:w-72">
-			<ProjectSidebar
-				{scopeMode}
-				{totalHours}
-				{activeProjects}
-				{hiddenProjects}
-				{projectTotals}
-				{archivedTotals}
-				{visibleProjectIds}
-				{entries}
-				ontogglevisibility={toggleProjectVisibility}
-			/>
-		</div>
+					</div>
+				{/if}
+			</div>
 	</div>
+
 
 	<!-- Event hover popup -->
 	{#if hoveredEvent}
@@ -1615,6 +1654,18 @@
 			onunskip={handlePopupUnskip}
 			onmouseenter={handlePopupMouseEnter}
 			onmouseleave={handlePopupMouseLeave}
+		/>
+	{/if}
+
+	<!-- Time entry popup (graph view) -->
+	{#if selectedEntry && selectedEntryAnchor}
+		<TimeEntryPopup
+			entry={selectedEntry}
+			anchor={selectedEntryAnchor}
+			onupdate={(data) => handleUpdateEntry(selectedEntry.id, data)}
+			ondelete={() => handleDeleteEntry(selectedEntry.id)}
+			onrefresh={() => handleRefreshEntry(selectedEntry.id)}
+			onclose={closeEntryPopup}
 		/>
 	{/if}
 

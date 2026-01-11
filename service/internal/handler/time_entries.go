@@ -168,12 +168,28 @@ func (h *TimeEntryHandler) UpdateTimeEntry(ctx context.Context, req api.UpdateTi
 	existing, err := h.entries.GetByID(ctx, userID, req.Id)
 	if err != nil {
 		if errors.Is(err, store.ErrTimeEntryNotFound) {
-			return api.UpdateTimeEntry404JSONResponse{
-				Code:    "not_found",
-				Message: "Time entry not found",
-			}, nil
+			// Entry not found - check if this is an ephemeral entry that needs to be materialized
+			if req.Body.ProjectId != nil && req.Body.Date != nil {
+				// Materialize the ephemeral entry first
+				existing, err = h.materializeEphemeralEntry(ctx, userID, *req.Body.ProjectId, req.Body.Date.Time)
+				if err != nil {
+					return nil, err
+				}
+				if existing == nil {
+					return api.UpdateTimeEntry404JSONResponse{
+						Code:    "not_found",
+						Message: "No events found for this project and date",
+					}, nil
+				}
+			} else {
+				return api.UpdateTimeEntry404JSONResponse{
+					Code:    "not_found",
+					Message: "Time entry not found",
+				}, nil
+			}
+		} else {
+			return nil, err
 		}
-		return nil, err
 	}
 
 	// Refresh computed values before updating so snapshot captures fresh values
@@ -184,7 +200,7 @@ func (h *TimeEntryHandler) UpdateTimeEntry(ctx context.Context, req api.UpdateTi
 	}
 	if computed != nil {
 		// Update computed values in DB (non-blocking if fails)
-		_ = h.entries.RefreshComputedValues(ctx, userID, req.Id, computed.Hours)
+		_ = h.entries.RefreshComputedValues(ctx, userID, existing.ID, computed.Hours)
 	}
 
 	var hours *float64
@@ -193,7 +209,7 @@ func (h *TimeEntryHandler) UpdateTimeEntry(ctx context.Context, req api.UpdateTi
 		hours = &hVal
 	}
 
-	entry, err := h.entries.Update(ctx, userID, req.Id, hours, req.Body.Description)
+	entry, err := h.entries.Update(ctx, userID, existing.ID, hours, req.Body.Description)
 	if err != nil {
 		if errors.Is(err, store.ErrTimeEntryNotFound) {
 			return api.UpdateTimeEntry404JSONResponse{
@@ -315,6 +331,43 @@ func (h *TimeEntryHandler) RefreshTimeEntry(ctx context.Context, req api.Refresh
 	}
 
 	return api.RefreshTimeEntry200JSONResponse(timeEntryToAPI(refreshed)), nil
+}
+
+// materializeEphemeralEntry creates a time entry in the database for an ephemeral entry.
+// This is called when updating an ephemeral entry that doesn't exist in the DB yet.
+func (h *TimeEntryHandler) materializeEphemeralEntry(ctx context.Context, userID, projectID openapi_types.UUID, date time.Time) (*store.TimeEntry, error) {
+	// Compute fresh values from events
+	computed, err := h.timeEntryService.ComputeForProjectAndDate(ctx, userID, projectID, date)
+	if err != nil {
+		return nil, err
+	}
+	if computed == nil {
+		return nil, nil
+	}
+
+	// Marshal calculation details
+	detailsJSON, err := json.Marshal(computed.CalculationDetails)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the entry using UpsertFromComputed
+	entry, err := h.entries.UpsertFromComputed(
+		ctx,
+		userID,
+		projectID,
+		date,
+		computed.Hours,
+		computed.Title,
+		computed.Description,
+		detailsJSON,
+		computed.ContributingEvents,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return entry, nil
 }
 
 // computeStale determines if a time entry is stale based on the ephemeral model formula:

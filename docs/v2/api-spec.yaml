@@ -2410,6 +2410,14 @@ components:
           minimum: 0
         description:
           type: string
+        project_id:
+          type: string
+          format: uuid
+          description: Required when updating an ephemeral entry (to materialize it)
+        date:
+          type: string
+          format: date
+          description: Required when updating an ephemeral entry (to materialize it)
 
     # Common schemas
     Error:
