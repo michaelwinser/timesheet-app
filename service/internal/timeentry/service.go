@@ -56,10 +56,15 @@ func (s *Service) RecalculateForDate(ctx context.Context, userID uuid.UUID, date
 		return err
 	}
 
-	// Filter to only events that have a project assigned and are not skipped
+	// Filter to only events that have a project assigned, are not skipped,
+	// and the project accumulates hours
 	var projectEvents []store.CalendarEvent
 	for _, e := range events {
 		if e.ProjectID != nil && !e.IsSkipped && e.StartTime.Before(endOfDay) {
+			// Skip events from projects that don't accumulate hours
+			if e.Project != nil && e.Project.DoesNotAccumulateHours {
+				continue
+			}
 			projectEvents = append(projectEvents, *e)
 		}
 	}
@@ -325,10 +330,14 @@ func (s *Service) computeEphemeralForRange(ctx context.Context, userID uuid.UUID
 		return nil, err
 	}
 
-	// Filter events: must have project, not skipped, optionally filter by projectID
+	// Filter events: must have project, not skipped, project must accumulate hours
 	var projectEvents []store.CalendarEvent
 	for _, e := range events {
 		if e.ProjectID == nil || e.IsSkipped {
+			continue
+		}
+		// Skip events from projects that don't accumulate hours
+		if e.Project != nil && e.Project.DoesNotAccumulateHours {
 			continue
 		}
 		if projectID != nil && *e.ProjectID != *projectID {
