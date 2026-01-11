@@ -16,7 +16,8 @@
 		DateNavigator,
 		ReclassifyWeekModal,
 		TimeEntryBarChart,
-		TimeEntryPopup
+		TimeEntryPopup,
+		ProjectSummaryBar
 	} from '$lib/components/widgets';
 	import { api } from '$lib/api/client';
 	import type { Project, TimeEntry, CalendarEvent, CalendarConnection, SyncResult, ClassifiedEvent } from '$lib/api/types';
@@ -78,6 +79,10 @@
 
 	// Project visibility filtering
 	let visibleProjectIds = $state<Set<string>>(new Set());
+	let showHiddenProjects = $state(false);
+	let showArchivedProjects = $state(true);
+	let showSkippedEvents = $state(true);
+	let highlightedTarget = $state<string | null>(null);
 
 	// Time entry popup state - store ID only, derive entry to stay in sync
 	let selectedEntryId = $state<string | null>(null);
@@ -284,9 +289,13 @@
 		}
 	});
 
-	// Filter entries by visible projects
+	// Filter entries by visible projects and archived filter
 	const filteredEntries = $derived(
-		entries.filter((e) => visibleProjectIds.has(e.project_id))
+		entries.filter((e) => {
+			// Filter out archived project entries if showArchivedProjects is false
+			if (e.project?.is_archived && !showArchivedProjects) return false;
+			return visibleProjectIds.has(e.project_id);
+		})
 	);
 
 	// Group entries by date (filtered by visible projects)
@@ -308,12 +317,12 @@
 	// Events that need review (auto-classified with medium confidence)
 	const reviewEvents = $derived(calendarEvents.filter(e => e.needs_review === true));
 
-	// Filter calendar events by visible projects
-	// Show: pending events (need classification), skipped events, and events classified to visible projects
+	// Filter calendar events by visible projects and filter settings
+	// Show: pending events (need classification), skipped events (if enabled), and events classified to visible projects
 	const filteredCalendarEvents = $derived(
 		calendarEvents.filter(e => {
 			if (e.classification_status === 'pending') return true;
-			if (e.is_skipped) return true;
+			if (e.is_skipped) return showSkippedEvents;
 			if (e.project_id && visibleProjectIds.has(e.project_id)) return true;
 			return false;
 		})
@@ -515,12 +524,22 @@
 	// Calculate project totals (from filtered entries only)
 	const projectTotals = $derived.by(() => {
 		const totals: Record<string, { project: Project; hours: number }> = {};
-		for (const entry of filteredEntries) {
-			if (entry.project && !entry.project.does_not_accumulate_hours) {
+		for (const entry of entries) {
+			if (entry.project && !entry.project.is_archived && !entry.project.is_hidden_by_default) {
 				if (!totals[entry.project_id]) {
 					totals[entry.project_id] = { project: entry.project, hours: 0 };
 				}
-				totals[entry.project_id].hours += entry.hours;
+				if (!entry.project.does_not_accumulate_hours) {
+					totals[entry.project_id].hours += entry.hours;
+				}
+			}
+		}
+		// Also include projects with classified events (even if no time entries yet)
+		for (const event of calendarEvents) {
+			if (event.project && event.project_id && !event.project.is_archived && !event.project.is_hidden_by_default && event.classification_status === 'classified' && !event.is_skipped) {
+				if (!totals[event.project_id]) {
+					totals[event.project_id] = { project: event.project, hours: 0 };
+				}
 			}
 		}
 		return Object.values(totals).sort((a, b) => a.project.name.localeCompare(b.project.name));
@@ -539,6 +558,52 @@
 		}
 		return Object.values(totals).sort((a, b) => b.hours - a.hours);
 	});
+
+	// Totals for hidden project entries
+	const hiddenTotals = $derived.by(() => {
+		const totals: Record<string, { project: Project; hours: number }> = {};
+		for (const entry of entries) {
+			if (entry.project && entry.project.is_hidden_by_default && !entry.project.is_archived) {
+				if (!totals[entry.project_id]) {
+					totals[entry.project_id] = { project: entry.project, hours: 0 };
+				}
+				if (!entry.project.does_not_accumulate_hours) {
+					totals[entry.project_id].hours += entry.hours;
+				}
+			}
+		}
+		// Also include hidden projects with classified events
+		for (const event of calendarEvents) {
+			if (event.project && event.project_id && event.project.is_hidden_by_default && !event.project.is_archived && event.classification_status === 'classified' && !event.is_skipped) {
+				if (!totals[event.project_id]) {
+					totals[event.project_id] = { project: event.project, hours: 0 };
+				}
+			}
+		}
+		return Object.values(totals).sort((a, b) => b.hours - a.hours);
+	});
+
+	// Hours from skipped calendar events
+	const skippedHours = $derived(
+		calendarEvents
+			.filter(e => e.is_skipped)
+			.reduce((sum, e) => {
+				const start = new Date(e.start_time);
+				const end = new Date(e.end_time);
+				return sum + (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+			}, 0)
+	);
+
+	// Hours from unclassified events
+	const unclassifiedHours = $derived(
+		calendarEvents
+			.filter(e => e.classification_status === 'pending')
+			.reduce((sum, e) => {
+				const start = new Date(e.start_time);
+				const end = new Date(e.end_time);
+				return sum + (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+			}, 0)
+	);
 
 	const totalHours = $derived(
 		filteredEntries
@@ -602,6 +667,42 @@
 			newSet.add(projectId);
 		}
 		visibleProjectIds = newSet;
+	}
+
+	function toggleHiddenProjects() {
+		showHiddenProjects = !showHiddenProjects;
+		// When showing hidden projects, add them to visibleProjectIds
+		// When hiding, remove them
+		const newSet = new Set(visibleProjectIds);
+		for (const p of hiddenProjects) {
+			if (showHiddenProjects) {
+				newSet.add(p.id);
+			} else {
+				newSet.delete(p.id);
+			}
+		}
+		visibleProjectIds = newSet;
+	}
+
+	function toggleArchivedProjects() {
+		showArchivedProjects = !showArchivedProjects;
+	}
+
+	function toggleSkippedEvents() {
+		showSkippedEvents = !showSkippedEvents;
+	}
+
+	function handleSummaryHover(target: string | null) {
+		highlightedTarget = target;
+	}
+
+	// Helper to determine if an event should be dimmed
+	function shouldDimEvent(event: CalendarEvent): boolean {
+		if (!highlightedTarget) return false;
+		if (highlightedTarget === 'skipped') return !event.is_skipped;
+		if (highlightedTarget === 'hidden') return !event.project?.is_hidden_by_default;
+		if (highlightedTarget === 'archived') return !event.project?.is_archived;
+		return event.project_id !== highlightedTarget;
 	}
 
 	async function handleClassify(eventId: string, projectId: string) {
@@ -1186,32 +1287,23 @@
 	/>
 
 	<!-- Project Summary Bar -->
-	{@const unclassifiedHours = calendarEvents
-		.filter(e => e.classification_status === 'pending')
-		.reduce((sum, e) => {
-			const start = new Date(e.start_time);
-			const end = new Date(e.end_time);
-			return sum + (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-		}, 0)}
-	<div class="mb-4 flex items-center gap-3 px-3 py-2 bg-gray-100 dark:bg-zinc-800 rounded-lg overflow-x-auto">
-		{#each projectTotals as { project, hours }}
-			<div class="flex items-center gap-1.5 px-2 py-1 bg-white dark:bg-zinc-700 rounded-full text-sm whitespace-nowrap">
-				<span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: {project.color}"></span>
-				<span class="text-gray-700 dark:text-gray-300">{project.name}</span>
-				<span class="text-gray-500 dark:text-gray-400">({hours}h)</span>
-			</div>
-		{/each}
-		{#if unclassifiedHours > 0}
-			<div class="flex items-center gap-1.5 px-2 py-1 border border-dashed border-gray-300 dark:border-zinc-600 rounded-full text-sm whitespace-nowrap">
-				<span class="w-2.5 h-2.5 rounded-full flex-shrink-0 bg-gray-400 dark:bg-gray-500 opacity-50"></span>
-				<span class="text-gray-500 dark:text-gray-400">Unclassified</span>
-				<span class="text-gray-500 dark:text-gray-400">({Math.round(unclassifiedHours * 10) / 10}h)</span>
-			</div>
-		{/if}
-		<span class="ml-auto text-sm font-medium text-gray-600 dark:text-gray-300 whitespace-nowrap">
-			{totalHours + Math.round(unclassifiedHours * 10) / 10}h total
-		</span>
-	</div>
+	<ProjectSummaryBar
+		{projectTotals}
+		{hiddenTotals}
+		{archivedTotals}
+		{skippedHours}
+		{unclassifiedHours}
+		{totalHours}
+		{visibleProjectIds}
+		{showHiddenProjects}
+		{showArchivedProjects}
+		{showSkippedEvents}
+		ontogglevisibility={toggleProjectVisibility}
+		ontogglehidden={toggleHiddenProjects}
+		ontogglearchived={toggleArchivedProjects}
+		ontoggleskipped={toggleSkippedEvents}
+		onhover={handleSummaryHover}
+	/>
 
 	<!-- Calendar Panel -->
 	<div class="mb-6 bg-white dark:bg-zinc-800 border border-gray-200 dark:border-zinc-700 rounded-lg p-4 relative">
@@ -1236,6 +1328,7 @@
 							{projects}
 							date={currentDate}
 							{scrollTrigger}
+							{highlightedTarget}
 							onclassify={(eventId, projectId) => handleClassify(eventId, projectId)}
 							onskip={(eventId) => handleSkip(eventId)}
 							onunskip={(eventId) => handleUnskip(eventId)}
@@ -1286,6 +1379,7 @@
 									<div class="flex flex-wrap gap-1">
 										{#each dayAllDayEvents as event (event.id)}
 											<CompactEventCard
+							{highlightedTarget}
 												{event}
 												{projects}
 												variant="chip"
@@ -1355,7 +1449,7 @@
 
 											<!-- svelte-ignore a11y_no_static_element_interactions -->
 											<div
-												class="absolute rounded-md overflow-hidden text-xs {styles.containerClasses} hover:shadow-md transition-shadow cursor-pointer"
+												class="absolute rounded-md overflow-hidden text-xs {styles.containerClasses} hover:shadow-md transition-all cursor-pointer {shouldDimEvent(event) ? 'opacity-25' : ''}"
 												style="
 													top: {style.top}px;
 													height: calc({style.height}px - 1px);
@@ -1456,6 +1550,7 @@
 													class:pointer-events-none={classifyingId === event.id}
 												>
 													<CompactEventCard
+							{highlightedTarget}
 														{event}
 														{projects}
 														variant="card"
@@ -1477,6 +1572,7 @@
 											{#each group.events as event (event.id)}
 												<div class={classifyingId === event.id ? 'opacity-50 pointer-events-none' : ''}>
 													<CalendarEventCard
+							{highlightedTarget}
 														{event}
 														{projects}
 														onclassify={(projectId) => handleClassify(event.id, projectId)}
@@ -1528,6 +1624,7 @@
 													<div class="space-y-px">
 														{#each allDayEvents as event (event.id)}
 															<CompactEventCard
+							{highlightedTarget}
 																{event}
 																{projects}
 																variant="compact"
@@ -1548,6 +1645,7 @@
 													<div class="space-y-px">
 														{#each group.events as event (event.id)}
 															<CompactEventCard
+							{highlightedTarget}
 																{event}
 																{projects}
 																variant="compact"
@@ -1617,6 +1715,7 @@
 									containerHeight={250}
 									onentryclick={openEntryPopup}
 									onaddclick={() => openAddModal(day)}
+							{highlightedTarget}
 								/>
 							{/each}
 						</div>
@@ -1629,7 +1728,7 @@
 							{#each visibleDays as day}
 								<div class="space-y-1">
 									{#each entriesByDate[formatDate(day)] || [] as entry}
-										<TimeEntryCard {entry} {projects} onupdate={() => loadData()} />
+										<TimeEntryCard {entry} {highlightedTarget} onupdate={() => loadData()} />
 									{/each}
 									{#if (entriesByDate[formatDate(day)] || []).length === 0}
 										<p class="text-xs text-gray-400 dark:text-zinc-500 text-center py-2">No entries</p>

@@ -9,6 +9,7 @@
 		containerHeight?: number;
 		onentryclick: (entryId: string, event: MouseEvent) => void;
 		onaddclick: () => void;
+		highlightedTarget?: string | null;
 	}
 
 	let {
@@ -17,8 +18,27 @@
 		maxHours = 8,
 		containerHeight = 300,
 		onentryclick,
-		onaddclick
+		onaddclick,
+		highlightedTarget = null
 	}: Props = $props();
+
+	// Determine if an entry should be dimmed based on highlight target
+	function shouldDimEntry(entry: TimeEntry): boolean {
+		if (!highlightedTarget) return false;
+
+		if (highlightedTarget === 'hidden') {
+			return !entry.project?.is_hidden_by_default;
+		}
+		if (highlightedTarget === 'archived') {
+			return !entry.project?.is_archived;
+		}
+		// 'skipped' doesn't apply to entries, so dim all
+		if (highlightedTarget === 'skipped') {
+			return true;
+		}
+		// Regular project ID
+		return entry.project_id !== highlightedTarget;
+	}
 
 	const MIN_BAR_HEIGHT = 32;
 
@@ -77,10 +97,11 @@
 		{@const isInvoiced = !!entry.invoice_id}
 		{@const isPinned = !!entry.is_pinned}
 		{@const isLocked = !!entry.is_locked}
+		{@const isDimmed = shouldDimEntry(entry)}
 		<button
 			type="button"
-			class="relative flex items-center justify-center rounded-lg font-semibold text-lg transition-all hover:ring-2 hover:ring-offset-2 hover:ring-black/30 dark:hover:ring-white/50 dark:ring-offset-zinc-900 cursor-pointer"
-			class:opacity-75={isInvoiced}
+			class="relative flex items-center justify-center rounded-lg font-semibold text-lg transition-all hover:ring-2 hover:ring-offset-2 hover:ring-black/30 dark:hover:ring-white/50 dark:ring-offset-zinc-900 cursor-pointer {isDimmed ? 'opacity-25' : ''}"
+			class:opacity-75={isInvoiced && !isDimmed}
 			style="background-color: {bgColor}; color: {textColor}; height: {getBarHeight(entry.hours)}px;"
 			onclick={(e) => onentryclick(entry.id, e)}
 		>

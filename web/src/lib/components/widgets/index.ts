@@ -11,3 +11,4 @@ export { default as ProjectSidebar } from './ProjectSidebar.svelte';
 export { default as ReclassifyWeekModal } from './ReclassifyWeekModal.svelte';
 export { default as TimeEntryBarChart } from './TimeEntryBarChart.svelte';
 export { default as TimeEntryPopup } from './TimeEntryPopup.svelte';
+export { default as ProjectSummaryBar } from './ProjectSummaryBar.svelte';

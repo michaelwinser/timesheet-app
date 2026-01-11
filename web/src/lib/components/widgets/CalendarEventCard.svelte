@@ -17,11 +17,22 @@
 		onclassify?: (projectId: string) => void;
 		onskip?: () => void;
 		onunclassify?: () => void;
+		highlightedTarget?: string | null;
 	}
 
-	let { event, projects, onclassify, onskip, onunclassify }: Props = $props();
+	let { event, projects, onclassify, onskip, onunclassify, highlightedTarget = null }: Props = $props();
 
 	let showReclassify = $state(false);
+
+	// Determine if this event should be dimmed
+	function shouldDimEvent(): boolean {
+		if (!highlightedTarget) return false;
+		if (highlightedTarget === 'skipped') return !event.is_skipped;
+		if (highlightedTarget === 'hidden') return !event.project?.is_hidden_by_default;
+		if (highlightedTarget === 'archived') return !event.project?.is_archived;
+		return event.project_id !== highlightedTarget;
+	}
+	const isDimmed = $derived(shouldDimEvent());
 	const activeProjects = $derived(projects.filter((p) => !p.is_archived));
 
 	// Format time range
@@ -66,7 +77,7 @@
 	);
 </script>
 
-<div class="p-3 hover:shadow-sm {styles.containerClasses}" style={styles.containerStyle}>
+<div class="p-3 transition-all hover:shadow-sm {styles.containerClasses} {isDimmed ? 'opacity-25' : ''}" style={styles.containerStyle}>
 	<div class="flex flex-col gap-1">
 		<!-- Top row: title and project dot -->
 		<div class="flex items-start justify-between gap-2">

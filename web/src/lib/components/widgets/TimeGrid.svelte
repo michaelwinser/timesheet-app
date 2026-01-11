@@ -18,6 +18,7 @@
 		onunskip?: (eventId: string) => void;
 		onhover?: (event: CalendarEvent | null, element: HTMLElement | null) => void;
 		showTimeLegend?: boolean;
+		highlightedTarget?: string | null;
 	}
 
 	let {
@@ -29,8 +30,26 @@
 		onskip,
 		onunskip,
 		onhover,
-		showTimeLegend = true
+		showTimeLegend = true,
+		highlightedTarget = null
 	}: Props = $props();
+
+	// Determine if an event should be dimmed based on highlight target
+	function shouldDimEvent(event: CalendarEvent): boolean {
+		if (!highlightedTarget) return false;
+
+		if (highlightedTarget === 'skipped') {
+			return !event.is_skipped;
+		}
+		if (highlightedTarget === 'hidden') {
+			return !event.project?.is_hidden_by_default;
+		}
+		if (highlightedTarget === 'archived') {
+			return !event.project?.is_archived;
+		}
+		// Regular project ID
+		return event.project_id !== highlightedTarget;
+	}
 
 	const activeProjects = $derived(projects.filter((p) => !p.is_archived));
 
@@ -222,9 +241,10 @@
 				{@const isSkipped = event.is_skipped === true}
 				{@const needsReview = event.needs_review === true}
 				{@const styles = getEventStyles(event)}
+				{@const isDimmed = shouldDimEvent(event)}
 				<!-- svelte-ignore a11y_no_static_element_interactions -->
 				<div
-					class="inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-shadow hover:shadow-sm {styles.containerClasses}"
+					class="inline-flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-all hover:shadow-sm {styles.containerClasses} {isDimmed ? 'opacity-25' : ''}"
 					style={styles.containerStyle}
 					onmouseenter={(e) => onhover?.(event, e.currentTarget as HTMLElement)}
 					onmouseleave={() => onhover?.(null, null)}
@@ -338,9 +358,10 @@
 				{@const styles = getEventStyles(event)}
 				{@const usePopup = !!onhover}
 				{@const eventHeight = parseFloat(style.height)}
+				{@const isDimmed = shouldDimEvent(event)}
 
 				<div
-					class="absolute cursor-pointer overflow-hidden rounded-md text-xs transition-shadow hover:shadow-md {styles.containerClasses}"
+					class="absolute cursor-pointer overflow-hidden rounded-md text-xs transition-all hover:shadow-md {styles.containerClasses} {isDimmed ? 'opacity-25' : ''}"
 					style="
 						top: {style.top};
 						height: calc({style.height} - 1px);

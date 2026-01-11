@@ -23,6 +23,7 @@
 		onskip?: () => void;
 		onunskip?: () => void;
 		onhover?: (element: HTMLElement | null) => void;
+		highlightedTarget?: string | null;
 	}
 
 	let {
@@ -34,8 +35,20 @@
 		onclassify,
 		onskip,
 		onunskip,
-		onhover
+		onhover,
+		highlightedTarget = null
 	}: Props = $props();
+
+	// Determine if this event should be dimmed based on highlight target
+	function shouldDimEvent(): boolean {
+		if (!highlightedTarget) return false;
+		if (highlightedTarget === 'skipped') return !event.is_skipped;
+		if (highlightedTarget === 'hidden') return !event.project?.is_hidden_by_default;
+		if (highlightedTarget === 'archived') return !event.project?.is_archived;
+		return event.project_id !== highlightedTarget;
+	}
+
+	const isDimmed = $derived(shouldDimEvent());
 
 	const activeProjects = $derived(projects.filter((p) => !p.is_archived));
 
@@ -93,7 +106,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-	class="cursor-pointer transition-shadow hover:shadow-sm {variantClasses[variant]} {styles.containerClasses}"
+	class="cursor-pointer transition-all hover:shadow-sm {variantClasses[variant]} {styles.containerClasses} {isDimmed ? 'opacity-25' : ''}"
 	style={styles.containerStyle}
 	onmouseenter={(e) => onhover?.(e.currentTarget as HTMLElement)}
 	onmouseleave={() => onhover?.(null)}

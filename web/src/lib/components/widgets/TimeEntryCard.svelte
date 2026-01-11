@@ -8,9 +8,19 @@
 		onupdate?: (data: { hours?: number; description?: string }) => void;
 		ondelete?: () => void;
 		onrefresh?: () => void;
+		highlightedTarget?: string | null;
 	}
 
-	let { entry, editable = true, onupdate, ondelete, onrefresh }: Props = $props();
+	let { entry, editable = true, onupdate, ondelete, onrefresh, highlightedTarget = null }: Props = $props();
+
+	// Determine if this entry should be dimmed
+	const isDimmed = $derived.by(() => {
+		if (!highlightedTarget) return false;
+		if (highlightedTarget === 'skipped') return true;
+		if (highlightedTarget === 'hidden') return !entry.project?.is_hidden_by_default;
+		if (highlightedTarget === 'archived') return !entry.project?.is_archived;
+		return entry.project_id !== highlightedTarget;
+	});
 
 	let editing = $state(false);
 	let showDetails = $state(false);
@@ -50,9 +60,10 @@
 </script>
 
 <div
-	class="entry-card relative rounded-lg border p-3"
+	class="entry-card relative rounded-lg border p-3 transition-all"
 	class:entry-card--editable={editable && !isInvoiced}
 	class:entry-card--invoiced={isInvoiced}
+	class:opacity-25={isDimmed}
 >
 	<!-- Invoiced corner ribbon -->
 	{#if isInvoiced}
