@@ -130,18 +130,18 @@ func evaluateCondition(cond *ConditionNode, props *EventProperties) bool {
 		return containsWordIgnoreCase(props.CalendarName, cond.Value)
 
 	case "text":
-		// Text search across title, description, and attendees
-		// Use word boundary for title/description, substring for attendees (emails)
+		// Text search across title, description, and calendar name
+		// Uses word boundary matching to prevent false positives (e.g., "AC" matching "APCSA")
+		// Note: Attendees excluded - use domain: or email: for attendee matching
+		// See: https://github.com/michaelwinser/timesheet-app/issues/84
 		if containsWordIgnoreCase(props.Title, cond.Value) {
 			return true
 		}
 		if containsWordIgnoreCase(props.Description, cond.Value) {
 			return true
 		}
-		for _, attendee := range props.Attendees {
-			if containsIgnoreCase(attendee, cond.Value) {
-				return true
-			}
+		if containsWordIgnoreCase(props.CalendarName, cond.Value) {
+			return true
 		}
 		return false
 

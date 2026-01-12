@@ -640,18 +640,20 @@ func TestEvaluate_TextSearch(t *testing.T) {
 		query    string
 		expected bool
 	}{
-		// Explicit text: prefix searches across title, description, and attendees
+		// Explicit text: prefix searches title, description, and calendar name
+		// Note: attendees excluded from text: - use domain: or email: instead
+		// See: https://github.com/michaelwinser/timesheet-app/issues/84
 		{"text:standup", true},       // matches title
 		{"text:progress", true},      // matches description
-		{"text:alice", true},         // matches attendee
-		{"text:acme", true},          // matches attendee domain
+		{"text:alice", false},        // attendees not searched by text:
+		{"text:acme", false},         // attendees not searched by text:
 		{"text:unknown", false},      // no match
 		{"-text:unknown", true},      // negated, no match = true
 		{"-text:standup", false},     // negated, match = false
 		// Unqualified terms implicitly use text search
 		{"standup", true},
 		{"progress", true},
-		{"alice", true},
+		{"alice", false},             // attendees not searched
 		{"unknown", false},
 		{"-unknown", true},
 		{"-standup", false},
