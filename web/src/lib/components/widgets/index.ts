@@ -9,6 +9,7 @@ export { default as GoToDateModal } from './GoToDateModal.svelte';
 export { default as DateNavigator } from './DateNavigator.svelte';
 export { default as ProjectSidebar } from './ProjectSidebar.svelte';
 export { default as ReclassifyWeekModal } from './ReclassifyWeekModal.svelte';
+export { default as ExplainClassificationModal } from './ExplainClassificationModal.svelte';
 export { default as TimeEntryBarChart } from './TimeEntryBarChart.svelte';
 export { default as TimeEntryPopup } from './TimeEntryPopup.svelte';
 export { default as ProjectSummaryBar } from './ProjectSummaryBar.svelte';

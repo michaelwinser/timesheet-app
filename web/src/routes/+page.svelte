@@ -16,6 +16,7 @@
 		GoToDateModal,
 		DateNavigator,
 		ReclassifyWeekModal,
+		ExplainClassificationModal,
 		TimeEntryBarChart,
 		TimeEntryPopup,
 		ProjectSummaryBar
@@ -102,6 +103,10 @@
 	let showReclassifyModal = $state(false);
 	let reclassifyLoading = $state(false);
 	let reclassifyPreviewResults = $state<ClassifiedEvent[] | null>(null);
+
+	// Explain classification modal
+	let showExplainModal = $state(false);
+	let explainEventId = $state<string | null>(null);
 
 	// Global keyboard shortcuts
 	function handleGlobalKeydown(e: KeyboardEvent) {
@@ -805,6 +810,19 @@
 	function handlePopupUnskip() {
 		if (hoveredEvent) {
 			handleUnskip(hoveredEvent.id);
+		}
+	}
+
+
+	function handleExplainClassification() {
+		const id = hoveredEventId;
+		if (id) {
+			explainEventId = id;
+			showExplainModal = true;
+			clearTimeout(hoverShowTimeout);
+			clearTimeout(hoverHideTimeout);
+			hoveredEventId = null;
+			hoveredElement = null;
 		}
 	}
 
@@ -1715,6 +1733,7 @@
 			onclassify={handlePopupClassify}
 			onskip={handlePopupSkip}
 			onunskip={handlePopupUnskip}
+			onexplain={handleExplainClassification}
 			onmouseenter={handlePopupMouseEnter}
 			onmouseleave={handlePopupMouseLeave}
 		/>
@@ -1814,6 +1833,14 @@
 	onclose={closeReclassifyModal}
 	onpreview={handleReclassifyPreview}
 	onconfirm={handleReclassifyConfirm}
+/>
+
+<!-- Explain Classification Modal -->
+<ExplainClassificationModal
+	bind:open={showExplainModal}
+	eventId={explainEventId}
+	{projects}
+	onclose={() => { showExplainModal = false; explainEventId = null; }}
 />
 
 <!-- Toast notifications -->

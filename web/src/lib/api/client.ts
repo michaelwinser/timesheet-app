@@ -37,7 +37,8 @@ import type {
 	InvoiceStatus,
 	ConfigExport,
 	ConfigImport,
-	ConfigImportResult
+	ConfigImportResult,
+	ClassificationExplanation
 } from './types';
 
 const API_BASE = '/api';
@@ -202,6 +203,10 @@ class ApiClient {
 
 	async classifyCalendarEvent(id: string, data: ClassifyEventRequest): Promise<ClassifyEventResponse> {
 		return this.request('PUT', `/calendar-events/${id}/classify`, data);
+	}
+
+	async explainEventClassification(id: string): Promise<ClassificationExplanation> {
+		return this.request('GET', `/calendar-events/${id}/explain`);
 	}
 
 	// Classification Rules

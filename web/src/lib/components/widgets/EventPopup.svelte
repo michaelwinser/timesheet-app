@@ -9,11 +9,12 @@
 		onclassify?: (projectId: string) => void;
 		onskip?: () => void;
 		onunskip?: () => void;
+		onexplain?: () => void;
 		onmouseenter?: () => void;
 		onmouseleave?: () => void;
 	}
 
-	let { event, projects, anchorElement, onclassify, onskip, onunskip, onmouseenter, onmouseleave }: Props =
+	let { event, projects, anchorElement, onclassify, onskip, onunskip, onexplain, onmouseenter, onmouseleave }: Props =
 		$props();
 
 	// Sort projects alphabetically by name
@@ -195,6 +196,20 @@
 					</button>
 				{/if}
 			</div>
+
+			<!-- Explain classification link -->
+			<div class="border-t border-gray-200 pt-2 dark:border-zinc-700">
+				<button
+					type="button"
+					class="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+					onclick={() => onexplain?.()}
+				>
+					<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+					</svg>
+					Explain classification
+				</button>
+			</div>
 		</div>
 
 		<!-- Content -->
@@ -249,6 +264,7 @@
 					{event.calendar_name}
 				</div>
 			{/if}
+
 		</div>
 	</div>
 {/if}

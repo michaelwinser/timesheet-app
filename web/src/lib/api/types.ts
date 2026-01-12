@@ -429,3 +429,36 @@ export interface ConfigImportResult {
 	rules_skipped?: number;
 	warnings?: string[];
 }
+
+// Classification Explanation
+export interface ClassificationExplanation {
+	event: CalendarEvent;
+	outcome: string;
+	would_be_skipped?: boolean;
+	skip_confidence?: number;
+	winner_project_id?: string;
+	winner_confidence?: number;
+	total_weight?: number;
+	target_scores: TargetScore[];
+	rule_evaluations: RuleEvaluation[];
+	skip_evaluations?: RuleEvaluation[];
+}
+
+export interface TargetScore {
+	target_id: string;
+	target_name?: string;
+	total_weight: number;
+	rule_weight?: number;
+	fingerprint_weight?: number;
+	is_winner?: boolean;
+}
+
+export interface RuleEvaluation {
+	rule_id?: string;
+	query: string;
+	target_id?: string;
+	target_name?: string;
+	weight?: number;
+	source?: 'rule' | 'fingerprint';
+	matched: boolean;
+}
