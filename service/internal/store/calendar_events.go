@@ -223,7 +223,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		FROM calendar_events ce
 		LEFT JOIN projects p ON ce.project_id = p.id
 		LEFT JOIN calendars c ON ce.calendar_id = c.id
-		WHERE ce.user_id = $1 AND ce.is_orphaned = false
+		WHERE ce.user_id = $1 AND ce.is_orphaned = false AND c.is_selected = true
 	`
 	args := []interface{}{userID}
 	argNum := 2
@@ -360,6 +360,7 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 		LEFT JOIN calendars c ON ce.calendar_id = c.id
 		WHERE ce.user_id = $1
 		  AND ce.is_orphaned = false
+		  AND c.is_selected = true
 		  AND ce.classification_status = 'classified'
 		  AND ce.classification_source IN ('rule', 'fingerprint')
 	`
