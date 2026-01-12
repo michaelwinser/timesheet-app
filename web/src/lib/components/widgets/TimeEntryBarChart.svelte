@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { TimeEntry } from '$lib/api/types';
-	import { getContrastColor } from '$lib/utils/colors';
+	import { getContrastColor, getVerificationTextColor } from '$lib/utils/colors';
 
 	interface Props {
 		entriesByDate: Record<string, TimeEntry[]>;
@@ -92,17 +92,20 @@
 
 	<!-- Stacked bars -->
 	{#each sortedEntries as entry}
-		{@const bgColor = entry.project?.color || '#6B7280'}
-		{@const textColor = getContrastColor(bgColor)}
+		{@const projectColor = entry.project?.color || '#6B7280'}
+		{@const isZeroHours = entry.hours === 0}
+		{@const bgColor = isZeroHours ? 'transparent' : projectColor}
+		{@const textColor = isZeroHours ? getVerificationTextColor(projectColor) : getContrastColor(projectColor)}
+		{@const borderStyle = isZeroHours ? `border: 2px solid ${projectColor};` : ''}
 		{@const isInvoiced = !!entry.invoice_id}
 		{@const isPinned = !!entry.is_pinned}
 		{@const isLocked = !!entry.is_locked}
 		{@const isDimmed = shouldDimEntry(entry)}
 		<button
 			type="button"
-			class="relative flex items-center justify-center rounded-lg font-semibold text-lg transition-all hover:ring-2 hover:ring-offset-2 hover:ring-black/30 dark:hover:ring-white/50 dark:ring-offset-zinc-900 cursor-pointer {isDimmed ? 'opacity-25' : ''}"
+			class="relative flex items-center justify-center rounded-lg font-semibold text-lg transition-all hover:ring-2 hover:ring-offset-2 hover:ring-black/30 dark:hover:ring-white/50 dark:ring-offset-zinc-900 cursor-pointer {isDimmed ? 'opacity-25' : ''} {isZeroHours ? 'bg-white dark:bg-zinc-900' : ''}"
 			class:opacity-75={isInvoiced && !isDimmed}
-			style="background-color: {bgColor}; color: {textColor}; height: {getBarHeight(entry.hours)}px;"
+			style="background-color: {bgColor}; color: {textColor}; height: {getBarHeight(entry.hours)}px; {borderStyle}"
 			onclick={(e) => onentryclick(entry.id, e)}
 		>
 			<!-- Status indicators in top-right corner -->
