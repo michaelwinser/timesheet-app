@@ -205,7 +205,7 @@
 		<Button
 			variant="primary"
 			onclick={onconfirm}
-			disabled={loading || (previewResults && previewChanges.length === 0)}
+			disabled={loading || (previewResults !== null && previewChanges.length === 0)}
 		>
 			{#if loading}
 				Reclassifying...

@@ -9,6 +9,9 @@
 		required?: boolean;
 		name?: string;
 		id?: string;
+		step?: string;
+		min?: string;
+		max?: string;
 		oninput?: (e: Event) => void;
 		onchange?: (e: Event) => void;
 	}
@@ -23,6 +26,9 @@
 		required = false,
 		name,
 		id,
+		step,
+		min,
+		max,
 		oninput,
 		onchange
 	}: Props = $props();
@@ -45,6 +51,9 @@
 		{placeholder}
 		{disabled}
 		{required}
+		{step}
+		{min}
+		{max}
 		{oninput}
 		{onchange}
 		class="block w-full rounded-md shadow-sm focus:border-primary-500 focus:ring-primary-500 sm:text-sm

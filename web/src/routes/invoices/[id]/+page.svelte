@@ -49,8 +49,14 @@
 	async function loadInvoice() {
 		loading = true;
 		error = '';
+		const id = invoiceId();
+		if (!id) {
+			error = 'Invalid invoice ID.';
+			loading = false;
+			return;
+		}
 		try {
-			invoice = await api.getInvoice(invoiceId());
+			invoice = await api.getInvoice(id);
 		} catch (e) {
 			console.error('Failed to load invoice:', e);
 			if (e instanceof ApiClientError && e.status === 404) {
@@ -382,7 +388,7 @@
 						</Button>
 
 						{#if invoice.spreadsheet_url}
-							<Button variant="secondary" onclick={() => window.open(invoice.spreadsheet_url!, '_blank')}>
+							<Button variant="secondary" onclick={() => invoice?.spreadsheet_url && window.open(invoice.spreadsheet_url, '_blank')}>
 								<svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
 								</svg>
