@@ -7,6 +7,7 @@
 		getPrimaryTextStyle,
 		formatConfidenceTitle
 	} from '$lib/styles';
+	import { calculateEventLayout, getEventPositionStyle } from '$lib/utils/eventLayout';
 
 	interface Props {
 		events: CalendarEvent[];
@@ -137,140 +138,6 @@
 		};
 	}
 
-	// Calculate overlapping events and assign columns using Greedy Expansion algorithm
-	// This mimics Google Calendar's behavior where events expand to fill available space
-	function getEventsWithColumns(
-		events: CalendarEvent[]
-	): Array<{ event: CalendarEvent; column: number; totalColumns: number; span: number }> {
-		if (events.length === 0) return [];
-
-		// Helper: check if two events collide (overlap in time)
-		function collide(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
-			return aStart < bEnd && aEnd > bStart;
-		}
-
-		// Sort by start time, then by duration (longest first for better packing)
-		const sorted = [...events].sort((a, b) => {
-			const aStart = new Date(a.start_time).getTime();
-			const bStart = new Date(b.start_time).getTime();
-			if (aStart === bStart) {
-				const aDuration = new Date(a.end_time).getTime() - aStart;
-				const bDuration = new Date(b.end_time).getTime() - bStart;
-				return bDuration - aDuration; // Longest first
-			}
-			return aStart - bStart;
-		});
-
-		// Step 1: Group events into overlapping clusters
-		const clusters: CalendarEvent[][] = [];
-		let currentCluster: CalendarEvent[] = [];
-		let clusterEnd = -1;
-
-		for (const event of sorted) {
-			const startTime = new Date(event.start_time).getTime();
-			const endTime = new Date(event.end_time).getTime();
-
-			if (currentCluster.length === 0) {
-				currentCluster.push(event);
-				clusterEnd = endTime;
-			} else if (startTime < clusterEnd) {
-				// Overlap detected: add to current cluster
-				currentCluster.push(event);
-				clusterEnd = Math.max(clusterEnd, endTime);
-			} else {
-				// No overlap: seal the current cluster and start a new one
-				clusters.push(currentCluster);
-				currentCluster = [event];
-				clusterEnd = endTime;
-			}
-		}
-		if (currentCluster.length > 0) clusters.push(currentCluster);
-
-		// Step 2: Process each cluster to assign columns and calculate expansion
-		const result: Array<{
-			event: CalendarEvent;
-			column: number;
-			totalColumns: number;
-			span: number;
-		}> = [];
-
-		for (const cluster of clusters) {
-			// Columns is an array of events in each column
-			const columns: CalendarEvent[][] = [];
-			const eventColIndex = new Map<string, number>();
-
-			// Pack events into columns
-			for (const event of cluster) {
-				const startTime = new Date(event.start_time).getTime();
-				let placed = false;
-
-				// Try to fit in existing columns
-				for (let i = 0; i < columns.length; i++) {
-					const colEvents = columns[i];
-					const lastEvent = colEvents[colEvents.length - 1];
-					const lastEnd = new Date(lastEvent.end_time).getTime();
-
-					// If the event starts after the last event in this column ends
-					if (startTime >= lastEnd) {
-						colEvents.push(event);
-						eventColIndex.set(event.id, i);
-						placed = true;
-						break;
-					}
-				}
-
-				// If it didn't fit, start a new column
-				if (!placed) {
-					columns.push([event]);
-					eventColIndex.set(event.id, columns.length - 1);
-				}
-			}
-
-			// Calculate dimensions with "Greedy Expansion"
-			const totalCols = columns.length;
-
-			for (const event of cluster) {
-				const colIndex = eventColIndex.get(event.id)!;
-				const eventStart = new Date(event.start_time).getTime();
-				const eventEnd = new Date(event.end_time).getTime();
-
-				// Default span is 1
-				let span = 1;
-
-				// Check columns to the right. If they are empty during this event's time, expand.
-				for (let i = colIndex + 1; i < totalCols; i++) {
-					// Check if any event in column `i` overlaps with our current event
-					const hasCollision = columns[i].some((otherEvt) => {
-						const otherStart = new Date(otherEvt.start_time).getTime();
-						const otherEnd = new Date(otherEvt.end_time).getTime();
-						return collide(eventStart, eventEnd, otherStart, otherEnd);
-					});
-
-					if (hasCollision) break;
-					span++;
-				}
-
-				result.push({ event, column: colIndex, totalColumns: totalCols, span });
-			}
-		}
-
-		return result;
-	}
-
-	function getEventPositionStyle(
-		column: number,
-		totalColumns: number,
-		span: number = 1
-	): { left: string; width: string } {
-		const colWidth = 100 / totalColumns;
-		const left = column * colWidth;
-		const width = span * colWidth;
-		return {
-			left: `${left}%`,
-			width: `${width}%`
-		};
-	}
-
 	// Helper to get styles for an event
 	function getEventStyles(event: CalendarEvent) {
 		const isSkipped = event.is_skipped === true;
@@ -287,7 +154,7 @@
 
 	const hours = $derived(Array.from({ length: endHour - startHour }, (_, i) => startHour + i));
 	const gridHeight = $derived((endHour - startHour) * hourHeight);
-	const eventsWithColumns = $derived(getEventsWithColumns(timedEvents));
+	const eventsWithColumns = $derived(calculateEventLayout(timedEvents));
 </script>
 
 <!-- All-day events section -->
@@ -410,9 +277,9 @@
 			{/each}
 
 			<!-- Events -->
-			{#each eventsWithColumns as { event, column, totalColumns, span } (event.id)}
+			{#each eventsWithColumns as { event, column, totalColumns, span, isOverlay, zIndex } (event.id)}
 				{@const style = getEventStyle(event)}
-				{@const posStyle = getEventPositionStyle(column, totalColumns, span)}
+				{@const posStyle = getEventPositionStyle(column, totalColumns, span, isOverlay, zIndex)}
 				{@const isPending = event.classification_status === 'pending'}
 				{@const isClassified = event.classification_status === 'classified'}
 				{@const isSkipped = event.is_skipped === true}
@@ -427,9 +294,9 @@
 					style="
 						top: {style.top};
 						height: calc({style.height} - 1px);
-						left: {posStyle.left};
-						width: calc({posStyle.width} - 4px);
-						margin-left: 2px;
+						left: calc({posStyle.left} + 2px);
+						width: calc({posStyle.width} - 4px); z-index: {posStyle.zIndex};
+						
 						{styles.containerStyle}
 					"
 					onmouseenter={(e) => onhover?.(event, e.currentTarget as HTMLElement)}

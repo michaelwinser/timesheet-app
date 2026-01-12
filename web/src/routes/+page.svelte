@@ -3,6 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { debounce } from '$lib/utils/debounce';
+	import { calculateEventLayout, getEventPositionStyle } from '$lib/utils/eventLayout';
 	import AppShell from '$lib/components/AppShell.svelte';
 	import { Button, Modal, Input, ToastContainer } from '$lib/components/primitives';
 	import {
@@ -469,42 +470,6 @@
 		const top = (startMinutes / 60) * hourHeight;
 		const height = Math.max(((endMinutes - startMinutes) / 60) * hourHeight, 20);
 		return { top, height };
-	}
-
-	// Calculate overlapping events and assign columns
-	function getEventsWithColumns(events: CalendarEvent[]): Array<{ event: CalendarEvent; column: number; totalColumns: number }> {
-		if (events.length === 0) return [];
-		const sorted = [...events].sort((a, b) =>
-			new Date(a.start_time).getTime() - new Date(b.start_time).getTime()
-		);
-		const result: Array<{ event: CalendarEvent; column: number; totalColumns: number; endTime: number }> = [];
-		const columns: number[] = [];
-		for (const event of sorted) {
-			const startTime = new Date(event.start_time).getTime();
-			const endTime = new Date(event.end_time).getTime();
-			let column = 0;
-			while (column < columns.length && columns[column] > startTime) {
-				column++;
-			}
-			columns[column] = endTime;
-			result.push({ event, column, totalColumns: 1, endTime });
-		}
-		for (let i = 0; i < result.length; i++) {
-			const current = result[i];
-			const currentStart = new Date(current.event.start_time).getTime();
-			const currentEnd = current.endTime;
-			let maxColumn = current.column;
-			for (let j = 0; j < result.length; j++) {
-				const other = result[j];
-				const otherStart = new Date(other.event.start_time).getTime();
-				const otherEnd = other.endTime;
-				if (currentStart < otherEnd && currentEnd > otherStart) {
-					maxColumn = Math.max(maxColumn, other.column);
-				}
-			}
-			current.totalColumns = maxColumn + 1;
-		}
-		return result;
 	}
 
 	// Project categories for sidebar
@@ -1427,14 +1392,13 @@
 									{@const dateStr = formatDate(day)}
 									{@const dayEvents = (eventsByDate[dateStr] || []).filter(e => !isAllDayEvent(e))}
 									{@const isToday = formatDate(new Date()) === dateStr}
-									{@const eventsWithCols = getEventsWithColumns(dayEvents)}
+									{@const eventsWithCols = calculateEventLayout(dayEvents)}
 									{@const activeProjectsList = projects.filter(p => !p.is_archived)}
 
 									<div class="relative border-l border-gray-200 dark:border-zinc-700 {isToday ? 'bg-zinc-100/50 dark:bg-zinc-800/50' : ''}">
-										{#each eventsWithCols as { event, column, totalColumns } (event.id)}
+										{#each eventsWithCols as { event, column, totalColumns, span, isOverlay, zIndex } (event.id)}
 											{@const style = getEventStyle(event)}
-											{@const width = 100 / totalColumns}
-											{@const left = column * width}
+											{@const posStyle = getEventPositionStyle(column, totalColumns, span, isOverlay, zIndex)}
 											{@const isPending = event.classification_status === 'pending'}
 											{@const isClassified = event.classification_status === 'classified'}
 											{@const isSkipped = event.is_skipped === true}
@@ -1453,8 +1417,8 @@
 												style="
 													top: {style.top}px;
 													height: calc({style.height}px - 1px);
-													left: calc({left}% + 2px);
-													width: calc({width}% - 4px);
+													left: calc({posStyle.left} + 2px);
+													width: calc({posStyle.width} - 4px); z-index: {posStyle.zIndex};
 													{styles.containerStyle}
 												"
 												onmouseenter={(e) => handleEventHover(event, e.currentTarget as HTMLElement)}
