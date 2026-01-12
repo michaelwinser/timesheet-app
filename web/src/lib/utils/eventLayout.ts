@@ -86,8 +86,15 @@ function getDurationMs(event: LayoutEvent): number {
 }
 
 /**
+ * Maximum z-index for events. Must be below z-40 (modal backdrops) to ensure
+ * modals always appear above calendar events.
+ */
+const MAX_EVENT_ZINDEX = 39;
+
+/**
  * Calculate z-index based on duration. Longer events get lower z-index (render behind).
- * Returns values from 1-100, with shorter events getting higher values.
+ * Returns values from 1-39, with shorter events getting higher values.
+ * Capped at 39 to stay below modal backdrops (z-40) and popups (z-50).
  */
 function calculateZIndex(event: LayoutEvent, allEvents: LayoutEvent[]): number {
 	const durations = allEvents.map(getDurationMs);
@@ -95,11 +102,11 @@ function calculateZIndex(event: LayoutEvent, allEvents: LayoutEvent[]): number {
 	const minDuration = Math.min(...durations);
 	const eventDuration = getDurationMs(event);
 
-	if (maxDuration === minDuration) return 50; // All same duration
+	if (maxDuration === minDuration) return 20; // All same duration
 
-	// Normalize to 1-100 range, shorter = higher z-index
+	// Normalize to 1-39 range, shorter = higher z-index
 	const normalized = 1 - (eventDuration - minDuration) / (maxDuration - minDuration);
-	return Math.round(normalized * 99) + 1;
+	return Math.round(normalized * (MAX_EVENT_ZINDEX - 1)) + 1;
 }
 
 // =============================================================================
