@@ -8,8 +8,8 @@ import (
 
 // Confidence thresholds for classification decisions
 const (
-	ConfidenceFloor   = 0.5 // Below: don't classify
-	ConfidenceCeiling = 0.8 // Above: auto-classify without review flag
+	ConfidenceFloor   = 0.5  // Below: don't classify
+	ConfidenceCeiling = 0.65 // Above: auto-classify without review flag
 )
 
 // TargetDNA is a special target ID for "did not attend" rules

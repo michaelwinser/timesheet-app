@@ -157,9 +157,9 @@ func TestClassify_ConflictingRules(t *testing.T) {
 		t.Errorf("expected Confidence ~%f, got %f", expectedConfidence, result.Confidence)
 	}
 
-	// Should need review (confidence < ceiling)
-	if !result.NeedsReview {
-		t.Error("expected NeedsReview to be true")
+	// Should NOT need review (confidence 66% >= ceiling 65%)
+	if result.NeedsReview {
+		t.Error("expected NeedsReview to be false")
 	}
 }
 
@@ -567,10 +567,10 @@ func TestEvaluateExtended_ConfidenceLevels(t *testing.T) {
 		expected   bool
 	}{
 		{ptr(0.9), "confidence:high", true},
-		{ptr(0.8), "confidence:high", true},
-		{ptr(0.79), "confidence:high", false},
-		{ptr(0.7), "confidence:medium", true},
-		{ptr(0.5), "confidence:medium", true},
+		{ptr(0.65), "confidence:high", true},  // at ceiling
+		{ptr(0.64), "confidence:high", false}, // just below ceiling
+		{ptr(0.64), "confidence:medium", true},
+		{ptr(0.5), "confidence:medium", true}, // at floor
 		{ptr(0.49), "confidence:medium", false},
 		{ptr(0.49), "confidence:low", true},
 		{ptr(0.0), "confidence:low", true},
