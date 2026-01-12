@@ -27,12 +27,9 @@
 	let editHours = $state(entry.hours);
 	let editDescription = $state(entry.description || '');
 
-	// Protection states
+	// Protection states - invoice_id is the sole locking mechanism
 	const isInvoiced = $derived(!!entry.invoice_id);
-	const isPinned = $derived(!!entry.is_pinned);
-	const isLocked = $derived(!!entry.is_locked);
 	const isStale = $derived(!!entry.is_stale);
-	const isProtected = $derived(isInvoiced || isPinned || isLocked);
 
 	function handleEdit() {
 		if (!editable || isInvoiced) return;
@@ -134,41 +131,12 @@
 				{/if}
 			</div>
 			<div class="flex items-center gap-2">
-				<!-- Protection indicators -->
-				{#if isPinned}
-					<span
-						class="text-text-muted"
-						class:text-orange-500={isStale}
-						title="Pinned - user edited"
-					>
-						<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-							<path
-								d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.617 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.018 1 1 0 01-.285-1.05l1.715-5.349L10 6.418l-3.763 1.165 1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.018 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.79l1.599.8L9 4.323V3a1 1 0 011-1z"
-							/>
-						</svg>
-					</span>
-				{/if}
-				{#if isLocked && !isInvoiced}
-					<span class="text-text-muted" class:text-orange-500={isStale} title="Locked">
-						<svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
-							<path
-								fill-rule="evenodd"
-								d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
-								clip-rule="evenodd"
-							/>
-						</svg>
-					</span>
-				{/if}
-				<!-- Reset to Computed button (for any edited/locked/stale entry) -->
-				{#if (isPinned || isLocked || isStale) && !isInvoiced && entry.computed_hours}
+				<!-- Reset to Computed button (for stale entries) -->
+				{#if isStale && !isInvoiced && entry.computed_hours}
 					<button
 						type="button"
-						class={isStale
-							? 'text-orange-500 hover:text-orange-600'
-							: 'text-text-muted hover:text-primary-600'}
-						title={isStale
-							? `Reset to computed (${entry.computed_hours}h)`
-							: 'Reset to computed values'}
+						class="text-orange-500 hover:text-orange-600"
+						title="Reset to computed ({entry.computed_hours}h)"
 						onclick={(e) => {
 							e.stopPropagation();
 							onrefresh?.();

@@ -578,4 +578,17 @@ var migrations = []migration{
 			WHERE short_code IS NOT NULL;
 		`,
 	},
+	{
+		version: 7,
+		sql: `
+			-- =============================================================================
+			-- REMOVE VESTIGIAL PROTECTION COLUMNS: is_pinned, is_locked
+			-- Invoice protection via invoice_id is now the sole locking mechanism.
+			-- =============================================================================
+
+			ALTER TABLE time_entries DROP COLUMN IF EXISTS is_pinned;
+			ALTER TABLE time_entries DROP COLUMN IF EXISTS is_locked;
+			ALTER TABLE calendar_events DROP COLUMN IF EXISTS is_locked;
+		`,
+	},
 }

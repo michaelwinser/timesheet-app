@@ -417,8 +417,6 @@ func timeEntryToAPI(e *store.TimeEntry) api.TimeEntry {
 		HasUserEdits: &e.HasUserEdits,
 		UpdatedAt:    &e.UpdatedAt,
 		// Protection model fields
-		IsPinned:     &e.IsPinned,
-		IsLocked:     &e.IsLocked,
 		IsStale:      &isStale, // Computed, not from DB
 		IsSuppressed: &e.IsSuppressed,
 	}

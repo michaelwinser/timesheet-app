@@ -27,10 +27,8 @@
 		editDescription = entry.description || '';
 	});
 
-	// Protection states
+	// Protection states - invoice_id is the sole locking mechanism
 	const isInvoiced = $derived(!!entry.invoice_id);
-	const isPinned = $derived(!!entry.is_pinned);
-	const isLocked = $derived(!!entry.is_locked);
 	const isStale = $derived(!!entry.is_stale);
 	const canEdit = $derived(!isInvoiced);
 
@@ -150,35 +148,17 @@
 		</div>
 
 		<!-- Status badges -->
-		{#if isInvoiced || isPinned || isLocked}
+		{#if isInvoiced}
 			<div class="flex gap-2 mt-2">
-				{#if isInvoiced}
-					<a
-						href="/invoices/{entry.invoice_id}"
-						class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50"
-					>
-						<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" />
-						</svg>
-						Invoiced
-					</a>
-				{/if}
-				{#if isLocked && !isInvoiced}
-					<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-zinc-700 dark:text-zinc-300">
-						<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
-						</svg>
-						Locked
-					</span>
-				{/if}
-				{#if isPinned && !isInvoiced}
-					<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-						<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-							<path d="M10 2a1 1 0 011 1v1.323l3.954 1.582 1.599-.8a1 1 0 01.894 1.79l-1.233.617 1.738 5.42a1 1 0 01-.285 1.05A3.989 3.989 0 0115 15a3.989 3.989 0 01-2.667-1.018 1 1 0 01-.285-1.05l1.715-5.349L10 6.418l-3.763 1.165 1.715 5.349a1 1 0 01-.285 1.05A3.989 3.989 0 015 15a3.989 3.989 0 01-2.667-1.018 1 1 0 01-.285-1.05l1.738-5.42-1.233-.617a1 1 0 01.894-1.79l1.599.8L9 4.323V3a1 1 0 011-1z" />
-						</svg>
-						Edited
-					</span>
-				{/if}
+				<a
+					href="/invoices/{entry.invoice_id}"
+					class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 dark:hover:bg-green-900/50"
+				>
+					<svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd" />
+					</svg>
+					Invoiced
+				</a>
 			</div>
 		{/if}
 	</div>
@@ -321,7 +301,7 @@
 							Edit
 						</button>
 					{/if}
-					{#if (isPinned || isLocked || isStale) && !isInvoiced && entry.computed_hours}
+					{#if isStale && !isInvoiced && entry.computed_hours}
 						<button
 							type="button"
 							class="px-3 py-1.5 text-sm text-gray-600 dark:text-zinc-400 hover:text-primary-600"

@@ -70,8 +70,6 @@ export interface TimeEntry {
 	invoice_id?: string | null;
 	has_user_edits?: boolean;
 	// Protection model fields
-	is_pinned?: boolean;
-	is_locked?: boolean;
 	is_stale?: boolean;
 	is_suppressed?: boolean;
 	// Computed fields (from analyzer)

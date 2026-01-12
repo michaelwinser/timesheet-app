@@ -127,9 +127,9 @@ func (s *Service) RecalculateForDate(ctx context.Context, userID uuid.UUID, date
 			continue
 		}
 
-		// Skip if entry is protected (pinned, locked, invoiced, or has user edits)
+		// Skip if entry is protected (invoiced or has user edits)
 		// Per PRD: preserve entries if user edited anything, just mark them stale
-		if entry.IsPinned || entry.IsLocked || entry.InvoiceID != nil || entry.HasUserEdits {
+		if entry.InvoiceID != nil || entry.HasUserEdits {
 			// Update computed fields to show 0 hours and mark stale
 			emptyDetails, _ := json.Marshal(map[string]interface{}{
 				"events":        []interface{}{},

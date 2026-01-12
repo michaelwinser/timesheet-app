@@ -297,6 +297,20 @@ func (s *InvoiceStore) Create(ctx context.Context, userID, projectID uuid.UUID, 
 		}
 	}
 
+	// Set invoice_id on time entries immediately (locks them from editing)
+	entryIDs := make([]uuid.UUID, len(timeEntries))
+	for i, e := range timeEntries {
+		entryIDs[i] = e.ID
+	}
+	_, err = tx.Exec(ctx, `
+		UPDATE time_entries
+		SET invoice_id = $1, updated_at = NOW()
+		WHERE id = ANY($2)
+	`, invoice.ID, entryIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	// Commit transaction
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -465,14 +479,13 @@ func (s *InvoiceStore) UpdateStatus(ctx context.Context, userID, invoiceID uuid.
 	}
 	defer tx.Rollback(ctx)
 
-	// Get current invoice
+	// Get current invoice status
 	var currentStatus string
-	var projectID uuid.UUID
 	err = tx.QueryRow(ctx, `
-		SELECT status, project_id
+		SELECT status
 		FROM invoices
 		WHERE id = $1 AND user_id = $2
-	`, invoiceID, userID).Scan(&currentStatus, &projectID)
+	`, invoiceID, userID).Scan(&currentStatus)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrInvoiceNotFound
@@ -486,34 +499,9 @@ func (s *InvoiceStore) UpdateStatus(ctx context.Context, userID, invoiceID uuid.
 		return s.GetByID(ctx, userID, invoiceID)
 	}
 
-	// Handle time entry locking based on status change
-	if currentStatus == "draft" && newStatus == "sent" {
-		// Lock time entries by setting invoice_id
-		_, err = tx.Exec(ctx, `
-			UPDATE time_entries
-			SET invoice_id = $1, updated_at = NOW()
-			WHERE id IN (
-				SELECT time_entry_id
-				FROM invoice_line_items
-				WHERE invoice_id = $1
-			)
-		`, invoiceID)
-		if err != nil {
-			return nil, err
-		}
-	} else if currentStatus == "sent" && newStatus == "draft" {
-		// Unlock time entries by clearing invoice_id
-		_, err = tx.Exec(ctx, `
-			UPDATE time_entries
-			SET invoice_id = NULL, updated_at = NOW()
-			WHERE invoice_id = $1
-		`, invoiceID)
-		if err != nil {
-			return nil, err
-		}
-	}
-	// sent -> paid: no time entry changes (already locked)
-	// paid -> sent or paid -> draft: generally not allowed, but we'll allow it
+	// Note: Time entries have invoice_id set at invoice creation time and remain
+	// locked regardless of invoice status changes. Only deleting the invoice
+	// (draft only) will unlock them.
 
 	// Update invoice status
 	_, err = tx.Exec(ctx, `
@@ -559,7 +547,16 @@ func (s *InvoiceStore) Delete(ctx context.Context, userID, invoiceID uuid.UUID) 
 		return ErrInvoiceNotDraft
 	}
 
-	// Delete line items first
+	// Clear invoice_id on time entries (unlocks them for editing)
+	_, err = tx.Exec(ctx, `
+		UPDATE time_entries SET invoice_id = NULL, updated_at = NOW()
+		WHERE invoice_id = $1
+	`, invoiceID)
+	if err != nil {
+		return err
+	}
+
+	// Delete line items
 	_, err = tx.Exec(ctx, `
 		DELETE FROM invoice_line_items WHERE invoice_id = $1
 	`, invoiceID)
