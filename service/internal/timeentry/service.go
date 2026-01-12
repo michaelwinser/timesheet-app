@@ -415,6 +415,10 @@ func (s *Service) computeEphemeralForRange(ctx context.Context, userID uuid.UUID
 // persisted in the database. This is called before invoice creation to ensure
 // entries exist with proper IDs for invoice line items.
 //
+// For invoicing purposes, this also creates 0h placeholder entries for any
+// days in the range that have no time entry. This allows the invoice to "lock"
+// the entire date range and prevent inadvertent edits.
+//
 // Returns the list of materialized entry IDs (both newly created and existing).
 func (s *Service) MaterializeForRange(ctx context.Context, userID uuid.UUID, projectID uuid.UUID, startDate, endDate time.Time) ([]uuid.UUID, error) {
 	// Get materialized entries from DB
@@ -436,39 +440,58 @@ func (s *Service) MaterializeForRange(ctx context.Context, userID uuid.UUID, pro
 		return nil, err
 	}
 
+	// Build map of ephemeral entries by date
+	ephemeralByDate := make(map[string]*store.TimeEntry)
+	for _, e := range ephemeral {
+		key := e.Date.Format("2006-01-02")
+		ephemeralByDate[key] = e
+	}
+
 	var resultIDs []uuid.UUID
 
-	// Materialize any ephemeral entries that don't exist
-	for _, eph := range ephemeral {
-		dateKey := eph.Date.Format("2006-01-02")
+	// Iterate through all days in the range
+	current := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, time.UTC)
+	end := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, time.UTC)
+
+	for !current.After(end) {
+		dateKey := current.Format("2006-01-02")
+
 		if existing, exists := existingByDate[dateKey]; exists {
-			// Entry already exists - use its ID
+			// Entry already exists in DB - use its ID
 			resultIDs = append(resultIDs, existing.ID)
-		} else {
-			// Need to materialize this ephemeral entry
+		} else if eph, exists := ephemeralByDate[dateKey]; exists {
+			// Ephemeral entry exists - materialize it
 			entry, err := s.materializeEntry(ctx, userID, eph)
 			if err != nil {
 				return nil, err
 			}
 			resultIDs = append(resultIDs, entry.ID)
-		}
-	}
-
-	// Also include existing materialized entries that might not have computed values
-	// (e.g., user-created entries without events)
-	for _, existing := range materialized {
-		dateKey := existing.Date.Format("2006-01-02")
-		// Check if we already added this one
-		found := false
-		for _, eph := range ephemeral {
-			if eph.Date.Format("2006-01-02") == dateKey {
-				found = true
-				break
+		} else {
+			// No entry for this day - create a 0h placeholder entry
+			// This allows the invoice to lock this day and prevent inadvertent edits
+			emptyDetails, _ := json.Marshal(map[string]interface{}{
+				"events":        []interface{}{},
+				"union_minutes": 0,
+				"final_minutes": 0,
+			})
+			entry, err := s.timeEntryStore.UpsertFromComputed(
+				ctx,
+				userID,
+				projectID,
+				current,
+				0,    // 0 hours
+				"",   // empty title
+				"",   // empty description
+				emptyDetails,
+				nil, // no contributing events
+			)
+			if err != nil {
+				return nil, err
 			}
+			resultIDs = append(resultIDs, entry.ID)
 		}
-		if !found {
-			resultIDs = append(resultIDs, existing.ID)
-		}
+
+		current = current.AddDate(0, 0, 1)
 	}
 
 	return resultIDs, nil

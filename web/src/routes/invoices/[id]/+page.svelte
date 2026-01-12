@@ -19,8 +19,24 @@
 	// Delete confirmation modal
 	let showDeleteModal = $state(false);
 
+	// Toggle for showing 0h time entries (hidden by default)
+	let showZeroHourEntries = $state(false);
+
 	const invoiceId = $derived(() => {
 		return $page.params.id;
+	});
+
+	// Filter line items based on showZeroHourEntries toggle
+	const filteredLineItems = $derived(() => {
+		if (!invoice?.line_items) return [];
+		if (showZeroHourEntries) return invoice.line_items;
+		return invoice.line_items.filter(item => item.hours > 0);
+	});
+
+	// Count of hidden 0h entries for display
+	const zeroHourCount = $derived(() => {
+		if (!invoice?.line_items) return 0;
+		return invoice.line_items.filter(item => item.hours === 0).length;
 	});
 
 	function getStatusColor(status: InvoiceStatus): string {
@@ -269,11 +285,21 @@
 
 				<!-- Line Items -->
 				<div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
-					<div class="p-6 border-b border-gray-200 dark:border-gray-700">
+					<div class="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
 						<h2 class="text-lg font-semibold text-gray-900 dark:text-white">Line Items</h2>
+						{#if zeroHourCount() > 0}
+							<label class="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400 cursor-pointer">
+								<input
+									type="checkbox"
+									bind:checked={showZeroHourEntries}
+									class="rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+								/>
+								Show 0h entries ({zeroHourCount()})
+							</label>
+						{/if}
 					</div>
 
-					{#if invoice.line_items && invoice.line_items.length > 0}
+					{#if filteredLineItems().length > 0}
 						<div class="overflow-x-auto">
 							<table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
 								<thead class="bg-gray-50 dark:bg-gray-900">
@@ -296,7 +322,7 @@
 									</tr>
 								</thead>
 								<tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-									{#each invoice.line_items as item (item.id)}
+									{#each filteredLineItems() as item (item.id)}
 										<tr>
 											<td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
 												{formatDate(item.date)}
