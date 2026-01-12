@@ -222,6 +222,12 @@ func (w *JobWorker) processJob(ctx context.Context, job *store.SyncJob) error {
 			continue
 		}
 
+		// Skip working location events - these indicate where someone is working
+		// (office, home, etc.) rather than actual meetings or work items
+		if ge.EventType == "workingLocation" {
+			continue
+		}
+
 		externalIDs = append(externalIDs, ge.Id)
 		event := googleEventToStore(ge, conn.ID, cal.ID, cal.UserID)
 		if _, err := w.eventStore.Upsert(ctx, event); err != nil {

@@ -471,6 +471,12 @@ func (h *CalendarHandler) syncCalendarIncremental(ctx context.Context, creds *st
 			continue
 		}
 
+		// Skip working location events - these indicate where someone is working
+		// (office, home, etc.) rather than actual meetings or work items
+		if ge.EventType == "workingLocation" {
+			continue
+		}
+
 		event := googleEventToStore(ge, conn.ID, cal.ID, userID)
 		_, upsertErr := h.events.Upsert(ctx, event)
 		if upsertErr != nil {
@@ -635,6 +641,12 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 				log.Printf("Failed to mark event as orphaned: %v", markErr)
 			}
 			orphaned++
+			continue
+		}
+
+		// Skip working location events - these indicate where someone is working
+		// (office, home, etc.) rather than actual meetings or work items
+		if ge.EventType == "workingLocation" {
 			continue
 		}
 
