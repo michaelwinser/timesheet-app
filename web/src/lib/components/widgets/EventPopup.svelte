@@ -82,8 +82,8 @@
 		if (!anchorElement) return { top: 0, left: 0, placement: 'right' as const };
 
 		const rect = anchorElement.getBoundingClientRect();
-		const popupWidth = 420;
-		const popupHeight = 400; // Estimated max height
+		const popupWidth = 480;
+		const popupHeight = 520; // Estimated max height
 		const gap = 8;
 		const viewportWidth = window.innerWidth;
 		const viewportHeight = window.innerHeight;
@@ -123,7 +123,7 @@
 	<!-- Popup container -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div
-		class="fixed z-50 bg-white dark:bg-zinc-800 rounded-lg shadow-2xl border border-gray-200 dark:border-white/15 w-[420px] max-h-[400px] overflow-hidden"
+		class="fixed z-[200] bg-white dark:bg-zinc-800 rounded-lg shadow-2xl border border-gray-200 dark:border-white/15 w-[480px] max-h-[520px] overflow-hidden"
 		style="top: {popupPosition.top}px; left: {popupPosition.left}px;"
 		onmouseenter={onmouseenter}
 		onmouseleave={onmouseleave}
@@ -213,7 +213,7 @@
 		</div>
 
 		<!-- Content -->
-		<div class="px-4 py-3 space-y-3 max-h-[220px] overflow-y-auto">
+		<div class="px-4 py-3 space-y-3 max-h-[300px] overflow-y-auto">
 			<!-- Description -->
 			{#if event.description}
 				<div>

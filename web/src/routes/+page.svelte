@@ -873,6 +873,12 @@
 			return;
 		}
 
+		// Dismiss any hover popup on keyboard navigation
+		clearTimeout(hoverShowTimeout);
+		clearTimeout(hoverHideTimeout);
+		hoveredEventId = null;
+		hoveredElement = null;
+
 		switch (event.key.toLowerCase()) {
 			// Navigation
 			case 'k':
