@@ -51,6 +51,7 @@ jobs:
             | Migration Location | ${results.checks.migration_location.violations} |
             | Large Components | ${results.checks.large_components.violations} |
             | Commit Format | ${results.checks.commit_format.violations} |
+            | Bug Fix Tests | ${results.checks.bugfix_tests.violations} |
             | **Total** | **${violations}** |
 
             ${violations > 0 ? '⚠️ *Violations found but not blocking (audit mode)*' : '✅ *All checks passed!*'}

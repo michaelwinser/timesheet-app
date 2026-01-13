@@ -43,6 +43,15 @@ For ANY code change, mentally answer these questions:
    - If YES: Discuss design approach BEFORE implementation
    - Reference relevant PRD if one exists
 
+5. **Bug Fix:** Is this fixing a bug in backend/API code?
+   - If YES: Include an integration test that reproduces the bug
+   - Test should fail before fix, pass after (regression prevention)
+   - Add to `tests/integration/scenarios/[area]/regression/`
+   - Reference the issue number in test comments
+   - **Hotfix exception:** If urgent, create issue to add test within 24h
+
+   *Note: UI-only bugs (Svelte components) are excluded from this requirement.*
+
 ---
 
 ## Architectural Principles (MUST Follow)

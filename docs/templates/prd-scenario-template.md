@@ -189,3 +189,18 @@ Before finalizing a PRD:
 - [ ] Invariants are listed
 - [ ] Out-of-scope items are documented
 - [ ] Scenarios can be translated to CLI integration tests
+
+---
+
+## Note on Bug Fixes
+
+When fixing bugs in backend/API code, a regression test is **required**. This ensures the bug doesn't reoccur.
+
+- Place tests in `tests/integration/scenarios/[area]/regression/`
+- Name with issue number: `issue-NN-description.sh`
+- Reference the original issue in comments
+- Test should fail before fix, pass after
+
+See `tests/integration/README.md` for full details and examples.
+
+**Exclusions:** UI-only bugs and hotfixes (with follow-up issue) are excluded.

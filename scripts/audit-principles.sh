@@ -31,6 +31,7 @@ HANDLER_SQL_VIOLATIONS=0
 MIGRATION_VIOLATIONS=0
 LARGE_COMPONENT_VIOLATIONS=0
 COMMIT_FORMAT_VIOLATIONS=0
+BUGFIX_TEST_VIOLATIONS=0
 
 # Output storage
 STATE_SYNC_OUTPUT=""
@@ -38,6 +39,7 @@ HANDLER_SQL_OUTPUT=""
 MIGRATION_OUTPUT=""
 LARGE_COMPONENT_OUTPUT=""
 COMMIT_FORMAT_OUTPUT=""
+BUGFIX_TEST_OUTPUT=""
 
 mkdir -p "$REPORT_DIR"
 
@@ -131,6 +133,35 @@ $hash: '$msg'"
     COMMIT_FORMAT_OUTPUT=$(echo "$COMMIT_FORMAT_OUTPUT" | sed '/^$/d')
 }
 
+check_bugfix_tests() {
+    echo -e "${BLUE}Checking bug fixes have integration tests...${NC}"
+
+    # Look at commits with "Fix" prefix in last 20 commits
+    # Check if there are corresponding changes in tests/integration/
+    # Note: UI-only bugs are excluded from this requirement
+    while IFS='|' read -r hash msg; do
+        if [ -n "$hash" ]; then
+            if echo "$msg" | grep -qE "^Fix "; then
+                # Check if this commit touched tests/integration/
+                local test_files=$(git -C "$PROJECT_ROOT" diff-tree --no-commit-id --name-only -r "$hash" 2>/dev/null | grep "tests/integration/" || true)
+                # Check if this commit touched only web/src (UI-only, excluded)
+                local all_files=$(git -C "$PROJECT_ROOT" diff-tree --no-commit-id --name-only -r "$hash" 2>/dev/null || true)
+                local non_ui_files=$(echo "$all_files" | grep -v "^web/src/" || true)
+
+                # Only flag if there are non-UI changes AND no integration test
+                if [ -n "$non_ui_files" ] && [ -z "$test_files" ]; then
+                    BUGFIX_TEST_OUTPUT="${BUGFIX_TEST_OUTPUT}
+$hash: '$msg' - No integration test found"
+                    BUGFIX_TEST_VIOLATIONS=$((BUGFIX_TEST_VIOLATIONS + 1))
+                fi
+            fi
+        fi
+    done < <(git -C "$PROJECT_ROOT" log -20 --pretty=format:"%h|%s" 2>/dev/null)
+
+    # Trim leading newline
+    BUGFIX_TEST_OUTPUT=$(echo "$BUGFIX_TEST_OUTPUT" | sed '/^$/d')
+}
+
 # ============================================================================
 # Main Execution
 # ============================================================================
@@ -146,9 +177,10 @@ check_handler_sql
 check_migration_location
 check_large_components
 check_commit_format
+check_bugfix_tests
 
 # Calculate totals
-TOTAL_VIOLATIONS=$((STATE_SYNC_VIOLATIONS + HANDLER_SQL_VIOLATIONS + MIGRATION_VIOLATIONS + LARGE_COMPONENT_VIOLATIONS + COMMIT_FORMAT_VIOLATIONS))
+TOTAL_VIOLATIONS=$((STATE_SYNC_VIOLATIONS + HANDLER_SQL_VIOLATIONS + MIGRATION_VIOLATIONS + LARGE_COMPONENT_VIOLATIONS + COMMIT_FORMAT_VIOLATIONS + BUGFIX_TEST_VIOLATIONS))
 
 # ============================================================================
 # Output
@@ -164,7 +196,8 @@ if [ "$JSON_OUTPUT" = true ]; then
     "handler_sql": {"violations": $HANDLER_SQL_VIOLATIONS},
     "migration_location": {"violations": $MIGRATION_VIOLATIONS},
     "large_components": {"violations": $LARGE_COMPONENT_VIOLATIONS},
-    "commit_format": {"violations": $COMMIT_FORMAT_VIOLATIONS}
+    "commit_format": {"violations": $COMMIT_FORMAT_VIOLATIONS},
+    "bugfix_tests": {"violations": $BUGFIX_TEST_VIOLATIONS}
   }
 }
 EOF
@@ -185,6 +218,7 @@ else
 | Migration Location | $MIGRATION_VIOLATIONS | $([ $MIGRATION_VIOLATIONS -eq 0 ] && echo "✅" || echo "⚠️") |
 | Large Components (>500 lines) | $LARGE_COMPONENT_VIOLATIONS | $([ $LARGE_COMPONENT_VIOLATIONS -eq 0 ] && echo "✅" || echo "⚠️") |
 | Commit Format | $COMMIT_FORMAT_VIOLATIONS | $([ $COMMIT_FORMAT_VIOLATIONS -eq 0 ] && echo "✅" || echo "⚠️") |
+| Bug Fix Tests | $BUGFIX_TEST_VIOLATIONS | $([ $BUGFIX_TEST_VIOLATIONS -eq 0 ] && echo "✅" || echo "⚠️") |
 | **Total** | **$TOTAL_VIOLATIONS** | $([ $TOTAL_VIOLATIONS -eq 0 ] && echo "✅" || echo "⚠️") |
 
 ---
@@ -211,6 +245,10 @@ $([ -n "$LARGE_COMPONENT_OUTPUT" ] && echo '```' && echo "$LARGE_COMPONENT_OUTPU
 
 $([ -n "$COMMIT_FORMAT_OUTPUT" ] && echo '```' && echo "$COMMIT_FORMAT_OUTPUT" && echo '```' || echo "_No violations found._")
 
+### Bug Fix Test Violations (last 20 commits)
+
+$([ -n "$BUGFIX_TEST_OUTPUT" ] && echo '```' && echo "$BUGFIX_TEST_OUTPUT" && echo '```' || echo "_No violations found._")
+
 ---
 
 ## Recommendations
@@ -220,6 +258,7 @@ $([ $HANDLER_SQL_VIOLATIONS -gt 0 ] && echo "- **Handler SQL:** Move SQL queries
 $([ $MIGRATION_VIOLATIONS -gt 0 ] && echo "- **Migrations:** Move SQL to database.go")
 $([ $LARGE_COMPONENT_VIOLATIONS -gt 0 ] && echo "- **Large Components:** Consider splitting components over 500 lines")
 $([ $COMMIT_FORMAT_VIOLATIONS -gt 0 ] && echo "- **Commit Format:** Use imperative verbs: Add, Fix, Implement, Refactor, Update, Remove, Redesign, Improve")
+$([ $BUGFIX_TEST_VIOLATIONS -gt 0 ] && echo "- **Bug Fix Tests:** Add integration tests for bug fixes to tests/integration/scenarios/[area]/regression/")
 $([ $TOTAL_VIOLATIONS -eq 0 ] && echo "_All checks passed!_")
 EOF
 
@@ -231,6 +270,7 @@ EOF
     echo "Migration Location:    $MIGRATION_VIOLATIONS violations"
     echo "Large Components:      $LARGE_COMPONENT_VIOLATIONS violations"
     echo "Commit Format:         $COMMIT_FORMAT_VIOLATIONS violations"
+    echo "Bug Fix Tests:         $BUGFIX_TEST_VIOLATIONS violations"
     echo "---"
     if [ $TOTAL_VIOLATIONS -gt 0 ]; then
         echo -e "Total:                 ${YELLOW}$TOTAL_VIOLATIONS${NC} violations"

@@ -221,10 +221,73 @@ Tests for calendar synchronization:
 - Deleted event handling
 - Calendar selection filtering
 
+## Bug Fix Regression Tests
+
+**IMPORTANT:** When fixing bugs in backend/API code, you MUST add a regression test.
+
+### Location
+
+Place bug fix tests in a `regression/` subdirectory under the relevant feature area:
+
+```
+scenarios/
+├── classification/
+│   └── regression/
+│       └── issue-42-keyword-case-sensitivity.sh
+├── time-entries/
+│   └── regression/
+│       └── issue-57-overlap-calculation.sh
+```
+
+### Convention
+
+1. Name the file with the issue number: `issue-NN-brief-description.sh`
+2. Add a comment referencing the original issue
+3. Test should fail before the fix, pass after
+4. Keep tests minimal - reproduce the exact bug, no more
+
+### Example
+
+```bash
+#!/bin/bash
+# Regression test for issue #42
+# Bug: Keywords with mixed case weren't matching
+# Fix: Made keyword matching case-insensitive
+
+set -e
+source "$(dirname "$0")/../../lib/api.sh"
+source "$(dirname "$0")/../../lib/assert.sh"
+
+echo "=== Regression: Issue #42 - Keyword case sensitivity ==="
+
+# Setup: Rule with lowercase keyword
+PROJECT_ID=$(api_create_project '{"name": "Test", "short_code": "TEST"}')
+RULE_ID=$(api_create_rule "{\"project_id\": \"$PROJECT_ID\", \"query\": \"text:acme\"}")
+
+# Event with UPPERCASE keyword (this is what triggered the bug)
+EVENT_ID=$(api_create_test_event '{"title": "Meeting with ACME"}')
+
+api_post "/api/classification/apply" "{}"
+
+# Verify: Should match despite case difference
+EVENT=$(api_get "/api/calendar-events/$EVENT_ID")
+assert_equals "$(echo "$EVENT" | jq -r '.project_id')" "$PROJECT_ID" "Case-insensitive matching"
+
+# Cleanup
+api_delete "/api/projects/$PROJECT_ID"
+
+echo "=== PASSED ==="
+```
+
+### Exclusions
+
+- **UI-only bugs** (changes only in `web/src/`) are excluded from this requirement
+- **Hotfixes:** If urgent, create an issue to add the test within 24h
+
 ## Adding New Tests
 
-1. Identify the PRD scenario to test
-2. Create a new `.sh` file in the appropriate `scenarios/` subdirectory
+1. Identify the PRD scenario to test (or the bug to reproduce)
+2. Create a new `.sh` file in the appropriate `scenarios/` subdirectory (or `regression/`)
 3. Follow the template above
 4. Run the test locally to verify
 5. Add to CI pipeline
