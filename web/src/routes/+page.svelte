@@ -1004,8 +1004,10 @@
 				}
 				return e;
 			});
-			// Close the popup since the entry ID may have changed
-			closeEntryPopup();
+			// If entry ID changed (materialization), update the selected ID to keep popup open
+			if (updated.id !== entryId && selectedEntryId === entryId) {
+				selectedEntryId = updated.id;
+			}
 		} catch (e) {
 			console.error('Failed to update entry:', e);
 		}

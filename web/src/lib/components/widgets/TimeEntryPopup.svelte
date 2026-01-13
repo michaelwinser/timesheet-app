@@ -14,18 +14,52 @@
 	let { entry, anchor, onupdate, ondelete, onrefresh, onclose }: Props = $props();
 
 	// Edit state - reset when entry changes
-	let editing = $state(false);
 	let editHours = $state(0);
 	let editDescription = $state('');
+
+	// Auto-save state
+	let saveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
+	let saveTimeout: ReturnType<typeof setTimeout>;
+	let savedTimeout: ReturnType<typeof setTimeout>;
 
 	// Reset edit state when entry changes
 	$effect(() => {
 		// Track entry.id to reset when switching entries
 		const _id = entry.id;
-		editing = false;
 		editHours = entry.hours;
 		editDescription = entry.description || '';
+		saveStatus = 'idle';
 	});
+
+	// Auto-save with debounce
+	function triggerAutoSave() {
+		if (!canEdit) return;
+
+		// Clear any pending save
+		clearTimeout(saveTimeout);
+		clearTimeout(savedTimeout);
+
+		// Debounce the save
+		saveTimeout = setTimeout(() => {
+			// Only save if values actually changed
+			if (editHours !== entry.hours || editDescription !== (entry.description || '')) {
+				saveStatus = 'saving';
+				onupdate?.({
+					hours: editHours,
+					description: editDescription,
+					project_id: entry.project_id,
+					date: entry.date
+				});
+				// Show "Saved" briefly after save
+				savedTimeout = setTimeout(() => {
+					saveStatus = 'saved';
+					setTimeout(() => {
+						saveStatus = 'idle';
+					}, 1500);
+				}, 300);
+			}
+		}, 500);
+	}
 
 	// Protection states - invoice_id is the sole locking mechanism
 	const isInvoiced = $derived(!!entry.invoice_id);
@@ -62,27 +96,6 @@
 		return { top, left };
 	});
 
-	function startEdit() {
-		if (!canEdit) return;
-		editing = true;
-		editHours = entry.hours;
-		editDescription = entry.description || '';
-	}
-
-	function handleSave() {
-		onupdate?.({
-			hours: editHours,
-			description: editDescription,
-			project_id: entry.project_id,
-			date: entry.date
-		});
-		editing = false;
-	}
-
-	function handleCancel() {
-		editing = false;
-	}
-
 	function handleDelete() {
 		if (confirm('Delete this time entry?')) {
 			ondelete?.();
@@ -105,11 +118,7 @@
 	// Close on escape key
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
-			if (editing) {
-				handleCancel();
-			} else {
-				onclose();
-			}
+			onclose();
 		}
 	}
 </script>
@@ -165,163 +174,134 @@
 
 	<!-- Content -->
 	<div class="px-4 py-3 space-y-4 max-h-[260px] overflow-y-auto">
-		{#if editing}
-			<!-- Edit mode -->
-			<div class="space-y-3">
-				<div>
-					<label class="block text-xs text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-1">
-						Hours
-					</label>
-					<input
-						type="number"
-						step="0.25"
-						min="0"
-						bind:value={editHours}
-						class="w-full rounded border px-3 py-2 text-sm border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-					/>
+		<!-- Hours field - editable when not invoiced -->
+		<div>
+			<label class="block text-xs text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-1">
+				Hours
+			</label>
+			{#if canEdit}
+				<input
+					type="number"
+					step="0.25"
+					min="0"
+					bind:value={editHours}
+					oninput={triggerAutoSave}
+					class="w-full rounded border px-3 py-2 text-sm border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+				/>
+			{:else}
+				<span class="text-2xl font-semibold text-gray-900 dark:text-white">{entry.hours}h</span>
+			{/if}
+		</div>
+
+		<!-- Description field - editable when not invoiced -->
+		<div>
+			<label class="block text-xs text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-1">
+				{entry.title ? 'Title' : 'Description'}
+			</label>
+			{#if canEdit}
+				<textarea
+					bind:value={editDescription}
+					oninput={triggerAutoSave}
+					rows="2"
+					placeholder="Optional description..."
+					class="w-full rounded border px-3 py-2 text-sm border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
+				></textarea>
+			{:else if entry.title || entry.description}
+				<p class="text-sm text-gray-700 dark:text-zinc-300">
+					{entry.title || entry.description}
+				</p>
+			{:else}
+				<p class="text-sm text-gray-400 dark:text-zinc-500 italic">No description</p>
+			{/if}
+		</div>
+
+		<!-- Staleness warning -->
+		{#if isStale && entry.computed_hours !== undefined && entry.snapshot_computed_hours !== undefined}
+			<div class="rounded bg-orange-100 dark:bg-orange-900/30 px-3 py-2 text-sm">
+				<div class="flex items-center gap-2 text-orange-700 dark:text-orange-400">
+					<svg class="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+						<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+					</svg>
+					<span class="font-medium">Events have changed</span>
 				</div>
-				<div>
-					<label class="block text-xs text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-1">
-						Description
-					</label>
-					<textarea
-						bind:value={editDescription}
-						rows="3"
-						placeholder="Optional description..."
-						class="w-full rounded border px-3 py-2 text-sm border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
-					></textarea>
+				<p class="mt-1 text-xs text-orange-600 dark:text-orange-300">
+					You set {entry.hours}h when computed was {entry.snapshot_computed_hours}h.
+					Now computed is {entry.computed_hours}h.
+				</p>
+				<div class="mt-2 flex gap-2">
+					<button
+						type="button"
+						class="text-xs px-2 py-1 rounded bg-orange-200 dark:bg-orange-800 text-orange-700 dark:text-orange-200 hover:bg-orange-300 dark:hover:bg-orange-700"
+						onclick={() => onupdate?.({ hours: entry.computed_hours, project_id: entry.project_id, date: entry.date })}
+					>
+						Accept {entry.computed_hours}h
+					</button>
+					<button
+						type="button"
+						class="text-xs px-2 py-1 rounded text-orange-600 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-800"
+						onclick={() => onupdate?.({ hours: entry.hours, project_id: entry.project_id, date: entry.date })}
+					>
+						Keep {entry.hours}h
+					</button>
 				</div>
 			</div>
-		{:else}
-			<!-- View mode -->
+		{/if}
+
+		<!-- Calculation details -->
+		{#if entry.calculation_details && entry.calculation_details.events.length > 0}
 			<div>
 				<span class="block text-xs text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-1">
-					Hours
+					Source Events ({entry.calculation_details.events.length})
 				</span>
-				<span class="text-2xl font-semibold text-gray-900 dark:text-white">{entry.hours}h</span>
+				<ul class="space-y-1 text-sm text-gray-700 dark:text-zinc-300">
+					{#each entry.calculation_details.events.slice(0, 5) as evt}
+						<li class="flex justify-between">
+							<span class="truncate mr-2">{evt.title}</span>
+							<span class="text-gray-500 dark:text-zinc-400 whitespace-nowrap">
+								{formatMinutes(evt.raw_minutes)}
+							</span>
+						</li>
+					{/each}
+					{#if entry.calculation_details.events.length > 5}
+						<li class="text-xs text-gray-500 dark:text-zinc-400">
+							+{entry.calculation_details.events.length - 5} more
+						</li>
+					{/if}
+				</ul>
 			</div>
-
-			{#if entry.title || entry.description}
-				<div>
-					<span class="block text-xs text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-1">
-						{entry.title ? 'Title' : 'Description'}
-					</span>
-					<p class="text-sm text-gray-700 dark:text-zinc-300">
-						{entry.title || entry.description}
-					</p>
-				</div>
-			{/if}
-
-			<!-- Staleness warning -->
-			{#if isStale && entry.computed_hours !== undefined && entry.snapshot_computed_hours !== undefined}
-				<div class="rounded bg-orange-100 dark:bg-orange-900/30 px-3 py-2 text-sm">
-					<div class="flex items-center gap-2 text-orange-700 dark:text-orange-400">
-						<svg class="h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-							<path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-						</svg>
-						<span class="font-medium">Events have changed</span>
-					</div>
-					<p class="mt-1 text-xs text-orange-600 dark:text-orange-300">
-						You set {entry.hours}h when computed was {entry.snapshot_computed_hours}h.
-						Now computed is {entry.computed_hours}h.
-					</p>
-					<div class="mt-2 flex gap-2">
-						<button
-							type="button"
-							class="text-xs px-2 py-1 rounded bg-orange-200 dark:bg-orange-800 text-orange-700 dark:text-orange-200 hover:bg-orange-300 dark:hover:bg-orange-700"
-							onclick={() => onupdate?.({ hours: entry.computed_hours, project_id: entry.project_id, date: entry.date })}
-						>
-							Accept {entry.computed_hours}h
-						</button>
-						<button
-							type="button"
-							class="text-xs px-2 py-1 rounded text-orange-600 dark:text-orange-300 hover:bg-orange-200 dark:hover:bg-orange-800"
-							onclick={() => onupdate?.({ hours: entry.hours, project_id: entry.project_id, date: entry.date })}
-						>
-							Keep {entry.hours}h
-						</button>
-					</div>
-				</div>
-			{/if}
-
-			<!-- Calculation details -->
-			{#if entry.calculation_details && entry.calculation_details.events.length > 0}
-				<div>
-					<span class="block text-xs text-gray-500 dark:text-zinc-400 uppercase tracking-wide mb-1">
-						Source Events ({entry.calculation_details.events.length})
-					</span>
-					<ul class="space-y-1 text-sm text-gray-700 dark:text-zinc-300">
-						{#each entry.calculation_details.events.slice(0, 5) as evt}
-							<li class="flex justify-between">
-								<span class="truncate mr-2">{evt.title}</span>
-								<span class="text-gray-500 dark:text-zinc-400 whitespace-nowrap">
-									{formatMinutes(evt.raw_minutes)}
-								</span>
-							</li>
-						{/each}
-						{#if entry.calculation_details.events.length > 5}
-							<li class="text-xs text-gray-500 dark:text-zinc-400">
-								+{entry.calculation_details.events.length - 5} more
-							</li>
-						{/if}
-					</ul>
-				</div>
-			{/if}
 		{/if}
 	</div>
 
 	<!-- Footer actions -->
 	<div class="px-4 py-3 border-t border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50">
-		{#if editing}
-			<div class="flex justify-end gap-2">
-				<button
-					type="button"
-					class="px-3 py-1.5 text-sm text-gray-600 dark:text-zinc-300 hover:text-gray-800 dark:hover:text-white"
-					onclick={handleCancel}
-				>
-					Cancel
-				</button>
-				<button
-					type="button"
-					class="px-3 py-1.5 text-sm rounded bg-primary-600 text-white hover:bg-primary-700"
-					onclick={handleSave}
-				>
-					Save
-				</button>
-			</div>
-		{:else}
-			<div class="flex justify-between">
-				<div class="flex gap-2">
-					{#if canEdit}
-						<button
-							type="button"
-							class="px-3 py-1.5 text-sm rounded border border-gray-300 dark:border-zinc-600 text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700"
-							onclick={startEdit}
-						>
-							Edit
-						</button>
-					{/if}
-					{#if isStale && !isInvoiced && entry.computed_hours}
-						<button
-							type="button"
-							class="px-3 py-1.5 text-sm text-gray-600 dark:text-zinc-400 hover:text-primary-600"
-							title="Reset to computed values"
-							onclick={() => onrefresh?.()}
-						>
-							Reset
-						</button>
-					{/if}
-				</div>
-				{#if canEdit}
+		<div class="flex justify-between items-center">
+			<div class="flex items-center gap-2">
+				{#if isStale && !isInvoiced && entry.computed_hours}
 					<button
 						type="button"
-						class="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-						onclick={handleDelete}
+						class="px-3 py-1.5 text-sm text-gray-600 dark:text-zinc-400 hover:text-primary-600"
+						title="Reset to computed values"
+						onclick={() => onrefresh?.()}
 					>
-						Delete
+						Reset
 					</button>
 				{/if}
+				<!-- Auto-save status indicator -->
+				{#if saveStatus === 'saving'}
+					<span class="text-xs text-gray-400 dark:text-zinc-500">Saving...</span>
+				{:else if saveStatus === 'saved'}
+					<span class="text-xs text-green-600 dark:text-green-400">Saved</span>
+				{/if}
 			</div>
-		{/if}
+			{#if canEdit}
+				<button
+					type="button"
+					class="px-3 py-1.5 text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+					onclick={handleDelete}
+				>
+					Delete
+				</button>
+			{/if}
+		</div>
 	</div>
 </div>
