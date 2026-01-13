@@ -591,4 +591,22 @@ var migrations = []migration{
 			ALTER TABLE calendar_events DROP COLUMN IF EXISTS is_locked;
 		`,
 	},
+	{
+		version: 8,
+		sql: `
+			-- =============================================================================
+			-- FIX ORPHANED TIME ENTRIES: Mark entries without linked events as user-edited
+			-- When calendars are disconnected, the time_entry_events links are CASCADE
+			-- deleted. Any time entries with stored hours but no event links should be
+			-- treated as user-edited so their stored hours are preserved.
+			-- =============================================================================
+
+			UPDATE time_entries
+			SET has_user_edits = true
+			WHERE id NOT IN (SELECT time_entry_id FROM time_entry_events)
+			  AND hours > 0
+			  AND has_user_edits = false
+			  AND invoice_id IS NULL;
+		`,
+	},
 }
