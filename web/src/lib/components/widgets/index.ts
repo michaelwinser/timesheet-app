@@ -13,3 +13,5 @@ export { default as ExplainClassificationModal } from './ExplainClassificationMo
 export { default as TimeEntryBarChart } from './TimeEntryBarChart.svelte';
 export { default as TimeEntryPopup } from './TimeEntryPopup.svelte';
 export { default as ProjectSummaryBar } from './ProjectSummaryBar.svelte';
+export { default as FingerprintsEditor } from './FingerprintsEditor.svelte';
+export { default as BillingPeriodsSection } from './BillingPeriodsSection.svelte';
