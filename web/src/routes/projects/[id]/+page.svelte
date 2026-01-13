@@ -103,6 +103,7 @@
 				fingerprint_emails: fingerprintEmails,
 				fingerprint_keywords: fingerprintKeywords
 			});
+			goto('/projects');
 		} catch (e) {
 			error = 'Failed to save project';
 			console.error(e);
