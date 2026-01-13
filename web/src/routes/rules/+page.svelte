@@ -795,7 +795,7 @@
 		{/if}
 
 		{#snippet footer()}
-			{#if editingRule === null && !previewLoading}
+			{#if !previewLoading}
 				<Button variant="secondary" onclick={backToEditor}>Back to Edit</Button>
 				<Button variant="primary" onclick={saveFromPreview}>Save Rule</Button>
 			{:else}
