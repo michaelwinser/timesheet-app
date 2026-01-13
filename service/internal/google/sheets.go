@@ -224,6 +224,18 @@ func (s *SheetsService) formatInvoiceSheet(ctx context.Context, srv *sheets.Serv
 
 	// Column headers are at row 0, line items start at row 1
 	requests := []*sheets.Request{
+		// Freeze the header row
+		{
+			UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+				Properties: &sheets.SheetProperties{
+					SheetId: sheetID,
+					GridProperties: &sheets.GridProperties{
+						FrozenRowCount: 1,
+					},
+				},
+				Fields: "gridProperties.frozenRowCount",
+			},
+		},
 		// Bold the column headers (row 0)
 		{
 			RepeatCell: &sheets.RepeatCellRequest{
@@ -385,6 +397,18 @@ func (s *SheetsService) UpdateInvoicesSummary(ctx context.Context, token *oauth2
 
 	// Apply formatting
 	requests := []*sheets.Request{
+		// Freeze the header row
+		{
+			UpdateSheetProperties: &sheets.UpdateSheetPropertiesRequest{
+				Properties: &sheets.SheetProperties{
+					SheetId: sheetID,
+					GridProperties: &sheets.GridProperties{
+						FrozenRowCount: 1,
+					},
+				},
+				Fields: "gridProperties.frozenRowCount",
+			},
+		},
 		// Bold the column headers
 		{
 			RepeatCell: &sheets.RepeatCellRequest{
