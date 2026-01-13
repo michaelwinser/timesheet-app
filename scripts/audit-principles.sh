@@ -47,8 +47,15 @@ mkdir -p "$REPORT_DIR"
 # Check Functions
 # ============================================================================
 
+# Helper to print progress only in non-JSON mode
+log_progress() {
+    if [ "$JSON_OUTPUT" != true ]; then
+        echo -e "${BLUE}$1${NC}"
+    fi
+}
+
 check_state_sync() {
-    echo -e "${BLUE}Checking state synchronization patterns...${NC}"
+    log_progress "Checking state synchronization patterns..."
 
     # Look for $state with entity types (potential stale data issues)
     # Arrays are OK (they're the source of truth), but single objects are suspicious
@@ -61,7 +68,7 @@ check_state_sync() {
 }
 
 check_handler_sql() {
-    echo -e "${BLUE}Checking handler layering (SQL in handlers)...${NC}"
+    log_progress "Checking handler layering (SQL in handlers)..."
 
     # Look for SQL keywords in handler files
     local matches=$(grep -rln 'SELECT\|INSERT INTO\|UPDATE.*SET\|DELETE FROM' "$PROJECT_ROOT/service/internal/handler" 2>/dev/null || true)
@@ -73,7 +80,7 @@ check_handler_sql() {
 }
 
 check_migration_location() {
-    echo -e "${BLUE}Checking migration locations...${NC}"
+    log_progress "Checking migration locations..."
 
     # Look for .sql files in service directory (should not exist)
     local sql_files=$(find "$PROJECT_ROOT/service" -name "*.sql" -type f 2>/dev/null || true)
@@ -92,7 +99,7 @@ migrations/ directory exists - should be in database.go"
 }
 
 check_large_components() {
-    echo -e "${BLUE}Checking component sizes...${NC}"
+    log_progress "Checking component sizes..."
 
     local threshold=500
 
@@ -113,7 +120,7 @@ $file: $lines lines (threshold: $threshold)"
 }
 
 check_commit_format() {
-    echo -e "${BLUE}Checking recent commit message format...${NC}"
+    log_progress "Checking recent commit message format..."
 
     # Approved verbs (imperative mood)
     local allowed_pattern="^(Add|Fix|Implement|Refactor|Update|Remove|Redesign|Improve) "
@@ -134,7 +141,7 @@ $hash: '$msg'"
 }
 
 check_bugfix_tests() {
-    echo -e "${BLUE}Checking bug fixes have integration tests...${NC}"
+    log_progress "Checking bug fixes have integration tests..."
 
     # Look at commits with "Fix" prefix in last 20 commits
     # Check if there are corresponding changes in tests/integration/
@@ -166,10 +173,12 @@ $hash: '$msg' - No integration test found"
 # Main Execution
 # ============================================================================
 
-echo -e "${GREEN}=== Principle Audit Report ===${NC}"
-echo "Date: $(date)"
-echo "Project: $PROJECT_ROOT"
-echo ""
+if [ "$JSON_OUTPUT" != true ]; then
+    echo -e "${GREEN}=== Principle Audit Report ===${NC}"
+    echo "Date: $(date)"
+    echo "Project: $PROJECT_ROOT"
+    echo ""
+fi
 
 # Run all checks
 check_state_sync
