@@ -166,19 +166,8 @@ func (s *SheetsService) UpdateInvoiceWorksheet(ctx context.Context, token *oauth
 
 // writeInvoiceData writes invoice data to a worksheet with formatting
 func (s *SheetsService) writeInvoiceData(ctx context.Context, srv *sheets.Service, spreadsheetID, worksheetTitle string, data InvoiceData) error {
-	// Build rows
+	// Build rows - just column headers and line items (no metadata or totals)
 	var values [][]interface{}
-
-	// Header rows
-	values = append(values, []interface{}{"Invoice Number:", data.InvoiceNumber})
-	values = append(values, []interface{}{"Project:", data.ProjectName})
-	if data.Client != "" {
-		values = append(values, []interface{}{"Client:", data.Client})
-	}
-	values = append(values, []interface{}{"Period:", fmt.Sprintf("%s to %s", data.PeriodStart.Format("2006-01-02"), data.PeriodEnd.Format("2006-01-02"))})
-	values = append(values, []interface{}{"Invoice Date:", data.InvoiceDate.Format("2006-01-02")})
-	values = append(values, []interface{}{"Status:", data.Status})
-	values = append(values, []interface{}{}) // Empty row
 
 	// Column headers
 	values = append(values, []interface{}{"Date", "Description", "Hours", "Rate", "Amount"})
@@ -193,10 +182,6 @@ func (s *SheetsService) writeInvoiceData(ctx context.Context, srv *sheets.Servic
 			item.Amount,
 		})
 	}
-
-	// Totals row
-	values = append(values, []interface{}{}) // Empty row
-	values = append(values, []interface{}{"Total", "", data.TotalHours, "", data.TotalAmount})
 
 	// Write values
 	valueRange := &sheets.ValueRange{
@@ -237,22 +222,15 @@ func (s *SheetsService) formatInvoiceSheet(ctx context.Context, srv *sheets.Serv
 		}
 	}
 
-	headerRowCount := 7 // Invoice header rows before column headers
-	if len(spreadsheet.Sheets) > 0 {
-		// Adjust based on whether client row is present
-		// This is a simplification - in practice we'd track this more precisely
-	}
-	columnHeaderRow := headerRowCount
-	totalRowIndex := headerRowCount + 1 + lineItemCount + 1 // Headers + line items + empty row + total
-
+	// Column headers are at row 0, line items start at row 1
 	requests := []*sheets.Request{
-		// Bold the column headers
+		// Bold the column headers (row 0)
 		{
 			RepeatCell: &sheets.RepeatCellRequest{
 				Range: &sheets.GridRange{
 					SheetId:       sheetID,
-					StartRowIndex: int64(columnHeaderRow),
-					EndRowIndex:   int64(columnHeaderRow + 1),
+					StartRowIndex: 0,
+					EndRowIndex:   1,
 				},
 				Cell: &sheets.CellData{
 					UserEnteredFormat: &sheets.CellFormat{
@@ -264,31 +242,13 @@ func (s *SheetsService) formatInvoiceSheet(ctx context.Context, srv *sheets.Serv
 				Fields: "userEnteredFormat.textFormat.bold",
 			},
 		},
-		// Bold the total row
-		{
-			RepeatCell: &sheets.RepeatCellRequest{
-				Range: &sheets.GridRange{
-					SheetId:       sheetID,
-					StartRowIndex: int64(totalRowIndex),
-					EndRowIndex:   int64(totalRowIndex + 1),
-				},
-				Cell: &sheets.CellData{
-					UserEnteredFormat: &sheets.CellFormat{
-						TextFormat: &sheets.TextFormat{
-							Bold: true,
-						},
-					},
-				},
-				Fields: "userEnteredFormat.textFormat.bold",
-			},
-		},
-		// Format amount columns as currency
+		// Format Rate and Amount columns as currency (rows 1 onwards)
 		{
 			RepeatCell: &sheets.RepeatCellRequest{
 				Range: &sheets.GridRange{
 					SheetId:          sheetID,
-					StartRowIndex:    int64(columnHeaderRow + 1),
-					EndRowIndex:      int64(totalRowIndex + 1),
+					StartRowIndex:    1,
+					EndRowIndex:      int64(1 + lineItemCount),
 					StartColumnIndex: 3, // Rate column
 					EndColumnIndex:   5, // Amount column (inclusive)
 				},
@@ -311,6 +271,167 @@ func (s *SheetsService) formatInvoiceSheet(ctx context.Context, srv *sheets.Serv
 					Dimension:  "COLUMNS",
 					StartIndex: 0,
 					EndIndex:   5,
+				},
+			},
+		},
+	}
+
+	batchReq := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: requests,
+	}
+
+	_, err = srv.Spreadsheets.BatchUpdate(spreadsheetID, batchReq).Do()
+	return err
+}
+
+// InvoiceSummaryData contains summary data for an invoice in the Invoices sheet
+type InvoiceSummaryData struct {
+	InvoiceNumber string
+	PeriodStart   time.Time
+	PeriodEnd     time.Time
+	InvoiceDate   time.Time
+	Status        string
+	TotalHours    float64
+	TotalAmount   float64
+}
+
+// UpdateInvoicesSummary creates or updates the "Invoices" summary sheet
+func (s *SheetsService) UpdateInvoicesSummary(ctx context.Context, token *oauth2.Token, spreadsheetID string, invoices []InvoiceSummaryData) error {
+	srv, err := s.getService(ctx, token)
+	if err != nil {
+		return err
+	}
+
+	const summarySheetName = "Invoices"
+
+	// Get the spreadsheet to check if the summary sheet exists
+	spreadsheet, err := srv.Spreadsheets.Get(spreadsheetID).Do()
+	if err != nil {
+		return err
+	}
+
+	var sheetID int64
+	sheetExists := false
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == summarySheetName {
+			sheetID = sheet.Properties.SheetId
+			sheetExists = true
+			break
+		}
+	}
+
+	// Create the sheet if it doesn't exist
+	if !sheetExists {
+		addSheetReq := &sheets.Request{
+			AddSheet: &sheets.AddSheetRequest{
+				Properties: &sheets.SheetProperties{
+					Title: summarySheetName,
+					Index: 0, // Put it first
+				},
+			},
+		}
+
+		batchReq := &sheets.BatchUpdateSpreadsheetRequest{
+			Requests: []*sheets.Request{addSheetReq},
+		}
+
+		resp, err := srv.Spreadsheets.BatchUpdate(spreadsheetID, batchReq).Do()
+		if err != nil {
+			return err
+		}
+
+		sheetID = resp.Replies[0].AddSheet.Properties.SheetId
+	} else {
+		// Clear existing data
+		clearReq := &sheets.ClearValuesRequest{}
+		_, err = srv.Spreadsheets.Values.Clear(spreadsheetID, summarySheetName, clearReq).Do()
+		if err != nil {
+			return err
+		}
+	}
+
+	// Build rows
+	var values [][]interface{}
+
+	// Column headers
+	values = append(values, []interface{}{"Invoice", "Period Start", "Period End", "Invoice Date", "Status", "Hours", "Amount"})
+
+	// Invoice rows
+	for _, inv := range invoices {
+		values = append(values, []interface{}{
+			inv.InvoiceNumber,
+			inv.PeriodStart.Format("2006-01-02"),
+			inv.PeriodEnd.Format("2006-01-02"),
+			inv.InvoiceDate.Format("2006-01-02"),
+			inv.Status,
+			inv.TotalHours,
+			inv.TotalAmount,
+		})
+	}
+
+	// Write values
+	valueRange := &sheets.ValueRange{
+		Values: values,
+	}
+
+	_, err = srv.Spreadsheets.Values.Update(
+		spreadsheetID,
+		fmt.Sprintf("%s!A1", summarySheetName),
+		valueRange,
+	).ValueInputOption("USER_ENTERED").Do()
+	if err != nil {
+		return err
+	}
+
+	// Apply formatting
+	requests := []*sheets.Request{
+		// Bold the column headers
+		{
+			RepeatCell: &sheets.RepeatCellRequest{
+				Range: &sheets.GridRange{
+					SheetId:       sheetID,
+					StartRowIndex: 0,
+					EndRowIndex:   1,
+				},
+				Cell: &sheets.CellData{
+					UserEnteredFormat: &sheets.CellFormat{
+						TextFormat: &sheets.TextFormat{
+							Bold: true,
+						},
+					},
+				},
+				Fields: "userEnteredFormat.textFormat.bold",
+			},
+		},
+		// Format Amount column as currency
+		{
+			RepeatCell: &sheets.RepeatCellRequest{
+				Range: &sheets.GridRange{
+					SheetId:          sheetID,
+					StartRowIndex:    1,
+					EndRowIndex:      int64(1 + len(invoices)),
+					StartColumnIndex: 6, // Amount column
+					EndColumnIndex:   7,
+				},
+				Cell: &sheets.CellData{
+					UserEnteredFormat: &sheets.CellFormat{
+						NumberFormat: &sheets.NumberFormat{
+							Type:    "CURRENCY",
+							Pattern: "$#,##0.00",
+						},
+					},
+				},
+				Fields: "userEnteredFormat.numberFormat",
+			},
+		},
+		// Auto-resize columns
+		{
+			AutoResizeDimensions: &sheets.AutoResizeDimensionsRequest{
+				Dimensions: &sheets.DimensionRange{
+					SheetId:    sheetID,
+					Dimension:  "COLUMNS",
+					StartIndex: 0,
+					EndIndex:   7,
 				},
 			},
 		},

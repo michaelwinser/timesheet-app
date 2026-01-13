@@ -257,15 +257,20 @@ func (h *InvoiceHandler) ExportInvoiceCSV(ctx context.Context, req api.ExportInv
 	// Write column headers
 	w.Write([]string{"Date", "Description", "Hours", "Rate", "Amount"})
 
-	// Write line items
+	// Write line items, filtering out 0h entries (matching UI default)
+	var totalHours, totalAmount float64
 	for _, item := range invoice.LineItems {
-		w.Write([]string{
-			item.Date.Format("2006-01-02"),
-			item.Description,
-			fmt.Sprintf("%.2f", item.Hours),
-			fmt.Sprintf("%.2f", item.HourlyRate),
-			fmt.Sprintf("%.2f", item.Amount),
-		})
+		if item.Hours > 0 {
+			w.Write([]string{
+				item.Date.Format("2006-01-02"),
+				item.Description,
+				fmt.Sprintf("%.2f", item.Hours),
+				fmt.Sprintf("%.2f", item.HourlyRate),
+				fmt.Sprintf("%.2f", item.Amount),
+			})
+			totalHours += item.Hours
+			totalAmount += item.Amount
+		}
 	}
 
 	// Write totals row
@@ -273,9 +278,9 @@ func (h *InvoiceHandler) ExportInvoiceCSV(ctx context.Context, req api.ExportInv
 	w.Write([]string{
 		"Total",
 		"",
-		fmt.Sprintf("%.2f", invoice.TotalHours),
+		fmt.Sprintf("%.2f", totalHours),
 		"",
-		fmt.Sprintf("%.2f", invoice.TotalAmount),
+		fmt.Sprintf("%.2f", totalAmount),
 	})
 
 	w.Flush()
@@ -332,7 +337,7 @@ func (h *InvoiceHandler) ExportInvoiceSheets(ctx context.Context, req api.Export
 	// Create OAuth token
 	token := h.sheets.TokenFromConnection(conn)
 
-	// Prepare invoice data
+	// Prepare invoice data, filtering out 0h entries (matching UI default)
 	invoiceData := google.InvoiceData{
 		InvoiceNumber: invoice.InvoiceNumber,
 		ProjectName:   invoice.Project.Name,
@@ -340,20 +345,23 @@ func (h *InvoiceHandler) ExportInvoiceSheets(ctx context.Context, req api.Export
 		PeriodEnd:     invoice.PeriodEnd,
 		InvoiceDate:   invoice.InvoiceDate,
 		Status:        invoice.Status,
-		TotalHours:    invoice.TotalHours,
-		TotalAmount:   invoice.TotalAmount,
 	}
 	if invoice.Project.Client != nil {
 		invoiceData.Client = *invoice.Project.Client
 	}
+	// Filter to only include entries with hours > 0
 	for _, item := range invoice.LineItems {
-		invoiceData.LineItems = append(invoiceData.LineItems, google.InvoiceLineItemData{
-			Date:        item.Date,
-			Description: item.Description,
-			Hours:       item.Hours,
-			HourlyRate:  item.HourlyRate,
-			Amount:      item.Amount,
-		})
+		if item.Hours > 0 {
+			invoiceData.LineItems = append(invoiceData.LineItems, google.InvoiceLineItemData{
+				Date:        item.Date,
+				Description: item.Description,
+				Hours:       item.Hours,
+				HourlyRate:  item.HourlyRate,
+				Amount:      item.Amount,
+			})
+			invoiceData.TotalHours += item.Hours
+			invoiceData.TotalAmount += item.Amount
+		}
 	}
 
 	// Check if project already has a spreadsheet
@@ -420,6 +428,35 @@ func (h *InvoiceHandler) ExportInvoiceSheets(ctx context.Context, req api.Export
 	err = h.invoices.UpdateSpreadsheetInfo(ctx, userID, invoice.ID, spreadsheetID, spreadsheetURL, worksheetID)
 	if err != nil {
 		return nil, err
+	}
+
+	// Update the Invoices summary sheet with all exported invoices for this project
+	allInvoices, err := h.invoices.List(ctx, userID, &invoice.ProjectID, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Filter to invoices that have been exported (have worksheet_id)
+	var summaryData []google.InvoiceSummaryData
+	for _, inv := range allInvoices {
+		if inv.WorksheetID != nil {
+			summaryData = append(summaryData, google.InvoiceSummaryData{
+				InvoiceNumber: inv.InvoiceNumber,
+				PeriodStart:   inv.PeriodStart,
+				PeriodEnd:     inv.PeriodEnd,
+				InvoiceDate:   inv.InvoiceDate,
+				Status:        inv.Status,
+				TotalHours:    inv.TotalHours,
+				TotalAmount:   inv.TotalAmount,
+			})
+		}
+	}
+
+	err = h.sheets.UpdateInvoicesSummary(ctx, token, spreadsheetID, summaryData)
+	if err != nil {
+		// Log but don't fail the export if summary update fails
+		// The individual invoice sheet was already created successfully
+		fmt.Printf("Warning: failed to update Invoices summary sheet: %v\n", err)
 	}
 
 	return api.ExportInvoiceSheets200JSONResponse{
