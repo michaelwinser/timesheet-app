@@ -73,8 +73,10 @@ function getContainerStyle(state: ClassificationState): string {
 	}
 
 	if (status === 'classified' && !needsReview) {
-		// Confirmed: solid project color background and border
-		return `background-color: ${projectColor}; border-color: ${projectColor};`;
+		// Confirmed: solid project color background, contrasting border for overlap visibility
+		const textColors = getProjectTextColors(projectColor);
+		const borderColor = textColors.isDark ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.2)';
+		return `background-color: ${projectColor}; border-color: ${borderColor};`;
 	}
 
 	if (status === 'classified' && needsReview) {
