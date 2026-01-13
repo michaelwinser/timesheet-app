@@ -8,10 +8,19 @@
 	import { api } from '$lib/api/client';
 	import type { Project, BillingPeriod } from '$lib/api/types';
 
-	let project = $state<Project | null>(null);
-	let loading = $state(true);
+	// Fetch state for the project (grouped to make it clear this is loaded data, not a copy from a parent array)
+	let projectState = $state<{
+		loading: boolean;
+		error: string;
+		data: Project | null;
+	}>({ loading: true, error: '', data: null });
+
+	// Convenience accessors
+	const project = $derived(projectState.data);
+	const loading = $derived(projectState.loading);
+	const error = $derived(projectState.error);
+
 	let saving = $state(false);
-	let error = $state('');
 
 	// Form state
 	let name = $state('');
@@ -61,36 +70,37 @@
 
 	async function loadProject() {
 		if (!projectId) return;
-		loading = true;
-		error = '';
+		projectState.loading = true;
+		projectState.error = '';
 		try {
-			project = await api.getProject(projectId);
+			const loadedProject = await api.getProject(projectId);
+			projectState.data = loadedProject;
 			// Initialize form state
-			name = project.name;
-			shortCode = project.short_code || '';
-			client = project.client || '';
-			color = project.color;
-			isBillable = project.is_billable;
-			isArchived = project.is_archived;
-			isHiddenByDefault = project.is_hidden_by_default || false;
-			doesNotAccumulateHours = project.does_not_accumulate_hours || false;
-			fingerprintDomains = project.fingerprint_domains || [];
-			fingerprintEmails = project.fingerprint_emails || [];
-			fingerprintKeywords = project.fingerprint_keywords || [];
+			name = loadedProject.name;
+			shortCode = loadedProject.short_code || '';
+			client = loadedProject.client || '';
+			color = loadedProject.color;
+			isBillable = loadedProject.is_billable;
+			isArchived = loadedProject.is_archived;
+			isHiddenByDefault = loadedProject.is_hidden_by_default || false;
+			doesNotAccumulateHours = loadedProject.does_not_accumulate_hours || false;
+			fingerprintDomains = loadedProject.fingerprint_domains || [];
+			fingerprintEmails = loadedProject.fingerprint_emails || [];
+			fingerprintKeywords = loadedProject.fingerprint_keywords || [];
 		} catch (e) {
-			error = 'Failed to load project';
+			projectState.error = 'Failed to load project';
 			console.error(e);
 		} finally {
-			loading = false;
+			projectState.loading = false;
 		}
 	}
 
 	async function handleSave() {
 		if (!projectId) return;
 		saving = true;
-		error = '';
+		projectState.error = '';
 		try {
-			project = await api.updateProject(projectId, {
+			projectState.data = await api.updateProject(projectId, {
 				name,
 				short_code: shortCode || undefined,
 				client: client || undefined,
@@ -105,7 +115,7 @@
 			});
 			goto('/projects');
 		} catch (e) {
-			error = 'Failed to save project';
+			projectState.error = 'Failed to save project';
 			console.error(e);
 		} finally {
 			saving = false;
@@ -238,7 +248,7 @@
 			await api.deleteProject(projectId);
 			goto('/projects');
 		} catch (e: unknown) {
-			error = e instanceof Error ? e.message : 'Failed to delete project';
+			projectState.error = e instanceof Error ? e.message : 'Failed to delete project';
 			showDeleteModal = false;
 		} finally {
 			deleting = false;

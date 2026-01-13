@@ -7,9 +7,17 @@
 	import { api, ApiClientError } from '$lib/api/client';
 	import type { Invoice, InvoiceStatus } from '$lib/api/types';
 
-	let invoice = $state<Invoice | null>(null);
-	let loading = $state(true);
-	let error = $state('');
+	// Fetch state for the invoice (grouped to make it clear this is loaded data, not a copy from a parent array)
+	let invoiceState = $state<{
+		loading: boolean;
+		error: string;
+		data: Invoice | null;
+	}>({ loading: true, error: '', data: null });
+
+	// Convenience accessors
+	const invoice = $derived(invoiceState.data);
+	const loading = $derived(invoiceState.loading);
+	const error = $derived(invoiceState.error);
 
 	// Action states
 	let statusUpdating = $state(false);
@@ -63,25 +71,25 @@
 	}
 
 	async function loadInvoice() {
-		loading = true;
-		error = '';
+		invoiceState.loading = true;
+		invoiceState.error = '';
 		const id = invoiceId();
 		if (!id) {
-			error = 'Invalid invoice ID.';
-			loading = false;
+			invoiceState.error = 'Invalid invoice ID.';
+			invoiceState.loading = false;
 			return;
 		}
 		try {
-			invoice = await api.getInvoice(id);
+			invoiceState.data = await api.getInvoice(id);
 		} catch (e) {
 			console.error('Failed to load invoice:', e);
 			if (e instanceof ApiClientError && e.status === 404) {
-				error = 'Invoice not found.';
+				invoiceState.error = 'Invoice not found.';
 			} else {
-				error = 'Failed to load invoice. Please try again.';
+				invoiceState.error = 'Failed to load invoice. Please try again.';
 			}
 		} finally {
-			loading = false;
+			invoiceState.loading = false;
 		}
 	}
 
@@ -89,17 +97,17 @@
 		if (!invoice) return;
 
 		statusUpdating = true;
-		error = '';
+		invoiceState.error = '';
 
 		try {
 			const updated = await api.updateInvoiceStatus(invoice.id, { status: newStatus });
-			invoice = updated;
+			invoiceState.data = updated;
 		} catch (e) {
 			console.error('Failed to update status:', e);
 			if (e instanceof ApiClientError) {
-				error = e.error.message || 'Failed to update invoice status.';
+				invoiceState.error = e.error.message || 'Failed to update invoice status.';
 			} else {
-				error = 'Failed to update invoice status. Please try again.';
+				invoiceState.error = 'Failed to update invoice status. Please try again.';
 			}
 		} finally {
 			statusUpdating = false;
@@ -110,7 +118,7 @@
 		if (!invoice) return;
 
 		exporting = true;
-		error = '';
+		invoiceState.error = '';
 
 		try {
 			const blob = await api.exportInvoiceCSV(invoice.id);
@@ -124,7 +132,7 @@
 			document.body.removeChild(a);
 		} catch (e) {
 			console.error('Failed to export CSV:', e);
-			error = 'Failed to export CSV. Please try again.';
+			invoiceState.error = 'Failed to export CSV. Please try again.';
 		} finally {
 			exporting = false;
 		}
@@ -134,7 +142,7 @@
 		if (!invoice) return;
 
 		exporting = true;
-		error = '';
+		invoiceState.error = '';
 
 		try {
 			const result = await api.exportInvoiceSheets(invoice.id);
@@ -150,12 +158,12 @@
 			console.error('Failed to export to Sheets:', e);
 			if (e instanceof ApiClientError) {
 				if (e.error.code === 'no_connection') {
-					error = 'Please connect your Google Calendar first to enable Sheets export.';
+					invoiceState.error = 'Please connect your Google Calendar first to enable Sheets export.';
 				} else {
-					error = e.error.message || 'Failed to export to Google Sheets.';
+					invoiceState.error = e.error.message || 'Failed to export to Google Sheets.';
 				}
 			} else {
-				error = 'Failed to export to Google Sheets. Please try again.';
+				invoiceState.error = 'Failed to export to Google Sheets. Please try again.';
 			}
 		} finally {
 			exporting = false;
@@ -166,7 +174,7 @@
 		if (!invoice) return;
 
 		deleting = true;
-		error = '';
+		invoiceState.error = '';
 
 		try {
 			await api.deleteInvoice(invoice.id);
@@ -174,9 +182,9 @@
 		} catch (e) {
 			console.error('Failed to delete invoice:', e);
 			if (e instanceof ApiClientError) {
-				error = e.error.message || 'Failed to delete invoice.';
+				invoiceState.error = e.error.message || 'Failed to delete invoice.';
 			} else {
-				error = 'Failed to delete invoice. Please try again.';
+				invoiceState.error = 'Failed to delete invoice. Please try again.';
 			}
 			showDeleteModal = false;
 		} finally {
