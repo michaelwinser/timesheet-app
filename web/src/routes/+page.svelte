@@ -39,6 +39,31 @@
 	type ScopeMode = 'day' | 'week' | 'full-week';
 	// Display: how to render events
 	type DisplayMode = 'calendar' | 'list';
+
+	// SessionStorage key for persisting project visibility across navigation
+	const VISIBLE_PROJECTS_KEY = 'timesheet:visibleProjectIds';
+
+	// Helper functions for sessionStorage persistence
+	function saveVisibleProjects(ids: Set<string>) {
+		try {
+			sessionStorage.setItem(VISIBLE_PROJECTS_KEY, JSON.stringify([...ids]));
+		} catch {
+			// Ignore storage errors (e.g., private browsing)
+		}
+	}
+
+	function loadVisibleProjects(): Set<string> | null {
+		try {
+			const stored = sessionStorage.getItem(VISIBLE_PROJECTS_KEY);
+			if (stored) {
+				return new Set(JSON.parse(stored));
+			}
+		} catch {
+			// Ignore storage errors
+		}
+		return null;
+	}
+
 	// State
 	let projects = $state<Project[]>([]);
 	let entries = $state<TimeEntry[]>([]);
@@ -591,13 +616,30 @@
 			]);
 
 			// Initialize visible projects BEFORE setting events to ensure correct filtering
-			const initialVisible = new Set<string>();
-			for (const p of projectsData) {
-				if (!p.is_archived && !p.is_hidden_by_default) {
-					initialVisible.add(p.id);
+			// Try to restore from sessionStorage first, otherwise use defaults
+			const storedVisible = loadVisibleProjects();
+			const validProjectIds = new Set(projectsData.map(p => p.id));
+
+			if (storedVisible) {
+				// Filter stored IDs to only include still-valid projects
+				const restoredVisible = new Set<string>();
+				for (const id of storedVisible) {
+					if (validProjectIds.has(id)) {
+						restoredVisible.add(id);
+					}
 				}
+				visibleProjectIds = restoredVisible;
+			} else {
+				// No stored state - use defaults (non-archived, non-hidden)
+				const initialVisible = new Set<string>();
+				for (const p of projectsData) {
+					if (!p.is_archived && !p.is_hidden_by_default) {
+						initialVisible.add(p.id);
+					}
+				}
+				visibleProjectIds = initialVisible;
+				saveVisibleProjects(initialVisible);
 			}
-			visibleProjectIds = initialVisible;
 			projects = projectsData;
 			calendarConnections = connectionsData;
 
@@ -637,6 +679,7 @@
 			newSet.add(projectId);
 		}
 		visibleProjectIds = newSet;
+		saveVisibleProjects(newSet);
 	}
 
 	function toggleHiddenProjects() {
@@ -652,6 +695,7 @@
 			}
 		}
 		visibleProjectIds = newSet;
+		saveVisibleProjects(newSet);
 	}
 
 	function toggleArchivedProjects() {
