@@ -38,6 +38,13 @@ No API keys or manual configuration required.
 | `list_pending_events` | Show calendar events awaiting classification |
 | `classify_event` | Assign an event to a project or skip it |
 | `create_time_entry` | Log time manually |
+| `search_events` | Search events using Gmail-style query syntax |
+| `list_rules` | List all classification rules |
+| `create_rule` | Create a new classification rule |
+| `preview_rule` | Test a rule query before saving |
+| `apply_rules` | Run all rules against pending events |
+| `bulk_classify` | Classify multiple events matching a query |
+| `explain_classification` | Debug why an event was classified a certain way |
 
 ## Example Interactions
 
@@ -64,6 +71,32 @@ Claude will:
 Claude will:
 1. Call `list_projects` to find the Acme project ID
 2. Call `create_time_entry` with the project, date, and hours
+
+### Create Classification Rules
+
+> "Create a rule to automatically classify meetings with Acme Corp to the Acme project"
+
+Claude will:
+1. Call `list_projects` to get the Acme project ID
+2. Call `preview_rule` with a query like `domain:acmecorp.com` to test it
+3. Show you matching events for confirmation
+4. Call `create_rule` to save the rule
+
+### Bulk Classification
+
+> "Classify all my declined meetings as skipped"
+
+Claude will:
+1. Call `search_events` with `response:declined` to show matches
+2. Call `bulk_classify` to skip all matching events at once
+
+### Debug Classification
+
+> "Why was my standup classified to the wrong project?"
+
+Claude will:
+1. Call `search_events` to find the standup event
+2. Call `explain_classification` to show rule matches and scores
 
 ## Remote Access
 

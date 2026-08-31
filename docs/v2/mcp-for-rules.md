@@ -1,5 +1,7 @@
 # MCP Server for Classification Rules
 
+> **Implementation Note:** This is a design document. **Option 3 (Examples in Tool Description)** was implemented, combined with the preview tool workflow. See `tools.gen.go` for the actual tool definitions and `mcp-usage.md` for usage examples.
+
 This document outlines approaches for exposing the classification rules system via an MCP (Model Context Protocol) server, enabling LLMs to create and manage rules on behalf of users.
 
 ## Background
