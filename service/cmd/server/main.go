@@ -196,10 +196,15 @@ func main() {
 		http.ServeFile(w, r, apiSpecPath)
 	})
 
-	// Health check
+	// Health check (readiness - verifies database connectivity)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+		if err := db.Pool.Ping(r.Context()); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("database unavailable"))
+			return
+		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		w.Write([]byte("ok"))
 	})
 
 	// Debug endpoints (authenticated)

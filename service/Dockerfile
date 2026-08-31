@@ -41,6 +41,9 @@ WORKDIR /app
 # Install CA certificates for HTTPS calls
 RUN apk add --no-cache ca-certificates
 
+# Create non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 # Copy binary from builder
 COPY --from=go-builder /server /app/server
 
@@ -50,10 +53,16 @@ COPY docs/v2/api-spec.yaml /app/api-spec.yaml
 # Copy web assets from web builder
 COPY --from=web-builder /build/build /app/static
 
+# Set permissions
+RUN chown -R appuser:appgroup /app
+
 EXPOSE 8080
 
 # Configure paths
 ENV API_SPEC_PATH=/app/api-spec.yaml
 ENV STATIC_DIR=/app/static
+
+# Switch to non-root user
+USER appuser
 
 CMD ["/app/server"]
