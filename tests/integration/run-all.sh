@@ -41,15 +41,13 @@ run_scenario() {
     TOTAL_TESTS=$((TOTAL_TESTS + 1))
 }
 
-# Find and run all scenarios
+# Find and run all scenarios, including regression/ subdirectories
 for category in classification time-entries invoicing calendar-sync; do
     category_dir="$SCRIPT_DIR/scenarios/$category"
     if [ -d "$category_dir" ]; then
-        for scenario in "$category_dir"/*.sh; do
-            if [ -f "$scenario" ]; then
-                run_scenario "$scenario"
-            fi
-        done
+        while IFS= read -r scenario; do
+            run_scenario "$scenario"
+        done < <(find "$category_dir" -name '*.sh' -type f | sort)
     fi
 done
 

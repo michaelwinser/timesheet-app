@@ -52,6 +52,9 @@ cleanup_test_data() {
             invoice)
                 api_delete "/api/invoices/$id" > /dev/null 2>&1
                 ;;
+            event)
+                api_delete "/api/test/calendar-events/$id" > /dev/null 2>&1
+                ;;
             *)
                 echo "Unknown cleanup type: $type"
                 ;;

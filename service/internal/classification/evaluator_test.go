@@ -176,6 +176,44 @@ func TestContainsWordIgnoreCase(t *testing.T) {
 			word:     "team meeting",
 			expected: false, // "team" and "meeting" are there but not as "team meeting"
 		},
+
+		// Symbol-only terms use substring matching (issue #103)
+		{
+			name:     "emoji at start of string",
+			s:        "🔄 Sync placeholder",
+			word:     "🔄",
+			expected: true,
+		},
+		{
+			name:     "emoji at end of string",
+			s:        "Standup 🔄",
+			word:     "🔄",
+			expected: true,
+		},
+		{
+			name:     "emoji with no surrounding whitespace",
+			s:        "🔄Compact",
+			word:     "🔄",
+			expected: true,
+		},
+		{
+			name:     "emoji absent from string",
+			s:        "Sync placeholder",
+			word:     "🔄",
+			expected: false,
+		},
+		{
+			name:     "different emoji does not match",
+			s:        "📅 Calendar block",
+			word:     "🔄",
+			expected: false,
+		},
+		{
+			name:     "punctuation-only term",
+			s:        "Design review -> ship",
+			word:     "->",
+			expected: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -240,6 +278,101 @@ func TestEvaluate_TitleWordBoundary(t *testing.T) {
 			result := Evaluate(ast, props)
 			if result != tt.expected {
 				t.Errorf("Evaluate(%q) = %v, want %v", tt.query, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestEvaluate_SymbolOnlyTerms is a regression test for issue #103: rule queries
+// whose value has no alphanumeric content (emoji, symbols) never matched, because
+// tokenize() discards those characters when building the candidate word list.
+//
+// Real-world case: a calendar sync system whose only unambiguous placeholder
+// marker is the 🔄 character.
+func TestEvaluate_SymbolOnlyTerms(t *testing.T) {
+	tests := []struct {
+		name     string
+		props    *EventProperties
+		query    string
+		expected bool
+	}{
+		{
+			name:     "title matches emoji prefix",
+			props:    &EventProperties{Title: "🔄 Sync placeholder"},
+			query:    `title:"🔄"`,
+			expected: true,
+		},
+		{
+			name:     "title matches emoji suffix",
+			props:    &EventProperties{Title: "Standup 🔄"},
+			query:    `title:"🔄"`,
+			expected: true,
+		},
+		{
+			name:     "title without emoji does not match",
+			props:    &EventProperties{Title: "Standup"},
+			query:    `title:"🔄"`,
+			expected: false,
+		},
+		{
+			name:     "unquoted emoji value matches",
+			props:    &EventProperties{Title: "🔄 Sync placeholder"},
+			query:    "title:🔄",
+			expected: true,
+		},
+		{
+			name:     "negated emoji excludes placeholders",
+			props:    &EventProperties{Title: "🔄 Sync placeholder"},
+			query:    `-title:"🔄"`,
+			expected: false,
+		},
+		{
+			name:     "negated emoji keeps real meetings",
+			props:    &EventProperties{Title: "Standup"},
+			query:    `-title:"🔄"`,
+			expected: true,
+		},
+		{
+			name:     "description matches emoji",
+			props:    &EventProperties{Description: "auto-generated 🔄"},
+			query:    `description:"🔄"`,
+			expected: true,
+		},
+		{
+			name:     "text searches title for emoji",
+			props:    &EventProperties{Title: "🔄 Sync placeholder"},
+			query:    `text:"🔄"`,
+			expected: true,
+		},
+		{
+			name:     "calendar name matches emoji",
+			props:    &EventProperties{CalendarName: "Work 🔄"},
+			query:    `calendar:"🔄"`,
+			expected: true,
+		},
+		{
+			name:     "emoji combines with other conditions",
+			props:    &EventProperties{Title: "🔄 Sync placeholder"},
+			query:    `title:"🔄" title:sync`,
+			expected: true,
+		},
+		{
+			name:     "emoji in OR expression",
+			props:    &EventProperties{Title: "Standup 🔄"},
+			query:    `title:hold OR title:"🔄"`,
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast, err := Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Parse(%q) error: %v", tt.query, err)
+			}
+			result := Evaluate(ast, tt.props)
+			if result != tt.expected {
+				t.Errorf("Evaluate(%q) against %+v = %v, want %v", tt.query, tt.props, result, tt.expected)
 			}
 		})
 	}

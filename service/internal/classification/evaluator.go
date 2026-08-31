@@ -162,12 +162,29 @@ func containsIgnoreCase(s, substr string) bool {
 //
 // For multi-word phrases (containing spaces), falls back to substring matching since
 // phrases like "out of office" are specific enough to not cause false positives.
+//
+// Terms with no alphanumeric content (emoji, symbols) also fall back to substring
+// matching: tokenize() discards those characters, so they can never appear in the
+// candidate word list and would otherwise never match.
+// See: https://github.com/michaelwinser/timesheet-app/issues/103
 func containsWordIgnoreCase(s, word string) bool {
 	sLower := strings.ToLower(s)
 	wordLower := strings.ToLower(word)
 
+	// An empty term matches nothing (strings.Contains would report true)
+	if wordLower == "" {
+		return false
+	}
+
 	// Multi-word phrases: use substring matching (they're specific enough)
 	if strings.Contains(wordLower, " ") {
+		return strings.Contains(sLower, wordLower)
+	}
+
+	// Symbol-only terms have no word boundary to anchor on. They also can't
+	// produce the "AC" matching inside "Jack" false positives that motivated
+	// word-boundary matching in the first place (issue #84).
+	if len(tokenize(wordLower)) == 0 {
 		return strings.Contains(sLower, wordLower)
 	}
 
