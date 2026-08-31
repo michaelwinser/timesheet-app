@@ -43,3 +43,4 @@ web/.svelte-kit/
 web/build/
 web/node_modules/
 backups/
+docs/analysis/audit-reports/

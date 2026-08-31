@@ -4,7 +4,7 @@
 
 .PHONY: help up down logs ps build clean clean-all db-up db-reset db-clear-entries \
 	db-clear-classifications db-clear-time-data psql generate test \
-	login image image-local build-multiarch push build-push tag pull \
+	login image image-local build-multiarch push build-push tag pull check-clean \
 	db-backup db-restore db-verify-backup
 
 # =============================================================================
@@ -22,6 +22,9 @@ PLATFORM ?= linux/amd64
 
 # A versioned release also moves :latest, which is what prod pulls
 LATEST_TAG := $(if $(filter-out latest,$(VERSION)),-t $(IMAGE_NAME):latest,)
+
+# Stamped into the image so a published tag can always be traced to a commit
+GIT_REV := $(shell git rev-parse --short HEAD 2>/dev/null)
 
 # Default target
 help:
@@ -64,6 +67,7 @@ help:
 	@echo "  make pull              Pull the published image"
 	@echo ""
 	@echo "  Options: VERSION=<tag> (default: $(VERSION))  PLATFORM=<arch> (default: $(PLATFORM))"
+	@echo "  build-multiarch refuses a dirty tree; override with ALLOW_DIRTY=1"
 	@echo ""
 	@echo "Access:"
 	@echo "  http://localhost:8080  - Web UI + API"
@@ -120,12 +124,26 @@ image-local:
 	docker build -f service/Dockerfile -t $(IMAGE_NAME):$(VERSION) .
 	@echo "Built $(IMAGE_NAME):$(VERSION) (native architecture, for local testing only)"
 
-build-multiarch:
+# docker build reads the working tree, not HEAD, so publishing from a dirty
+# tree produces an image that corresponds to no commit and cannot be rebuilt.
+check-clean:
+	@if [ -z "$(ALLOW_DIRTY)" ] && [ -n "$$(git status --porcelain)" ]; then \
+		echo "Refusing to publish from a dirty working tree:"; \
+		echo ""; \
+		git status --short; \
+		echo ""; \
+		echo "Commit or stash first, or override with ALLOW_DIRTY=1"; \
+		exit 1; \
+	fi
+
+build-multiarch: check-clean
 	@docker buildx inspect multiarch-builder >/dev/null 2>&1 || \
 		docker buildx create --name multiarch-builder --use
 	@echo "Building and pushing $(IMAGE_NAME):$(VERSION) for $(PLATFORMS)..."
 	docker buildx build --builder multiarch-builder --platform $(PLATFORMS) \
 		-f service/Dockerfile \
+		--label org.opencontainers.image.revision=$(GIT_REV) \
+		--label org.opencontainers.image.version=$(VERSION) \
 		-t $(IMAGE_NAME):$(VERSION) $(LATEST_TAG) \
 		--push .
 	@echo ""
