@@ -17,7 +17,6 @@ import (
 	"github.com/michaelw/timesheet-app/service/internal/sync"
 	"github.com/michaelw/timesheet-app/service/internal/timeentry"
 	openapi_types "github.com/oapi-codegen/runtime/types"
-	gcal "google.golang.org/api/calendar/v3"
 )
 
 // CalendarHandler implements the calendar endpoints
@@ -479,7 +478,7 @@ func (h *CalendarHandler) syncCalendarIncremental(ctx context.Context, creds *st
 			continue
 		}
 
-		event := googleEventToStore(ge, conn.ID, cal.ID, userID)
+		event := sync.GoogleEventToStore(ge, conn.ID, cal.ID, userID)
 		if event.IsSuppressed {
 			suppressed++
 		}
@@ -662,7 +661,7 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 
 		externalIDs = append(externalIDs, ge.Id)
 
-		event := googleEventToStore(ge, conn.ID, cal.ID, userID)
+		event := sync.GoogleEventToStore(ge, conn.ID, cal.ID, userID)
 		if event.IsSuppressed {
 			suppressed++
 		}
@@ -1447,67 +1446,4 @@ func calendarToAPI(c *store.Calendar) api.Calendar {
 	}
 	cal.UpdatedAt = &c.UpdatedAt
 	return cal
-}
-
-// googleEventToStore converts Google Calendar event to store model
-func googleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUID) *store.CalendarEvent {
-	event := &store.CalendarEvent{
-		ConnectionID:         connID,
-		CalendarID:           &calID,
-		UserID:               userID,
-		ExternalID:           ge.Id,
-		Title:                ge.Summary,
-		ClassificationStatus: store.StatusPending,
-		// Shared with the sync package's copy of this function so the two cannot
-		// drift on this. See: https://github.com/michaelwinser/timesheet-app/issues/108
-		ExtendedProperties: sync.ExtendedPropertiesToStore(ge),
-		IsSuppressed:       sync.IsSyncPlaceholder(ge),
-	}
-
-	if ge.Description != "" {
-		event.Description = &ge.Description
-	}
-
-	// Parse times - all-day events use Date, timed events use DateTime
-	if ge.Start != nil {
-		if ge.Start.DateTime != "" {
-			event.StartTime, _ = time.Parse(time.RFC3339, ge.Start.DateTime)
-		} else if ge.Start.Date != "" {
-			event.StartTime, _ = time.Parse("2006-01-02", ge.Start.Date)
-			event.IsAllDay = true
-		}
-	}
-
-	if ge.End != nil {
-		if ge.End.DateTime != "" {
-			event.EndTime, _ = time.Parse(time.RFC3339, ge.End.DateTime)
-		} else if ge.End.Date != "" {
-			event.EndTime, _ = time.Parse("2006-01-02", ge.End.Date)
-		}
-	}
-
-	// Attendees - extract emails and find user's response status
-	attendeeSet := make(map[string]bool)
-	for _, a := range ge.Attendees {
-		event.Attendees = append(event.Attendees, a.Email)
-		attendeeSet[a.Email] = true
-		// If this is the current user (Self=true), capture their response status
-		if a.Self && a.ResponseStatus != "" {
-			event.ResponseStatus = &a.ResponseStatus
-		}
-	}
-
-	// Add organizer email to attendees if not already present
-	// Google Calendar doesn't always include the organizer in the attendees list
-	if ge.Organizer != nil && ge.Organizer.Email != "" && !attendeeSet[ge.Organizer.Email] {
-		event.Attendees = append(event.Attendees, ge.Organizer.Email)
-	}
-
-	event.IsRecurring = ge.RecurringEventId != ""
-
-	if ge.Transparency != "" {
-		event.Transparency = &ge.Transparency
-	}
-
-	return event
 }

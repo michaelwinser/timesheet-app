@@ -233,7 +233,7 @@ func (w *JobWorker) processJob(ctx context.Context, job *store.SyncJob) error {
 		}
 
 		externalIDs = append(externalIDs, ge.Id)
-		event := googleEventToStore(ge, conn.ID, cal.ID, cal.UserID)
+		event := GoogleEventToStore(ge, conn.ID, cal.ID, cal.UserID)
 		if event.IsSuppressed {
 			suppressed++
 		}
@@ -324,8 +324,13 @@ func ExtendedPropertiesToStore(ge *gcal.Event) *store.EventExtendedProperties {
 	return props
 }
 
-// googleEventToStore converts Google Calendar event to store model
-func googleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUID) *store.CalendarEvent {
+// GoogleEventToStore converts a Google Calendar event to the store model.
+//
+// This is the single mapping used by every sync path. It previously existed as
+// two copies, one here and one in the handler package, which is how the sync
+// placeholder suppression in #108 came to be applied to only half the paths.
+// See: https://github.com/michaelwinser/timesheet-app/issues/112
+func GoogleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUID) *store.CalendarEvent {
 	event := &store.CalendarEvent{
 		ConnectionID:         connID,
 		CalendarID:           &calID,
