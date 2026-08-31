@@ -316,6 +316,14 @@ func itemToProperties(item Item) *EventProperties {
 		props.IsRecurring = v
 	}
 
+	if v, ok := item.Attributes["private_properties"].(map[string]string); ok {
+		props.PrivateProperties = v
+	}
+
+	if v, ok := item.Attributes["shared_properties"].(map[string]string); ok {
+		props.SharedProperties = v
+	}
+
 	return props
 }
 

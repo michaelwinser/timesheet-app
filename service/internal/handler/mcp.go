@@ -1157,6 +1157,25 @@ title:meeting domain:client.com  # Both conditions (implicit AND)
 | ` + "`status`" + ` | enum | pending, classified, skipped |
 | ` + "`project`" + ` | string | Project name (for classified events) |
 | ` + "`confidence`" + ` | number | Classification confidence: >0.8, <0.5, etc. |
+| ` + "`property`" + ` | string | Custom event property: key, or key=value |
+
+## Custom Properties
+
+Events can carry properties written by other tools - a calendar sync tool
+marking its placeholders, a scheduling assistant tagging events it created.
+These are more durable than titles, which those tools may change freely.
+
+` + "```" + `
+property:calendarSyncMarker          # the key is present, any value
+property:calendarSyncMarker=v1       # present with exactly this value
+-property:calendarSyncMarker         # the key is absent
+` + "```" + `
+
+Prefer matching on the key alone. Values are often versioned, and matching
+` + "`=v1`" + ` will silently stop working when the tool emits ` + "`v2`" + `.
+
+Unlike every other field, property keys and values are case-sensitive: they
+are machine-generated identifiers where case is meaningful.
 
 ## Operators
 

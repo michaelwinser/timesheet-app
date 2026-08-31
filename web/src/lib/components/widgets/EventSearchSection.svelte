@@ -230,6 +230,18 @@
 				</div>
 			</div>
 			<div>
+				<div class="font-medium text-gray-700 dark:text-gray-300 mb-1">Custom Properties</div>
+				<div class="font-mono text-gray-600 dark:text-gray-400 space-y-0.5">
+					<div><span class="text-primary-600 dark:text-primary-400">property:calendarSyncMarker</span> — has this property, any value</div>
+					<div><span class="text-primary-600 dark:text-primary-400">property:reclaim.event.priority=P3</span> — has it with this value</div>
+					<div><span class="text-primary-600 dark:text-primary-400">-property:calendarSyncMarker</span> — does not have it</div>
+				</div>
+				<div class="mt-1 text-gray-500 dark:text-gray-400">
+					Properties written by other tools. Case-sensitive, unlike everything else.
+					Prefer matching the key alone — values are often versioned.
+				</div>
+			</div>
+			<div>
 				<div class="font-medium text-gray-700 dark:text-gray-300 mb-1">Combining Conditions</div>
 				<div class="font-mono text-gray-600 dark:text-gray-400 space-y-0.5">
 					<div><span class="text-primary-600 dark:text-primary-400">standup domain:acme.com</span> — AND (both must match)</div>

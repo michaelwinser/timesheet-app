@@ -426,3 +426,75 @@ func TestEvaluate_TimeOfDay(t *testing.T) {
 		})
 	}
 }
+
+// TestEvaluate_ExtendedProperties covers issue #109: matching events on the
+// custom properties other tools write, which is a far more durable signal than
+// anything in the title.
+func TestEvaluate_ExtendedProperties(t *testing.T) {
+	placeholder := &EventProperties{
+		Title: "🔄 Acme standup",
+		PrivateProperties: map[string]string{
+			"calendarSyncMarker": "v1",
+			"sourceCalendarId":   "michaelw@winser.com",
+		},
+	}
+	reclaimed := &EventProperties{
+		Title: "Focus time",
+		PrivateProperties: map[string]string{
+			"reclaim.event.type":     "MEETING",
+			"reclaim.event.priority": "P3",
+		},
+	}
+	sharedOnly := &EventProperties{
+		Title:            "Team offsite",
+		SharedProperties: map[string]string{"teamTag": "platform"},
+	}
+	plain := &EventProperties{Title: "Acme standup"}
+
+	tests := []struct {
+		name     string
+		query    string
+		props    *EventProperties
+		expected bool
+	}{
+		{"key present", `property:calendarSyncMarker`, placeholder, true},
+		{"key absent", `property:calendarSyncMarker`, plain, false},
+		{"key absent on a different integration", `property:calendarSyncMarker`, reclaimed, false},
+
+		{"key with matching value", `property:calendarSyncMarker=v1`, placeholder, true},
+		{"key with non-matching value", `property:calendarSyncMarker=v2`, placeholder, false},
+
+		{"dotted key", `property:reclaim.event.priority`, reclaimed, true},
+		{"dotted key with value", `property:reclaim.event.priority=P3`, reclaimed, true},
+		{"dotted key with wrong value", `property:reclaim.event.priority=P1`, reclaimed, false},
+
+		{"keys are case-sensitive", `property:calendarsyncmarker`, placeholder, false},
+		{"values are case-sensitive", `property:reclaim.event.priority=p3`, reclaimed, false},
+
+		{"shared namespace is searched too", `property:teamTag`, sharedOnly, true},
+		{"shared namespace with value", `property:teamTag=platform`, sharedOnly, true},
+
+		{"negation excludes placeholders", `-property:calendarSyncMarker`, placeholder, false},
+		{"negation keeps ordinary events", `-property:calendarSyncMarker`, plain, true},
+
+		{"combined with another condition", `property:calendarSyncMarker title:acme`, placeholder, true},
+		{"combined where the other condition fails", `property:calendarSyncMarker title:zzz`, placeholder, false},
+		{"in an OR expression", `title:zzz OR property:calendarSyncMarker`, placeholder, true},
+
+		{"quoted condition", `property:"calendarSyncMarker=v1"`, placeholder, true},
+		{"empty key matches nothing", `property:"=v1"`, placeholder, false},
+		{"no properties at all", `property:anything`, plain, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast, err := Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Parse(%q) error: %v", tt.query, err)
+			}
+			if got := Evaluate(ast, tt.props); got != tt.expected {
+				t.Errorf("Evaluate(%q) = %v, want %v", tt.query, got, tt.expected)
+			}
+		})
+	}
+}

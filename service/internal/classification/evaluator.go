@@ -18,6 +18,10 @@ type EventProperties struct {
 	Transparency   string // opaque, transparent
 	IsRecurring    bool
 	CalendarName   string // Name of the source calendar
+	// Extended properties written by other tools, keyed by namespace. See
+	// https://github.com/michaelwinser/timesheet-app/issues/109
+	PrivateProperties map[string]string
+	SharedProperties  map[string]string
 }
 
 // Evaluate evaluates a query against event properties
@@ -129,6 +133,11 @@ func evaluateCondition(cond *ConditionNode, props *EventProperties) bool {
 		// Match against calendar name (word boundary)
 		return containsWordIgnoreCase(props.CalendarName, cond.Value)
 
+	case "property":
+		// property:key           - the key is present
+		// property:key=value     - present with exactly this value
+		return matchExtendedProperty(cond.Value, props.PrivateProperties, props.SharedProperties)
+
 	case "text":
 		// Text search across title, description, and calendar name
 		// Uses word boundary matching to prevent false positives (e.g., "AC" matching "APCSA")
@@ -149,6 +158,36 @@ func evaluateCondition(cond *ConditionNode, props *EventProperties) bool {
 		// Unknown property, no match
 		return false
 	}
+}
+
+// matchExtendedProperty evaluates a property: condition against an event's
+// extended properties. The condition value is either a bare key, matching on
+// presence, or key=value, requiring that exact value.
+//
+// Both namespaces are searched: which one a tool writes to is an implementation
+// detail of the Google API, not something a user filtering their calendar
+// should have to know.
+//
+// Unlike the rest of the query language this is case-sensitive. Property keys
+// and values are machine-generated identifiers - "calendarSyncMarker",
+// "reclaim.event.priority", "P3" - where case is meaningful and folding it
+// would risk collisions between distinct keys.
+func matchExtendedProperty(condition string, namespaces ...map[string]string) bool {
+	key, want, hasValue := strings.Cut(condition, "=")
+	if key == "" {
+		return false
+	}
+
+	for _, properties := range namespaces {
+		value, ok := properties[key]
+		if !ok {
+			continue
+		}
+		if !hasValue || value == want {
+			return true
+		}
+	}
+	return false
 }
 
 // containsIgnoreCase checks if s contains substr (case-insensitive)

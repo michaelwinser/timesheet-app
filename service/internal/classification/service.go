@@ -466,6 +466,15 @@ func eventToItem(event *store.CalendarEvent) Item {
 		attrs["attendees"] = event.Attendees
 	}
 
+	if event.ExtendedProperties != nil {
+		if len(event.ExtendedProperties.Private) > 0 {
+			attrs["private_properties"] = event.ExtendedProperties.Private
+		}
+		if len(event.ExtendedProperties.Shared) > 0 {
+			attrs["shared_properties"] = event.ExtendedProperties.Shared
+		}
+	}
+
 	if event.CalendarName != nil {
 		attrs["calendar_name"] = *event.CalendarName
 	}
