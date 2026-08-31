@@ -41,7 +41,7 @@
 	let showDeleteModal = $state(false);
 	let deleting = $state(false);
 
-	const projectId = $derived($page.params.id);
+	const projectId = $derived($page.params.id as string);
 
 	// Preview project with current form values
 	const previewProject = $derived<Project | null>(
