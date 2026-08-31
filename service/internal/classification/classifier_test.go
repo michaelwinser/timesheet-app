@@ -1,7 +1,7 @@
 package classification
 
 import (
-	"fmt"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -560,38 +560,71 @@ func TestEvaluateExtended_Unclassified(t *testing.T) {
 	}
 }
 
+// TestEvaluateExtended_ConfidenceLevels checks the confidence bucket semantics:
+// high is >= ceiling, medium is [floor, ceiling), low is < floor.
+//
+// Boundaries are derived from the production constants rather than written as
+// literals. Hardcoding them is what left this test red from 19ab668 until it
+// was noticed months later - retuning the thresholds broke a test that was
+// asserting the old numbers rather than the behaviour.
+// See: https://github.com/michaelwinser/timesheet-app/issues/111
 func TestEvaluateExtended_ConfidenceLevels(t *testing.T) {
+	const epsilon = 0.01
+
+	if ConfidenceFloor >= ConfidenceCeiling {
+		t.Fatalf("ConfidenceFloor (%v) must be below ConfidenceCeiling (%v)", ConfidenceFloor, ConfidenceCeiling)
+	}
+	if ConfidenceCeiling-epsilon < ConfidenceFloor {
+		t.Fatalf("epsilon %v is too large for the gap between floor %v and ceiling %v",
+			epsilon, ConfidenceFloor, ConfidenceCeiling)
+	}
+
 	tests := []struct {
+		name       string
 		confidence *float64
 		query      string
 		expected   bool
 	}{
-		{ptr(0.9), "confidence:high", true},
-		{ptr(0.65), "confidence:high", true},  // at ceiling
-		{ptr(0.64), "confidence:high", false}, // just below ceiling
-		{ptr(0.64), "confidence:medium", true},
-		{ptr(0.5), "confidence:medium", true}, // at floor
-		{ptr(0.49), "confidence:medium", false},
-		{ptr(0.49), "confidence:low", true},
-		{ptr(0.0), "confidence:low", true},
-		{nil, "confidence:low", true}, // nil confidence = low
-		{nil, "confidence:high", false},
+		{"certain is high", ptr(1.0), "confidence:high", true},
+		{"at ceiling is high", ptr(ConfidenceCeiling), "confidence:high", true},
+		{"just below ceiling is not high", ptr(ConfidenceCeiling - epsilon), "confidence:high", false},
+
+		{"just below ceiling is medium", ptr(ConfidenceCeiling - epsilon), "confidence:medium", true},
+		{"at ceiling is not medium", ptr(ConfidenceCeiling), "confidence:medium", false},
+		{"at floor is medium", ptr(ConfidenceFloor), "confidence:medium", true},
+		{"just below floor is not medium", ptr(ConfidenceFloor - epsilon), "confidence:medium", false},
+
+		{"just below floor is low", ptr(ConfidenceFloor - epsilon), "confidence:low", true},
+		{"at floor is not low", ptr(ConfidenceFloor), "confidence:low", false},
+		{"zero is low", ptr(0.0), "confidence:low", true},
+
+		{"missing confidence is low", nil, "confidence:low", true},
+		{"missing confidence is not medium", nil, "confidence:medium", false},
+		{"missing confidence is not high", nil, "confidence:high", false},
 	}
 
 	for _, tt := range tests {
-		props := &ExtendedEventProperties{
-			EventProperties: EventProperties{Title: "Test"},
-			Confidence:      tt.confidence,
-		}
-		ast, _ := Parse(tt.query)
-		result := EvaluateExtended(ast, props)
-		confStr := "nil"
-		if tt.confidence != nil {
-			confStr = fmt.Sprintf("%.2f", *tt.confidence)
-		}
-		if result != tt.expected {
-			t.Errorf("EvaluateExtended(%q) with confidence=%s = %v, expected %v", tt.query, confStr, result, tt.expected)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			props := &ExtendedEventProperties{
+				EventProperties: EventProperties{Title: "Test"},
+				Confidence:      tt.confidence,
+			}
+
+			ast, err := Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Parse(%q) error: %v", tt.query, err)
+			}
+
+			result := EvaluateExtended(ast, props)
+			if result != tt.expected {
+				confidence := "nil"
+				if tt.confidence != nil {
+					confidence = strconv.FormatFloat(*tt.confidence, 'f', -1, 64)
+				}
+				t.Errorf("EvaluateExtended(%q) with confidence=%s = %v, want %v (floor=%v ceiling=%v)",
+					tt.query, confidence, result, tt.expected, ConfidenceFloor, ConfidenceCeiling)
+			}
+		})
 	}
 }
 

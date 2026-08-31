@@ -429,11 +429,11 @@ func evaluateExtendedCondition(cond *ConditionNode, props *ExtendedEventProperti
 		conf := *props.Confidence
 		switch strings.ToLower(cond.Value) {
 		case "high":
-			return conf >= ConfidenceCeiling // >= 0.8
+			return conf >= ConfidenceCeiling
 		case "medium":
-			return conf >= ConfidenceFloor && conf < ConfidenceCeiling // 0.5 <= conf < 0.8
+			return conf >= ConfidenceFloor && conf < ConfidenceCeiling
 		case "low":
-			return conf < ConfidenceFloor // < 0.5
+			return conf < ConfidenceFloor
 		default:
 			return false
 		}
