@@ -4,7 +4,8 @@
 
 .PHONY: help up down logs ps build clean clean-all db-up db-reset db-clear-entries \
 	db-clear-classifications db-clear-time-data psql generate test \
-	login image image-local build-multiarch push build-push tag pull
+	login image image-local build-multiarch push build-push tag pull \
+	db-backup db-restore db-verify-backup
 
 # =============================================================================
 # Docker Hub publishing
@@ -42,6 +43,11 @@ help:
 	@echo "  make db-clear-entries  Delete all time entries"
 	@echo "  make db-clear-classifications  Reset all events to pending"
 	@echo "  make psql        Connect to PostgreSQL shell"
+	@echo ""
+	@echo "Backup:"
+	@echo "  make db-backup                 Dump the database to $(BACKUP_DIR)/"
+	@echo "  make db-verify-backup FILE=f   Restore f into a throwaway container and count rows"
+	@echo "  make db-restore FILE=f         Replace the database with f (WARNING: destructive)"
 	@echo ""
 	@echo "Development:"
 	@echo "  make generate    Regenerate API code from OpenAPI spec"
@@ -203,6 +209,62 @@ db-clear-time-data:
 
 psql:
 	docker compose exec postgres psql -U timesheet -d timesheet_v2
+
+# =============================================================================
+# Backup and restore
+# =============================================================================
+#
+# pg_dump runs against the live database in a consistent snapshot, so no
+# downtime is needed to take a backup. Restoring does require stopping the API.
+#
+# The dump contains API key hashes, MCP tokens, and Google refresh tokens
+# encrypted with ENCRYPTION_KEY. Treat it as a credential, and back up
+# ENCRYPTION_KEY separately - without it the restored tokens are unusable.
+
+BACKUP_DIR ?= ./backups
+
+db-backup:
+	@mkdir -p $(BACKUP_DIR)
+	@f="$(BACKUP_DIR)/timesheet-$$(date +%Y%m%d-%H%M%S).dump"; \
+	docker compose exec -T postgres pg_dump -U timesheet -Fc timesheet_v2 > "$$f" || \
+		{ echo "Dump failed"; rm -f "$$f"; exit 1; }; \
+	if [ ! -s "$$f" ]; then echo "Dump is empty - is postgres running?"; rm -f "$$f"; exit 1; fi; \
+	echo "Wrote $$f ($$(du -h "$$f" | cut -f1))"; \
+	echo "Verify it before trusting it:  make db-verify-backup FILE=$$f"
+
+# Restores into a scratch container so the dump is proved readable without
+# touching the real database. An unrestored backup is only a hypothesis.
+db-verify-backup:
+	@if [ -z "$(FILE)" ]; then echo "Usage: make db-verify-backup FILE=<dump>"; exit 1; fi
+	@if [ ! -f "$(FILE)" ]; then echo "No such file: $(FILE)"; exit 1; fi
+	@set -e; \
+	name=timesheet-verify-$$$$; \
+	trap 'docker rm -f $$name >/dev/null 2>&1 || true' EXIT; \
+	echo "Starting scratch postgres..."; \
+	docker run -d --name $$name -e POSTGRES_PASSWORD=verify \
+		-e POSTGRES_USER=timesheet -e POSTGRES_DB=timesheet_v2 \
+		postgres:16-alpine >/dev/null; \
+	until docker exec $$name pg_isready -U timesheet -d timesheet_v2 >/dev/null 2>&1; do sleep 1; done; \
+	echo "Restoring $(FILE)..."; \
+	docker exec -i $$name pg_restore -U timesheet -d timesheet_v2 --no-owner < "$(FILE)"; \
+	echo ""; \
+	docker exec $$name psql -U timesheet -d timesheet_v2 -c \
+		"select relname as table, n_live_tup as rows from pg_stat_user_tables where n_live_tup > 0 order by relname;"; \
+	echo "Backup restores cleanly."
+
+db-restore:
+	@if [ -z "$(FILE)" ]; then echo "Usage: make db-restore FILE=<dump>"; exit 1; fi
+	@if [ ! -f "$(FILE)" ]; then echo "No such file: $(FILE)"; exit 1; fi
+	@echo "WARNING: This REPLACES everything in timesheet_v2 with $(FILE)"
+	@echo "Press Ctrl+C to cancel, or wait 5 seconds..."
+	@sleep 5
+	@echo "Stopping API to release database connections..."
+	-docker compose stop api
+	docker compose exec -T postgres pg_restore -U timesheet -d timesheet_v2 \
+		--clean --if-exists --no-owner < $(FILE)
+	@echo "Starting API..."
+	docker compose start api
+	@echo "Restored from $(FILE)"
 
 # =============================================================================
 # Development

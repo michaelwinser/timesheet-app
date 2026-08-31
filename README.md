@@ -120,6 +120,23 @@ make build && make up
 
 Run `make help` for the full command list, including the database helpers.
 
+### Backups
+
+```bash
+make db-backup                             # dump to ./backups (no downtime)
+make db-verify-backup FILE=<dump>          # prove it restores, in a scratch container
+make db-restore FILE=<dump>                # replace the database (destructive)
+```
+
+Verify every backup you intend to rely on - `db-verify-backup` restores into a
+throwaway container and prints row counts, without touching the live database.
+
+The dump contains API key hashes, MCP tokens, and Google refresh tokens
+encrypted with `ENCRYPTION_KEY`. Treat it as a credential, and keep a copy of
+`ENCRYPTION_KEY` somewhere separate: restore the dump without it and the stored
+Google credentials cannot be decrypted, so every calendar connection has to be
+re-authorised.
+
 ### Docker
 
 #### Building and Pushing to Docker Hub
