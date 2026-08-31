@@ -1,44 +1,19 @@
 # Docker Compose configuration for TrueNAS production deployment
+# V2 Architecture (Go + Svelte)
+#
+# WARNING - see https://github.com/michaelwinser/timesheet-app/issues/105
+# The postgres volume below is a bind mount, but the live TrueNAS deployment
+# runs docker-compose.yaml and stores its data in the NAMED volume
+# timesheet-app_postgres-data. Deploying this file as-is would bind-mount an
+# empty directory, initialise a fresh cluster, and come up looking healthy with
+# an empty database. Reconcile the volume before using this file.
 #
 # Usage:
-#   1. Create deployment directory on TrueNAS:
-#      mkdir -p /mnt/pool/apps/timesheet
-#
-#   2. Copy this file to TrueNAS:
-#      scp docker-compose.prod.yaml truenas:/mnt/pool/apps/timesheet/docker-compose.yaml
-#
-#   3. Create .env file on TrueNAS with your secrets:
-#      ssh truenas
-#      cd /mnt/pool/apps/timesheet
-#      cat > .env << 'EOF'
-#      # Paths (adjust to your TrueNAS pool)
-#      DATA_PATH=/mnt/pool/apps/timesheet/data
-#      POSTGRES_PATH=/mnt/pool/apps/timesheet/postgres
-#
-#      # PostgreSQL
-#      POSTGRES_USER=timesheet
-#      POSTGRES_PASSWORD=<generate-secure-password>
-#      POSTGRES_DB=timesheet
-#
-#      # Google OAuth (from Google Cloud Console)
-#      GOOGLE_CLIENT_ID=<your-client-id>
-#      GOOGLE_CLIENT_SECRET=<your-client-secret>
-#      OAUTH_REDIRECT_URI=http://<truenas-ip>:8000/auth/callback
-#
-#      # App secrets (generate with: python -c "import secrets; print(secrets.token_hex(32))")
-#      SECRET_KEY=<generate-random-key>
-#
-#      # Optional: Anthropic API for LLM features
-#      ANTHROPIC_API_KEY=
-#      EOF
-#
-#   4. Create data directories:
-#      mkdir -p ${DATA_PATH} ${POSTGRES_PATH}
-#
-#   5. Deploy:
-#      docker-compose up -d
-#
-# The .env file is automatically read by docker-compose from the same directory.
+#   1. Create deployment directory on TrueNAS
+#   2. Copy this file to TrueNAS as docker-compose.yaml
+#   3. Create .env file with secrets
+#   4. Create data directories: mkdir -p ./postgres-data
+#   5. Deploy: docker-compose up -d
 
 version: "3.8"
 
@@ -49,17 +24,14 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-timesheet}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-timesheet}
+      POSTGRES_DB: ${POSTGRES_DB:-timesheet_v2}
     volumes:
       # Host path volume for PostgreSQL data persistence
-      # Set POSTGRES_PATH in .env file
-      - ${POSTGRES_PATH}:/var/lib/postgresql/data
-    # Don't expose PostgreSQL externally in production
-    # ports:
-    #   - "5432:5432"
+      # Mounts to a 'postgres-data' directory in the same location as this file
+      - ${POSTGRES_DATA_PATH:-./postgres-data}:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timesheet}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timesheet} -d ${POSTGRES_DB:-timesheet_v2}" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -72,84 +44,56 @@ services:
           cpus: '0.25'
           memory: 128M
 
-  timesheet-app:
-    # Use pre-built image from Docker Hub (recommended)
-    # Build and push: docker build -t michaelwinser/timesheet-app:latest .
-    #                 docker push michaelwinser/timesheet-app:latest
+  timesheet-api:
+    # Build from source or use pre-built image
+    build:
+      context: .
+      dockerfile: service/Dockerfile
     image: michaelwinser/timesheet-app:latest
-
-    # Alternatively, build locally on TrueNAS
-    # build: .
-
-    container_name: timesheet-app
-
+    container_name: timesheet-api
     depends_on:
       postgres:
         condition: service_healthy
-
     ports:
-      # Map to a specific port on TrueNAS host
-      # Access via: http://truenas-ip:8000
-      # Or configure reverse proxy for HTTPS access
-      - "8000:8000"
-
+      # Map container port 8080 to host port (default 8000)
+      - "${PORT:-8000}:8080"
     environment:
-      # =====================================================================
-      # REQUIRED ENVIRONMENT VARIABLES
-      # =====================================================================
-      # Set these in your .env file or TrueNAS environment variable settings
+      # Server Configuration
+      PORT: "8080"
+      ENVIRONMENT: "production"
 
-      # PostgreSQL connection
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-timesheet}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-timesheet}
+      # Database Connection
+      DATABASE_URL: postgresql://${POSTGRES_USER:-timesheet}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-timesheet_v2}
 
-      # Google OAuth credentials
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      # Security
+      # Generate with: openssl rand -hex 32
+      JWT_SECRET: ${JWT_SECRET}
+      # Generate with: openssl rand -hex 32
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
 
-      # OAuth redirect URI - MUST match your Google Cloud Console configuration
-      # Example with reverse proxy: https://timesheet.yourdomain.com/auth/callback
-      # Example with direct access: http://truenas-ip:8000/auth/callback
-      - OAUTH_REDIRECT_URI=${OAUTH_REDIRECT_URI}
+      # Google OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URL: ${GOOGLE_REDIRECT_URL}
 
-      # Application secret key (generate with: python -c "import secrets; print(secrets.token_hex(32))")
-      - SECRET_KEY=${SECRET_KEY}
+      # Optional: Anthropic API
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
 
-      # =====================================================================
-      # OPTIONAL ENVIRONMENT VARIABLES
-      # =====================================================================
-
-      # Anthropic API for LLM classification features
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-
-      # Production settings
-      - ENVIRONMENT=production
-      - DEBUG=false
-      - LOG_LEVEL=INFO
-
-    volumes:
-      # Host path volume for data persistence
-      # Set DATA_PATH in .env file
-      # This allows easy backups via TrueNAS snapshots
-      - ${DATA_PATH}:/data
-
-    # Restart policy - always restart unless explicitly stopped
     restart: unless-stopped
-
-    # Resource limits (adjust based on your TrueNAS resources)
     deploy:
       resources:
         limits:
-          cpus: '2.0'        # Allow up to 2 CPU cores
-          memory: 1G         # Maximum 1GB RAM
+          cpus: '2.0'
+          memory: 1G
         reservations:
-          cpus: '0.5'        # Reserve 0.5 CPU cores
-          memory: 256M       # Reserve 256MB RAM
+          cpus: '0.1'
+          memory: 64M
 
-    # Health check monitoring
-    # TrueNAS will automatically restart container if health check fails
+    # Simple connectivity check since /health endpoint might not exist yet
+    # or requires auth. Using wget to check if port is open/responding.
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/" ]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 20s
