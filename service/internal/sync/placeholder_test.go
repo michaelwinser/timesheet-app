@@ -96,8 +96,8 @@ func TestIsSyncPlaceholder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isSyncPlaceholder(tt.event); got != tt.expected {
-				t.Errorf("isSyncPlaceholder() = %v, want %v", got, tt.expected)
+			if got := IsSyncPlaceholder(tt.event); got != tt.expected {
+				t.Errorf("IsSyncPlaceholder() = %v, want %v", got, tt.expected)
 			}
 		})
 	}
@@ -141,15 +141,15 @@ func TestExtendedPropertiesToStore(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := extendedPropertiesToStore(tt.event)
+			got := ExtendedPropertiesToStore(tt.event)
 			if tt.wantNil {
 				if got != nil {
-					t.Fatalf("extendedPropertiesToStore() = %+v, want nil", got)
+					t.Fatalf("ExtendedPropertiesToStore() = %+v, want nil", got)
 				}
 				return
 			}
 			if got == nil {
-				t.Fatal("extendedPropertiesToStore() = nil, want properties")
+				t.Fatal("ExtendedPropertiesToStore() = nil, want properties")
 			}
 			if len(got.Private) != len(tt.wantPrivate) {
 				t.Errorf("Private = %v, want %v", got.Private, tt.wantPrivate)

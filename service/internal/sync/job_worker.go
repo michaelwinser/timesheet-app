@@ -299,8 +299,8 @@ func (w *JobWorker) processJob(ctx context.Context, job *store.SyncJob) error {
 // See: https://github.com/michaelwinser/timesheet-app/issues/108
 const syncPlaceholderMarker = "calendarSyncMarker"
 
-// isSyncPlaceholder reports whether a Google event is a sync placeholder.
-func isSyncPlaceholder(ge *gcal.Event) bool {
+// IsSyncPlaceholder reports whether a Google event is a sync placeholder.
+func IsSyncPlaceholder(ge *gcal.Event) bool {
 	if ge.ExtendedProperties == nil {
 		return false
 	}
@@ -308,9 +308,9 @@ func isSyncPlaceholder(ge *gcal.Event) bool {
 	return ok
 }
 
-// extendedPropertiesToStore copies Google's extendedProperties into the store
+// ExtendedPropertiesToStore copies Google's extendedProperties into the store
 // model, returning nil when the event carries none.
-func extendedPropertiesToStore(ge *gcal.Event) *store.EventExtendedProperties {
+func ExtendedPropertiesToStore(ge *gcal.Event) *store.EventExtendedProperties {
 	if ge.ExtendedProperties == nil {
 		return nil
 	}
@@ -333,8 +333,8 @@ func googleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUI
 		ExternalID:           ge.Id,
 		Title:                ge.Summary,
 		ClassificationStatus: store.StatusPending,
-		ExtendedProperties:   extendedPropertiesToStore(ge),
-		IsSuppressed:         isSyncPlaceholder(ge),
+		ExtendedProperties:   ExtendedPropertiesToStore(ge),
+		IsSuppressed:         IsSyncPlaceholder(ge),
 	}
 
 	if ge.Description != "" {

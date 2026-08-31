@@ -460,6 +460,8 @@ func (h *CalendarHandler) syncCalendarIncremental(ctx context.Context, creds *st
 		return h.syncSingleCalendar(ctx, creds, conn, cal, userID, &start, &end)
 	}
 
+	suppressed := 0
+
 	// Process events
 	for _, ge := range syncResult.Events {
 		if ge.Status == "cancelled" {
@@ -478,11 +480,18 @@ func (h *CalendarHandler) syncCalendarIncremental(ctx context.Context, creds *st
 		}
 
 		event := googleEventToStore(ge, conn.ID, cal.ID, userID)
+		if event.IsSuppressed {
+			suppressed++
+		}
 		_, upsertErr := h.events.Upsert(ctx, event)
 		if upsertErr != nil {
 			return created, updated, orphaned, upsertErr
 		}
 		updated++
+	}
+
+	if suppressed > 0 {
+		log.Printf("[SYNC] suppressed %d sync placeholder event(s) on calendar %s", suppressed, cal.Name)
 	}
 
 	// Save the new sync token
@@ -631,6 +640,7 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 
 	// Process events
 	externalIDs := make([]string, 0, len(syncResult.Events))
+	suppressed := 0
 
 	for _, ge := range syncResult.Events {
 		// Check if event was cancelled/deleted (only in incremental sync)
@@ -653,11 +663,20 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 		externalIDs = append(externalIDs, ge.Id)
 
 		event := googleEventToStore(ge, conn.ID, cal.ID, userID)
+		if event.IsSuppressed {
+			suppressed++
+		}
 		_, upsertErr := h.events.Upsert(ctx, event)
 		if upsertErr != nil {
 			return created, updated, orphaned, upsertErr
 		}
 		created++
+	}
+
+	// Suppressed events are hidden from every view until #110 provides a way to
+	// reveal them, so report the count rather than letting them vanish silently.
+	if suppressed > 0 {
+		log.Printf("[SYNC] suppressed %d sync placeholder event(s) on calendar %s", suppressed, cal.Name)
 	}
 
 	// For full sync, mark events within the synced range as orphaned if not in the result
@@ -1439,6 +1458,10 @@ func googleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUI
 		ExternalID:           ge.Id,
 		Title:                ge.Summary,
 		ClassificationStatus: store.StatusPending,
+		// Shared with the sync package's copy of this function so the two cannot
+		// drift on this. See: https://github.com/michaelwinser/timesheet-app/issues/108
+		ExtendedProperties: sync.ExtendedPropertiesToStore(ge),
+		IsSuppressed:       sync.IsSyncPlaceholder(ge),
 	}
 
 	if ge.Description != "" {
