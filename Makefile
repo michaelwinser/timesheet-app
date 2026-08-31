@@ -2,7 +2,25 @@
 #
 # All commands use Docker for consistency.
 
-.PHONY: help up down logs ps build clean db-reset db-clear-entries db-clear-time-data psql generate test
+.PHONY: help up down logs ps build clean clean-all db-up db-reset db-clear-entries \
+	db-clear-classifications db-clear-time-data psql generate test \
+	login image image-local build-multiarch push build-push tag pull
+
+# =============================================================================
+# Docker Hub publishing
+# =============================================================================
+
+# Image consumed by docker-compose.prod.yaml on TrueNAS
+IMAGE_NAME ?= michaelwinser/timesheet-app
+VERSION ?= latest
+
+# TrueNAS runs on Intel/AMD. Publish multi-arch so one tag serves both the
+# server and an Apple Silicon workstation.
+PLATFORMS ?= linux/amd64,linux/arm64
+PLATFORM ?= linux/amd64
+
+# A versioned release also moves :latest, which is what prod pulls
+LATEST_TAG := $(if $(filter-out latest,$(VERSION)),-t $(IMAGE_NAME):latest,)
 
 # Default target
 help:
@@ -28,6 +46,18 @@ help:
 	@echo "Development:"
 	@echo "  make generate    Regenerate API code from OpenAPI spec"
 	@echo "  make test        Run tests"
+	@echo ""
+	@echo "Docker Hub (image: $(IMAGE_NAME)):"
+	@echo "  make login             Log in to Docker Hub"
+	@echo "  make build-multiarch   Build for amd64+arm64 and push (also moves :latest)"
+	@echo "  make image             Build a tagged image for one platform ($(PLATFORM))"
+	@echo "  make image-local       Build a tagged image for this machine only"
+	@echo "  make push              Push an already built tagged image"
+	@echo "  make build-push        make image, then make push"
+	@echo "  make tag TAG=1.0.5     Retag VERSION as TAG registry-side (no rebuild)"
+	@echo "  make pull              Pull the published image"
+	@echo ""
+	@echo "  Options: VERSION=<tag> (default: $(VERSION))  PLATFORM=<arch> (default: $(PLATFORM))"
 	@echo ""
 	@echo "Access:"
 	@echo "  http://localhost:8080  - Web UI + API"
@@ -62,6 +92,57 @@ clean-all:
 	@echo "Press Ctrl+C to cancel, or wait 3 seconds..."
 	@sleep 3
 	docker compose down -v
+
+# =============================================================================
+# Docker Hub
+# =============================================================================
+#
+# `build` above builds the local compose stack. These targets build and publish
+# the tagged image that docker-compose.prod.yaml pulls on TrueNAS.
+
+login:
+	docker login
+
+image:
+	@echo "Building $(IMAGE_NAME):$(VERSION) for $(PLATFORM)..."
+	docker build --platform $(PLATFORM) -f service/Dockerfile -t $(IMAGE_NAME):$(VERSION) .
+	@echo "Built $(IMAGE_NAME):$(VERSION) ($(PLATFORM))"
+	@echo "Note: single-platform. TrueNAS needs linux/amd64 - use build-multiarch to cover both."
+
+image-local:
+	@echo "Building $(IMAGE_NAME):$(VERSION) for this machine..."
+	docker build -f service/Dockerfile -t $(IMAGE_NAME):$(VERSION) .
+	@echo "Built $(IMAGE_NAME):$(VERSION) (native architecture, for local testing only)"
+
+build-multiarch:
+	@docker buildx inspect multiarch-builder >/dev/null 2>&1 || \
+		docker buildx create --name multiarch-builder --use
+	@echo "Building and pushing $(IMAGE_NAME):$(VERSION) for $(PLATFORMS)..."
+	docker buildx build --builder multiarch-builder --platform $(PLATFORMS) \
+		-f service/Dockerfile \
+		-t $(IMAGE_NAME):$(VERSION) $(LATEST_TAG) \
+		--push .
+	@echo ""
+	@echo "Published $(IMAGE_NAME):$(VERSION). Platforms now on the tag:"
+	@docker buildx imagetools inspect $(IMAGE_NAME):$(VERSION) | grep -i platform
+
+push:
+	docker push $(IMAGE_NAME):$(VERSION)
+
+build-push: image push
+
+# Retag an already published image without rebuilding. imagetools copies the
+# manifest list registry-side, so the multi-arch tag stays multi-arch; plain
+# `docker tag` would flatten it to whichever single platform the local daemon
+# happens to hold.
+tag:
+	@if [ -z "$(TAG)" ]; then echo "Usage: make tag TAG=1.0.5 [VERSION=<source tag>]"; exit 1; fi
+	docker buildx imagetools create -t $(IMAGE_NAME):$(TAG) $(IMAGE_NAME):$(VERSION)
+	@echo "Platforms on $(IMAGE_NAME):$(TAG):"
+	@docker buildx imagetools inspect $(IMAGE_NAME):$(TAG) | grep -i platform
+
+pull:
+	docker pull $(IMAGE_NAME):$(VERSION)
 
 # =============================================================================
 # Database

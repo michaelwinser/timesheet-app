@@ -2,13 +2,19 @@
 
 Automatic timesheet creation from Google Calendar.
 
+Go API (`service/`) serving a SvelteKit front end (`web/`), backed by PostgreSQL.
+Everything runs through Docker Compose.
+
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.11+
+- Docker and Docker Compose
 - Google Cloud project with Calendar API enabled
 - OAuth 2.0 credentials (Web application type)
+
+Go 1.24 and Node 20 are only needed to build outside Docker; the image builds
+both itself.
 
 ### Google Cloud Setup
 
@@ -53,7 +59,9 @@ Automatic timesheet creation from Google Calendar.
 3. Application type: "Web application"
 4. Name: "Timesheet App" (or any name)
 5. Under "Authorized redirect URIs", click "Add URI"
-   - Enter: `http://localhost:8000/auth/callback`
+   - Enter: `http://localhost:8080/api/auth/google/callback`
+   - For a deployed instance, add its URL too, e.g.
+     `https://timesheet.yourdomain.com/api/auth/google/callback`
 6. Click "Create"
 7. A dialog will show your credentials:
    - **Client ID**: Copy this (looks like `xxxx.apps.googleusercontent.com`)
@@ -64,10 +72,21 @@ You can always find these again by clicking on the credential name in the Creden
 
 #### 5. Set Environment Variables
 
-```bash
-export GOOGLE_CLIENT_ID="your-client-id-here"
-export GOOGLE_CLIENT_SECRET="your-client-secret-here"
-```
+The service reads these (defaults in parentheses):
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `GOOGLE_CLIENT_ID` | yes | OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | yes | OAuth client secret |
+| `GOOGLE_REDIRECT_URL` | yes in prod | OAuth callback (`http://localhost:8080/api/auth/google/callback`) |
+| `JWT_SECRET` | yes in prod | Signs session tokens (insecure development default) |
+| `ENCRYPTION_KEY` | yes | Encrypts stored Google refresh tokens |
+| `DATABASE_URL` | yes in prod | PostgreSQL connection string |
+| `PORT` | no | Listen port (`8080`) |
+| `BASE_URL` | no | Public base URL (`http://localhost:$PORT`) |
+| `BACKGROUND_SYNC_ENABLED` | no | Periodic calendar sync (`true`) |
+
+Generate the secrets with `openssl rand -hex 32`.
 
 **Important Notes:**
 - The app is in "Testing" mode, so only the test users you added can log in
@@ -77,125 +96,115 @@ export GOOGLE_CLIENT_SECRET="your-client-secret-here"
 ### Local Development
 
 ```bash
-cd src
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r ../requirements.txt
-
-# Set environment variables
-export GOOGLE_CLIENT_ID=your-client-id
-export GOOGLE_CLIENT_SECRET=your-client-secret
-
-# Run the app
-uvicorn main:app --reload
-```
-
-Visit http://localhost:8000
-
-### Docker
-
-#### Local Development
-
-```bash
-# Create .env file
+# Generate .env with your Google OAuth credentials and secrets
 cat > .env << EOF
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
-SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+JWT_SECRET=$(openssl rand -hex 32)
+ENCRYPTION_KEY=$(openssl rand -hex 32)
 EOF
 
-# Build and run with docker-compose
-docker-compose up --build
-
-# Or use the Makefile
-make build
-make run
+make up          # start postgres + api
+make logs        # follow the api logs
+make down        # stop
 ```
 
-Visit http://localhost:8000
+Visit http://localhost:8080
 
-#### Building and Pushing to DockerHub
-
-The project is configured to push images to `michaelwinser/timesheet-app` on DockerHub.
-
-**Important for Apple Silicon Users:**
-If you're developing on Apple Silicon (M1/M2/M3 Mac) and deploying to TrueNAS on Intel/AMD, you need to build multi-architecture images:
+After changing Go or Svelte source, rebuild the image - the front end is
+compiled into it, so a restart alone will not pick up web changes:
 
 ```bash
-# Login to DockerHub (one-time setup)
-make login
-
-# Build for both architectures and push (RECOMMENDED)
-make build-multiarch VERSION=v1.0.0
+make build && make up
 ```
 
-This builds a single image that works on both ARM (Apple Silicon) and AMD64 (Intel/AMD) architectures.
+Run `make help` for the full command list, including the database helpers.
 
-**Alternative: Single-platform builds**
+### Docker
+
+#### Building and Pushing to Docker Hub
+
+Images are published to `michaelwinser/timesheet-app`, which is what
+`docker-compose.prod.yaml` pulls.
+
+TrueNAS runs on Intel/AMD while an Apple Silicon Mac builds arm64 by default, so
+publish multi-architecture images. A single-architecture arm64 push will not run
+on the server.
 
 ```bash
-# Build for specific platform (e.g., for TrueNAS Intel/AMD)
-make build VERSION=v1.0.0 PLATFORM=linux/amd64
-make push VERSION=v1.0.0
-
-# Build for local testing on Apple Silicon (faster)
-make build-local
-
-# Tag an existing image with a new version
-make tag TAG=v1.0.0
+make login                              # one-time
+make build-multiarch                    # build amd64 + arm64 and push :latest
+make build-multiarch VERSION=v1.2.3     # publish that version, and move :latest
 ```
 
-**Available Makefile Commands:**
-- `make help` - Show all available commands
-- `make build` - Build Docker image locally
-- `make push` - Push Docker image to DockerHub
-- `make build-push` - Build and push in one command
-- `make login` - Login to DockerHub
-- `make run` - Start container with docker-compose
-- `make stop` - Stop container
-- `make logs` - View container logs
-- `make test` - Run health check
-- `make rebuild` - Rebuild without cache and restart
+A versioned `build-multiarch` tags both `VERSION` and `latest`, so production
+picks up the release while the version tag stays available to roll back to.
 
-#### Pulling from DockerHub
+`build-multiarch` pushes as part of the buildx run and then prints the platforms
+present on the tag, so you can confirm `linux/amd64` made it.
 
-To use the pre-built image instead of building locally:
+Single-architecture builds, for local testing:
 
 ```bash
-# Pull the latest image
+make image                    # tagged build for PLATFORM (default linux/amd64)
+make image-local              # tagged build for this machine
+make push                     # push what those built
+make build-push               # image, then push
+make tag TAG=1.0.5            # retag VERSION as TAG registry-side, no rebuild
+```
+
+Note that `make build` is the local Compose build and does not tag or publish
+anything.
+
+#### Pulling from Docker Hub
+
+```bash
+make pull                     # or: make pull VERSION=v1.2.3
 docker pull michaelwinser/timesheet-app:latest
-
-# Or pull a specific version
-docker pull michaelwinser/timesheet-app:v1.0.0
-
-# Run with docker-compose (will use pre-built image)
-docker-compose up
 ```
 
 ### TrueNAS Deployment
 
-**Option 1: Use Pre-built Image from DockerHub (Recommended)**
+Deploy the published image with `docker-compose.prod.yaml`.
 
-1. Use `docker-compose.prod.yaml` as your deployment configuration
-2. The image `michaelwinser/timesheet-app:latest` will be pulled automatically
-3. Configure environment variables in TrueNAS Custom App UI:
-   - `GOOGLE_CLIENT_ID`
-   - `GOOGLE_CLIENT_SECRET`
-   - `SECRET_KEY` (generate with: `python -c "import secrets; print(secrets.token_hex(32))"`)
-   - `OAUTH_REDIRECT_URI` (e.g., `https://timesheet.yourdomain.com/auth/callback`)
-4. Set data volume path: `/mnt/pool/apps/timesheet/data:/data`
-5. Deploy and access via your TrueNAS IP or domain
+1. Publish the image first: `make build-multiarch`
+2. Copy `docker-compose.prod.yaml` to the TrueNAS deployment directory as
+   `docker-compose.yaml`
+3. Create a `.env` alongside it:
 
-**Option 2: Build Locally on TrueNAS**
+   ```
+   POSTGRES_PASSWORD=...
+   JWT_SECRET=...
+   ENCRYPTION_KEY=...
+   GOOGLE_CLIENT_ID=...
+   GOOGLE_CLIENT_SECRET=...
+   GOOGLE_REDIRECT_URL=https://timesheet.yourdomain.com/api/auth/google/callback
+   PORT=8000
+   POSTGRES_DATA_PATH=./postgres-data
+   ```
 
-1. Copy repository files to TrueNAS
-2. Uncomment the `build: .` line in `docker-compose.prod.yaml`
-3. Comment out the `image:` line
-4. Follow Option 1 steps for configuration
+   `ENCRYPTION_KEY` must match the one the data was written with - changing it
+   makes stored Google refresh tokens undecryptable.
+
+   Note that `PORT` means something different here than in the table above: the
+   compose file uses it as the *host* port it publishes (`${PORT:-8000}:8080`)
+   and always sets the container's own `PORT` to 8080.
+
+4. Create the data directory: `mkdir -p ./postgres-data`
+5. Deploy:
+
+   ```bash
+   docker compose pull
+   docker compose up -d
+   ```
+
+To update an existing deployment, publish a new image and repeat step 5;
+`pull` picks up the new `:latest` and `up -d` recreates the API container.
+Database migrations run automatically on startup.
+
+Note that `docker-compose.prod.yaml` declares both `build:` and `image:`. The
+`image:` line is what gets pulled; the `build:` section is only used if you
+build on the TrueNAS box itself.
 
 ## Usage
 
@@ -206,24 +215,26 @@ docker-compose up
 
 ## API Documentation
 
-Visit `/docs` for interactive Swagger UI.
+The OpenAPI spec is the source of truth for the API and is served at
+`/api/openapi.yaml`. It lives at `docs/v2/api-spec.yaml`; run `make generate`
+after editing it to regenerate the server types.
 
 ## Project Structure
 
 ```
-src/
-├── main.py              # FastAPI entry point
-├── config.py            # Configuration
-├── db.py                # SQLite wrapper
-├── models.py            # Pydantic models
-├── routes/
-│   ├── auth.py          # OAuth routes
-│   ├── api.py           # JSON API
-│   └── ui.py            # HTML pages
-├── services/
-│   ├── calendar.py      # Google Calendar
-│   ├── classifier.py    # Classification logic
-│   └── exporter.py      # CSV export
-├── templates/           # Jinja2 templates
-└── static/              # CSS, JS
+service/                 # Go API
+├── cmd/server/          # Entry point
+└── internal/
+    ├── api/             # Generated from the OpenAPI spec
+    ├── handler/         # HTTP layer
+    ├── classification/  # Rule parsing, matching, classification
+    ├── store/           # Database access
+    ├── sync/            # Google Calendar synchronisation
+    ├── timeentry/       # Time entry computation
+    └── database/        # Schema migrations
+web/                     # SvelteKit front end, built into the image
+├── src/lib/components/  # Primitives and widgets
+└── src/routes/          # Pages
+docs/v2/                 # Design documents and api-spec.yaml
+tests/integration/       # CLI integration scenarios
 ```
