@@ -27,6 +27,7 @@ type CalendarHandler struct {
 	entries           *store.TimeEntryStore
 	projects          *store.ProjectStore
 	syncJobs          *store.SyncJobStore
+	ingestionFilters  *store.IngestionFilterStore
 	google            google.CalendarClient
 	classificationSvc *classification.Service
 	timeEntryService  *timeentry.Service
@@ -42,6 +43,7 @@ func NewCalendarHandler(
 	entries *store.TimeEntryStore,
 	projects *store.ProjectStore,
 	syncJobs *store.SyncJobStore,
+	ingestionFilters *store.IngestionFilterStore,
 	googleSvc google.CalendarClient,
 	classificationSvc *classification.Service,
 	timeEntryService *timeentry.Service,
@@ -53,6 +55,7 @@ func NewCalendarHandler(
 		entries:           entries,
 		projects:          projects,
 		syncJobs:          syncJobs,
+		ingestionFilters:  ingestionFilters,
 		google:            googleSvc,
 		classificationSvc: classificationSvc,
 		timeEntryService:  timeEntryService,
@@ -460,6 +463,7 @@ func (h *CalendarHandler) syncCalendarIncremental(ctx context.Context, creds *st
 	}
 
 	suppressed := 0
+	filters := sync.LoadIngestionFilters(ctx, h.ingestionFilters, userID)
 
 	// Process events
 	for _, ge := range syncResult.Events {
@@ -479,7 +483,8 @@ func (h *CalendarHandler) syncCalendarIncremental(ctx context.Context, creds *st
 		}
 
 		event := sync.GoogleEventToStore(ge, conn.ID, cal.ID, userID)
-		if event.IsSuppressed {
+		if matched, _ := filters.Match(event); matched {
+			event.IsSuppressed = true
 			suppressed++
 		}
 		_, upsertErr := h.events.Upsert(ctx, event)
@@ -640,6 +645,7 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 	// Process events
 	externalIDs := make([]string, 0, len(syncResult.Events))
 	suppressed := 0
+	filters := sync.LoadIngestionFilters(ctx, h.ingestionFilters, userID)
 
 	for _, ge := range syncResult.Events {
 		// Check if event was cancelled/deleted (only in incremental sync)
@@ -662,7 +668,8 @@ func (h *CalendarHandler) syncSingleCalendar(ctx context.Context, creds *store.O
 		externalIDs = append(externalIDs, ge.Id)
 
 		event := sync.GoogleEventToStore(ge, conn.ID, cal.ID, userID)
-		if event.IsSuppressed {
+		if matched, _ := filters.Match(event); matched {
+			event.IsSuppressed = true
 			suppressed++
 		}
 		_, upsertErr := h.events.Upsert(ctx, event)

@@ -22,3 +22,4 @@ export { default as DataManagementSection } from './DataManagementSection.svelte
 export { default as EventSearchSection } from './EventSearchSection.svelte';
 export { default as RuleEditorModal } from './RuleEditorModal.svelte';
 export { default as RulePreviewModal } from './RulePreviewModal.svelte';
+export { default as IngestionFiltersSection } from './IngestionFiltersSection.svelte';

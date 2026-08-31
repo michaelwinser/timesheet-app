@@ -19,6 +19,7 @@ type Server struct {
 	*BillingHandler
 	*InvoiceHandler
 	*ConfigHandler
+	*IngestionFilterHandler
 }
 
 // NewServer creates a new server handler
@@ -34,6 +35,7 @@ func NewServer(
 	billingPeriods *store.BillingPeriodStore,
 	invoices *store.InvoiceStore,
 	syncJobs *store.SyncJobStore,
+	ingestionFilters *store.IngestionFilterStore,
 	jwt *JWTService,
 	googleSvc google.CalendarClient,
 	sheetsSvc *google.SheetsService,
@@ -41,15 +43,16 @@ func NewServer(
 	timeEntrySvc *timeentry.Service,
 ) *Server {
 	return &Server{
-		AuthHandler:      NewAuthHandler(users, jwt),
-		ProjectHandler:   NewProjectHandler(projects),
-		TimeEntryHandler: NewTimeEntryHandler(entries, projects, timeEntrySvc),
-		CalendarHandler:  NewCalendarHandler(calendarConns, calendars, calendarEvents, entries, projects, syncJobs, googleSvc, classificationSvc, timeEntrySvc),
-		RulesHandler:     NewRulesHandler(classificationRules, projects, classificationSvc),
-		APIKeyHandler:    NewAPIKeyHandler(apiKeys),
-		BillingHandler:   NewBillingHandler(billingPeriods),
-		InvoiceHandler:   NewInvoiceHandler(invoices, projects, sheetsSvc, calendarConns, timeEntrySvc),
-		ConfigHandler:    NewConfigHandler(projects, classificationRules),
+		AuthHandler:            NewAuthHandler(users, jwt),
+		ProjectHandler:         NewProjectHandler(projects),
+		TimeEntryHandler:       NewTimeEntryHandler(entries, projects, timeEntrySvc),
+		CalendarHandler:        NewCalendarHandler(calendarConns, calendars, calendarEvents, entries, projects, syncJobs, ingestionFilters, googleSvc, classificationSvc, timeEntrySvc),
+		RulesHandler:           NewRulesHandler(classificationRules, projects, classificationSvc),
+		APIKeyHandler:          NewAPIKeyHandler(apiKeys),
+		BillingHandler:         NewBillingHandler(billingPeriods),
+		InvoiceHandler:         NewInvoiceHandler(invoices, projects, sheetsSvc, calendarConns, timeEntrySvc),
+		ConfigHandler:          NewConfigHandler(projects, classificationRules),
+		IngestionFilterHandler: NewIngestionFilterHandler(ingestionFilters, calendarEvents, classificationSvc),
 	}
 }
 

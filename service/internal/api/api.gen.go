@@ -445,6 +445,38 @@ type Error struct {
 	Message string                  `json:"message"`
 }
 
+// IngestionFilter defines model for IngestionFilter.
+type IngestionFilter struct {
+	CreatedAt time.Time          `json:"created_at"`
+	Id        openapi_types.UUID `json:"id"`
+	IsEnabled bool               `json:"is_enabled"`
+	Name      string             `json:"name"`
+
+	// Query Query using the standard search syntax
+	Query     string    `json:"query"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// IngestionFilterCreate defines model for IngestionFilterCreate.
+type IngestionFilterCreate struct {
+	IsEnabled *bool  `json:"is_enabled,omitempty"`
+	Name      string `json:"name"`
+	Query     string `json:"query"`
+}
+
+// IngestionFilterUpdate defines model for IngestionFilterUpdate.
+type IngestionFilterUpdate struct {
+	IsEnabled *bool   `json:"is_enabled,omitempty"`
+	Name      *string `json:"name,omitempty"`
+	Query     *string `json:"query,omitempty"`
+}
+
+// IngestionFilterWithEffect defines model for IngestionFilterWithEffect.
+type IngestionFilterWithEffect struct {
+	Effect SuppressionEffect `json:"effect"`
+	Filter IngestionFilter   `json:"filter"`
+}
+
 // Invoice defines model for Invoice.
 type Invoice struct {
 	// BillingPeriodId Primary billing period for this invoice
@@ -738,6 +770,36 @@ type SignupRequest struct {
 	Password string              `json:"password"`
 }
 
+// SuppressedEvent defines model for SuppressedEvent.
+type SuppressedEvent struct {
+	Id        openapi_types.UUID `json:"id"`
+	StartTime time.Time          `json:"start_time"`
+	Title     string             `json:"title"`
+}
+
+// SuppressedEventsResponse defines model for SuppressedEventsResponse.
+type SuppressedEventsResponse struct {
+	Events []SuppressedEvent `json:"events"`
+
+	// Total Total suppressed events, which may exceed those returned
+	Total int `json:"total"`
+}
+
+// SuppressionEffect defines model for SuppressionEffect.
+type SuppressionEffect struct {
+	// Evaluated Events re-evaluated
+	Evaluated int `json:"evaluated"`
+
+	// InvalidFilters Filters skipped because their query does not parse
+	InvalidFilters *[]string `json:"invalid_filters,omitempty"`
+
+	// NowHidden Events newly hidden by this change
+	NowHidden int `json:"now_hidden"`
+
+	// NowVisible Events restored because no filter matches them any more
+	NowVisible int `json:"now_visible"`
+}
+
 // SyncResult defines model for SyncResult.
 type SyncResult struct {
 	EventsCreated  int `json:"events_created"`
@@ -901,6 +963,11 @@ type ExportConfigParams struct {
 	IncludeArchived *bool `form:"include_archived,omitempty" json:"include_archived,omitempty"`
 }
 
+// ListSuppressedEventsParams defines parameters for ListSuppressedEvents.
+type ListSuppressedEventsParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListInvoicesParams defines parameters for ListInvoices.
 type ListInvoicesParams struct {
 	ProjectId *openapi_types.UUID       `form:"project_id,omitempty" json:"project_id,omitempty"`
@@ -968,6 +1035,12 @@ type UpdateCalendarSourcesJSONRequestBody = UpdateCalendarSourcesRequest
 
 // ImportConfigJSONRequestBody defines body for ImportConfig for application/json ContentType.
 type ImportConfigJSONRequestBody = ConfigImport
+
+// CreateIngestionFilterJSONRequestBody defines body for CreateIngestionFilter for application/json ContentType.
+type CreateIngestionFilterJSONRequestBody = IngestionFilterCreate
+
+// UpdateIngestionFilterJSONRequestBody defines body for UpdateIngestionFilter for application/json ContentType.
+type UpdateIngestionFilterJSONRequestBody = IngestionFilterUpdate
 
 // CreateInvoiceJSONRequestBody defines body for CreateInvoice for application/json ContentType.
 type CreateInvoiceJSONRequestBody = InvoiceCreate
@@ -1073,6 +1146,21 @@ type ServerInterface interface {
 	// Import projects and rules from JSON
 	// (POST /api/config/import)
 	ImportConfig(w http.ResponseWriter, r *http.Request)
+	// List ingestion filters
+	// (GET /api/ingestion-filters)
+	ListIngestionFilters(w http.ResponseWriter, r *http.Request)
+	// Create an ingestion filter
+	// (POST /api/ingestion-filters)
+	CreateIngestionFilter(w http.ResponseWriter, r *http.Request)
+	// List events currently hidden by ingestion filters
+	// (GET /api/ingestion-filters/suppressed-events)
+	ListSuppressedEvents(w http.ResponseWriter, r *http.Request, params ListSuppressedEventsParams)
+	// Delete an ingestion filter
+	// (DELETE /api/ingestion-filters/{id})
+	DeleteIngestionFilter(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
+	// Update an ingestion filter
+	// (PATCH /api/ingestion-filters/{id})
+	UpdateIngestionFilter(w http.ResponseWriter, r *http.Request, id openapi_types.UUID)
 	// List invoices
 	// (GET /api/invoices)
 	ListInvoices(w http.ResponseWriter, r *http.Request, params ListInvoicesParams)
@@ -1295,6 +1383,36 @@ func (_ Unimplemented) ExportConfig(w http.ResponseWriter, r *http.Request, para
 // Import projects and rules from JSON
 // (POST /api/config/import)
 func (_ Unimplemented) ImportConfig(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List ingestion filters
+// (GET /api/ingestion-filters)
+func (_ Unimplemented) ListIngestionFilters(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create an ingestion filter
+// (POST /api/ingestion-filters)
+func (_ Unimplemented) CreateIngestionFilter(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List events currently hidden by ingestion filters
+// (GET /api/ingestion-filters/suppressed-events)
+func (_ Unimplemented) ListSuppressedEvents(w http.ResponseWriter, r *http.Request, params ListSuppressedEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete an ingestion filter
+// (DELETE /api/ingestion-filters/{id})
+func (_ Unimplemented) DeleteIngestionFilter(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update an ingestion filter
+// (PATCH /api/ingestion-filters/{id})
+func (_ Unimplemented) UpdateIngestionFilter(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2139,6 +2257,141 @@ func (siw *ServerInterfaceWrapper) ImportConfig(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ImportConfig(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListIngestionFilters operation middleware
+func (siw *ServerInterfaceWrapper) ListIngestionFilters(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIngestionFilters(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateIngestionFilter operation middleware
+func (siw *ServerInterfaceWrapper) CreateIngestionFilter(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateIngestionFilter(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSuppressedEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListSuppressedEvents(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSuppressedEventsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSuppressedEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteIngestionFilter operation middleware
+func (siw *ServerInterfaceWrapper) DeleteIngestionFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteIngestionFilter(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateIngestionFilter operation middleware
+func (siw *ServerInterfaceWrapper) UpdateIngestionFilter(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateIngestionFilter(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3075,6 +3328,21 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/config/import", wrapper.ImportConfig)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/ingestion-filters", wrapper.ListIngestionFilters)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/ingestion-filters", wrapper.CreateIngestionFilter)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/ingestion-filters/suppressed-events", wrapper.ListSuppressedEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/ingestion-filters/{id}", wrapper.DeleteIngestionFilter)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/api/ingestion-filters/{id}", wrapper.UpdateIngestionFilter)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/invoices", wrapper.ListInvoices)
 	})
 	r.Group(func(r chi.Router) {
@@ -3966,6 +4234,172 @@ type ImportConfig401JSONResponse Error
 func (response ImportConfig401JSONResponse) VisitImportConfigResponse(w http.ResponseWriter) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListIngestionFiltersRequestObject struct {
+}
+
+type ListIngestionFiltersResponseObject interface {
+	VisitListIngestionFiltersResponse(w http.ResponseWriter) error
+}
+
+type ListIngestionFilters200JSONResponse []IngestionFilter
+
+func (response ListIngestionFilters200JSONResponse) VisitListIngestionFiltersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListIngestionFilters401JSONResponse Error
+
+func (response ListIngestionFilters401JSONResponse) VisitListIngestionFiltersResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateIngestionFilterRequestObject struct {
+	Body *CreateIngestionFilterJSONRequestBody
+}
+
+type CreateIngestionFilterResponseObject interface {
+	VisitCreateIngestionFilterResponse(w http.ResponseWriter) error
+}
+
+type CreateIngestionFilter201JSONResponse IngestionFilterWithEffect
+
+func (response CreateIngestionFilter201JSONResponse) VisitCreateIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateIngestionFilter400JSONResponse Error
+
+func (response CreateIngestionFilter400JSONResponse) VisitCreateIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateIngestionFilter401JSONResponse Error
+
+func (response CreateIngestionFilter401JSONResponse) VisitCreateIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListSuppressedEventsRequestObject struct {
+	Params ListSuppressedEventsParams
+}
+
+type ListSuppressedEventsResponseObject interface {
+	VisitListSuppressedEventsResponse(w http.ResponseWriter) error
+}
+
+type ListSuppressedEvents200JSONResponse SuppressedEventsResponse
+
+func (response ListSuppressedEvents200JSONResponse) VisitListSuppressedEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListSuppressedEvents401JSONResponse Error
+
+func (response ListSuppressedEvents401JSONResponse) VisitListSuppressedEventsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteIngestionFilterRequestObject struct {
+	Id openapi_types.UUID `json:"id"`
+}
+
+type DeleteIngestionFilterResponseObject interface {
+	VisitDeleteIngestionFilterResponse(w http.ResponseWriter) error
+}
+
+type DeleteIngestionFilter200JSONResponse SuppressionEffect
+
+func (response DeleteIngestionFilter200JSONResponse) VisitDeleteIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteIngestionFilter401JSONResponse Error
+
+func (response DeleteIngestionFilter401JSONResponse) VisitDeleteIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type DeleteIngestionFilter404JSONResponse Error
+
+func (response DeleteIngestionFilter404JSONResponse) VisitDeleteIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateIngestionFilterRequestObject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Body *UpdateIngestionFilterJSONRequestBody
+}
+
+type UpdateIngestionFilterResponseObject interface {
+	VisitUpdateIngestionFilterResponse(w http.ResponseWriter) error
+}
+
+type UpdateIngestionFilter200JSONResponse IngestionFilterWithEffect
+
+func (response UpdateIngestionFilter200JSONResponse) VisitUpdateIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateIngestionFilter400JSONResponse Error
+
+func (response UpdateIngestionFilter400JSONResponse) VisitUpdateIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateIngestionFilter401JSONResponse Error
+
+func (response UpdateIngestionFilter401JSONResponse) VisitUpdateIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateIngestionFilter404JSONResponse Error
+
+func (response UpdateIngestionFilter404JSONResponse) VisitUpdateIngestionFilterResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
 
 	return json.NewEncoder(w).Encode(response)
 }
@@ -4996,6 +5430,21 @@ type StrictServerInterface interface {
 	// Import projects and rules from JSON
 	// (POST /api/config/import)
 	ImportConfig(ctx context.Context, request ImportConfigRequestObject) (ImportConfigResponseObject, error)
+	// List ingestion filters
+	// (GET /api/ingestion-filters)
+	ListIngestionFilters(ctx context.Context, request ListIngestionFiltersRequestObject) (ListIngestionFiltersResponseObject, error)
+	// Create an ingestion filter
+	// (POST /api/ingestion-filters)
+	CreateIngestionFilter(ctx context.Context, request CreateIngestionFilterRequestObject) (CreateIngestionFilterResponseObject, error)
+	// List events currently hidden by ingestion filters
+	// (GET /api/ingestion-filters/suppressed-events)
+	ListSuppressedEvents(ctx context.Context, request ListSuppressedEventsRequestObject) (ListSuppressedEventsResponseObject, error)
+	// Delete an ingestion filter
+	// (DELETE /api/ingestion-filters/{id})
+	DeleteIngestionFilter(ctx context.Context, request DeleteIngestionFilterRequestObject) (DeleteIngestionFilterResponseObject, error)
+	// Update an ingestion filter
+	// (PATCH /api/ingestion-filters/{id})
+	UpdateIngestionFilter(ctx context.Context, request UpdateIngestionFilterRequestObject) (UpdateIngestionFilterResponseObject, error)
 	// List invoices
 	// (GET /api/invoices)
 	ListInvoices(ctx context.Context, request ListInvoicesRequestObject) (ListInvoicesResponseObject, error)
@@ -5761,6 +6210,146 @@ func (sh *strictHandler) ImportConfig(w http.ResponseWriter, r *http.Request) {
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ImportConfigResponseObject); ok {
 		if err := validResponse.VisitImportConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListIngestionFilters operation middleware
+func (sh *strictHandler) ListIngestionFilters(w http.ResponseWriter, r *http.Request) {
+	var request ListIngestionFiltersRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListIngestionFilters(ctx, request.(ListIngestionFiltersRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListIngestionFilters")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListIngestionFiltersResponseObject); ok {
+		if err := validResponse.VisitListIngestionFiltersResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateIngestionFilter operation middleware
+func (sh *strictHandler) CreateIngestionFilter(w http.ResponseWriter, r *http.Request) {
+	var request CreateIngestionFilterRequestObject
+
+	var body CreateIngestionFilterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateIngestionFilter(ctx, request.(CreateIngestionFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateIngestionFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateIngestionFilterResponseObject); ok {
+		if err := validResponse.VisitCreateIngestionFilterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListSuppressedEvents operation middleware
+func (sh *strictHandler) ListSuppressedEvents(w http.ResponseWriter, r *http.Request, params ListSuppressedEventsParams) {
+	var request ListSuppressedEventsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListSuppressedEvents(ctx, request.(ListSuppressedEventsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListSuppressedEvents")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListSuppressedEventsResponseObject); ok {
+		if err := validResponse.VisitListSuppressedEventsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteIngestionFilter operation middleware
+func (sh *strictHandler) DeleteIngestionFilter(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request DeleteIngestionFilterRequestObject
+
+	request.Id = id
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteIngestionFilter(ctx, request.(DeleteIngestionFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteIngestionFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteIngestionFilterResponseObject); ok {
+		if err := validResponse.VisitDeleteIngestionFilterResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateIngestionFilter operation middleware
+func (sh *strictHandler) UpdateIngestionFilter(w http.ResponseWriter, r *http.Request, id openapi_types.UUID) {
+	var request UpdateIngestionFilterRequestObject
+
+	request.Id = id
+
+	var body UpdateIngestionFilterJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateIngestionFilter(ctx, request.(UpdateIngestionFilterRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateIngestionFilter")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateIngestionFilterResponseObject); ok {
+		if err := validResponse.VisitUpdateIngestionFilterResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

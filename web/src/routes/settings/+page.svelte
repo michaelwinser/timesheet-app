@@ -5,7 +5,8 @@
 	import {
 		CalendarConnectionsSection,
 		ApiKeysSection,
-		DataManagementSection
+		DataManagementSection,
+		IngestionFiltersSection
 	} from '$lib/components/widgets';
 
 	// Shared error/success state for child components
@@ -102,6 +103,8 @@
 		/>
 
 		<!-- API Keys -->
+		<IngestionFiltersSection bind:error bind:successMessage />
+
 		<ApiKeysSection bind:error bind:successMessage />
 
 		<!-- Data Management -->

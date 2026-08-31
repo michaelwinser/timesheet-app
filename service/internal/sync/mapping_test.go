@@ -120,7 +120,7 @@ func TestGoogleEventToStore(t *testing.T) {
 			},
 		},
 		{
-			name: "sync placeholder is suppressed and keeps its properties",
+			name: "properties are preserved for filters to match on",
 			event: &gcal.Event{
 				Id:      "evt-8",
 				Summary: "🔄 Acme standup",
@@ -129,8 +129,9 @@ func TestGoogleEventToStore(t *testing.T) {
 				},
 			},
 			verify: func(t *testing.T, got *store.CalendarEvent) {
-				if !got.IsSuppressed {
-					t.Error("marked placeholder should be suppressed")
+				// Suppression is decided by ingestion filters (#110), not here.
+				if got.IsSuppressed {
+					t.Error("the mapping should not decide suppression")
 				}
 				if got.ExtendedProperties == nil ||
 					got.ExtendedProperties.Private["sourceCalendarId"] != "other@example.com" {
@@ -139,7 +140,7 @@ func TestGoogleEventToStore(t *testing.T) {
 			},
 		},
 		{
-			name: "ordinary event is not suppressed",
+			name: "properties from other integrations are stored too",
 			event: &gcal.Event{
 				Id:      "evt-9",
 				Summary: "Acme standup",
@@ -148,9 +149,6 @@ func TestGoogleEventToStore(t *testing.T) {
 				},
 			},
 			verify: func(t *testing.T, got *store.CalendarEvent) {
-				if got.IsSuppressed {
-					t.Error("event without the marker should not be suppressed")
-				}
 				if got.ExtendedProperties == nil {
 					t.Error("other integrations' properties should still be stored")
 				}

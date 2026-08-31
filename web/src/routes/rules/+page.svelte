@@ -41,11 +41,22 @@
 	// Apply rules state
 	let applying = $state(false);
 
+	// Ingestion filters hide events before classification, which is invisible
+	// from this page without a pointer. See issue #110.
+	let hiddenEventCount = $state(0);
+
 	async function loadData() {
 		loading = true;
 		error = '';
 		try {
 			[rules, projects] = await Promise.all([api.listRules(true), api.listProjects()]);
+
+			try {
+				hiddenEventCount = (await api.listSuppressedEvents(1)).total;
+			} catch (e) {
+				// A pointer is not worth failing the page over
+				console.error('Failed to load hidden event count:', e);
+			}
 		} catch (e) {
 			console.error('Failed to load data:', e);
 			error = e instanceof Error ? e.message : 'Failed to load rules';
@@ -217,6 +228,27 @@
 		{#if error}
 			<div class="mb-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 px-4 py-3 rounded text-sm">
 				{error}
+			</div>
+		{/if}
+
+		<!-- Ingestion filters hide events before they ever reach classification.
+		     Someone asking "why isn't this event here?" looks on this page, not in
+		     Settings, so the effect needs to be visible from where it is felt. -->
+		{#if hiddenEventCount > 0}
+			<div
+				class="mb-4 flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm"
+			>
+				<span class="text-gray-600 dark:text-gray-400">
+					{hiddenEventCount}
+					{hiddenEventCount === 1 ? 'event is' : 'events are'} hidden by ingestion filters and
+					never reach classification.
+				</span>
+				<a
+					href="/settings"
+					class="text-primary-600 dark:text-primary-400 hover:underline whitespace-nowrap"
+				>
+					Manage filters
+				</a>
 			</div>
 		{/if}
 

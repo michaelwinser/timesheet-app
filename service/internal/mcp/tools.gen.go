@@ -105,11 +105,11 @@ func GetTools() []Tool {
 						"type": "string"
 					},
 					"project_id": {
-						"description": "Project to assign this event to. Omit or null to skip the event.",
+						"description": "Project to assign this event to.",
 						"type": "string"
 					},
 					"skip": {
-						"description": "Set to true to mark as \"did not attend\" (skipped)",
+						"description": "Set to true to skip, or false to unskip (reset to pending state).",
 						"type": "boolean"
 					}
 				},

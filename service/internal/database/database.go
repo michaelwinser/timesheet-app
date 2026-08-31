@@ -623,4 +623,45 @@ var migrations = []migration{
 			ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS extended_properties JSONB;
 		`,
 	},
+	{
+		version: 10,
+		sql: `
+			-- =============================================================================
+			-- INGESTION FILTERS: user-managed rules for input noise
+			-- Evaluated when events are ingested, before classification. A match sets
+			-- is_suppressed: the event is stored but never enters the classification
+			-- stream, appears in no view, and contributes no time.
+			--
+			-- Deliberately separate from classification_rules. These are not votes -
+			-- there is no scoring, no confidence and no winner - and they hide data,
+			-- which warrants their own concept and their own UI.
+			-- See: https://github.com/michaelwinser/timesheet-app/issues/110
+			-- =============================================================================
+
+			CREATE TABLE IF NOT EXISTS ingestion_filters (
+				id UUID PRIMARY KEY,
+				user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+				name TEXT NOT NULL,
+				query TEXT NOT NULL,
+				is_enabled BOOLEAN NOT NULL DEFAULT true,
+				created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+				updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			);
+
+			CREATE INDEX IF NOT EXISTS idx_ingestion_filters_user
+				ON ingestion_filters (user_id);
+
+			-- Seed the filter that replaces the hard-coded predicate from #108, so
+			-- removing that code does not un-suppress everything it was catching.
+			INSERT INTO ingestion_filters (id, user_id, name, query)
+			SELECT gen_random_uuid(), u.id,
+			       'Calendar sync placeholders',
+			       'property:calendarSyncMarker'
+			FROM users u
+			WHERE NOT EXISTS (
+				SELECT 1 FROM ingestion_filters f
+				WHERE f.user_id = u.id AND f.query = 'property:calendarSyncMarker'
+			);
+		`,
+	},
 }

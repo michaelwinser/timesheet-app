@@ -103,6 +103,8 @@ func main() {
 	invoiceStore := store.NewInvoiceStore(db.Pool, timeEntryStore, billingPeriodStore, projectStore)
 	syncJobStore := store.NewSyncJobStore(db.Pool)
 
+	ingestionFilterStore := store.NewIngestionFilterStore(db.Pool)
+
 	// Initialize services
 	jwtService := handler.NewJWTService(jwtSecret, jwtExpiration)
 	classificationService := classification.NewService(db.Pool, classificationRuleStore, calendarEventStore, timeEntryStore)
@@ -114,6 +116,7 @@ func main() {
 		calendarConnectionStore, calendarStore, calendarEventStore,
 		classificationRuleStore, apiKeyStore,
 		billingPeriodStore, invoiceStore, syncJobStore,
+		ingestionFilterStore,
 		jwtService, googleService, sheetsService,
 		classificationService, timeEntryService,
 	)
@@ -134,7 +137,7 @@ func main() {
 		jobWorker = sync.NewJobWorker(
 			jobWorkerConfig, db.Pool, syncJobStore,
 			calendarStore, calendarConnectionStore, calendarEventStore,
-			googleService,
+			ingestionFilterStore, googleService,
 		)
 		jobWorker.Start(ctx)
 		log.Printf("Job worker started (poll interval: %v, worker ID: %s)",

@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/michaelw/timesheet-app/service/internal/classification"
 	"github.com/michaelw/timesheet-app/service/internal/google"
 	"github.com/michaelw/timesheet-app/service/internal/store"
 	gcal "google.golang.org/api/calendar/v3"
@@ -37,15 +38,16 @@ func DefaultJobWorkerConfig() JobWorkerConfig {
 
 // JobWorker processes background sync jobs from the queue
 type JobWorker struct {
-	config     JobWorkerConfig
-	pool       *pgxpool.Pool
-	jobStore   *store.SyncJobStore
-	calStore   *store.CalendarStore
-	connStore  *store.CalendarConnectionStore
-	eventStore *store.CalendarEventStore
-	googleSvc  google.CalendarClient
-	stopCh     chan struct{}
-	doneCh     chan struct{}
+	config      JobWorkerConfig
+	pool        *pgxpool.Pool
+	jobStore    *store.SyncJobStore
+	calStore    *store.CalendarStore
+	connStore   *store.CalendarConnectionStore
+	eventStore  *store.CalendarEventStore
+	filterStore *store.IngestionFilterStore
+	googleSvc   google.CalendarClient
+	stopCh      chan struct{}
+	doneCh      chan struct{}
 }
 
 // NewJobWorker creates a new job worker
@@ -56,18 +58,20 @@ func NewJobWorker(
 	calStore *store.CalendarStore,
 	connStore *store.CalendarConnectionStore,
 	eventStore *store.CalendarEventStore,
+	filterStore *store.IngestionFilterStore,
 	googleSvc google.CalendarClient,
 ) *JobWorker {
 	return &JobWorker{
-		config:     config,
-		pool:       pool,
-		jobStore:   jobStore,
-		calStore:   calStore,
-		connStore:  connStore,
-		eventStore: eventStore,
-		googleSvc:  googleSvc,
-		stopCh:     make(chan struct{}),
-		doneCh:     make(chan struct{}),
+		config:      config,
+		pool:        pool,
+		jobStore:    jobStore,
+		calStore:    calStore,
+		connStore:   connStore,
+		filterStore: filterStore,
+		eventStore:  eventStore,
+		googleSvc:   googleSvc,
+		stopCh:      make(chan struct{}),
+		doneCh:      make(chan struct{}),
 	}
 }
 
@@ -212,9 +216,10 @@ func (w *JobWorker) processJob(ctx context.Context, job *store.SyncJob) error {
 	// Track external IDs for orphaning
 	externalIDs := make([]string, 0, len(result.Events))
 
-	// Suppressed events are hidden from every view until #110 provides a way to
-	// reveal them, so report the count rather than letting them vanish silently.
+	// Suppressed events are hidden from every view, so report the count rather
+	// than letting them vanish silently.
 	suppressed := 0
+	filters := LoadIngestionFilters(ctx, w.filterStore, cal.UserID)
 
 	// Upsert events
 	for _, ge := range result.Events {
@@ -234,7 +239,8 @@ func (w *JobWorker) processJob(ctx context.Context, job *store.SyncJob) error {
 
 		externalIDs = append(externalIDs, ge.Id)
 		event := GoogleEventToStore(ge, conn.ID, cal.ID, cal.UserID)
-		if event.IsSuppressed {
+		if matched, _ := filters.Match(event); matched {
+			event.IsSuppressed = true
 			suppressed++
 		}
 		if _, err := w.eventStore.Upsert(ctx, event); err != nil {
@@ -283,29 +289,35 @@ func (w *JobWorker) processJob(ctx context.Context, job *store.SyncJob) error {
 	return nil
 }
 
-// syncPlaceholderMarker is the private extended property that the upstream
-// calendar sync tool sets on the placeholder events it writes to represent busy
-// time from another calendar. Those are not meetings, they are input noise, and
-// they must never reach classification.
-//
-// Matching is on the presence of the key, deliberately not on its value. The
-// value is versioned ("v1" at the time of writing) and gating on it would mean
-// a version bump silently stopped matching, letting the noise back in with no
-// error and nothing to connect the symptom to the cause.
-//
-// This is a hard-coded stopgap. Issue #110 replaces it with user-managed
-// ingestion filters; keeping it as one named predicate makes that a deletion
-// rather than an excavation.
-// See: https://github.com/michaelwinser/timesheet-app/issues/108
-const syncPlaceholderMarker = "calendarSyncMarker"
-
-// IsSyncPlaceholder reports whether a Google event is a sync placeholder.
-func IsSyncPlaceholder(ge *gcal.Event) bool {
-	if ge.ExtendedProperties == nil {
-		return false
+// LoadIngestionFilters loads a user's enabled ingestion filters and compiles
+// them for evaluation. A nil store or a load failure yields an empty set: a
+// filter problem should not stop a sync, it should only mean nothing is hidden.
+// See: https://github.com/michaelwinser/timesheet-app/issues/110
+func LoadIngestionFilters(ctx context.Context, filterStore *store.IngestionFilterStore, userID uuid.UUID) *classification.IngestionFilterSet {
+	if filterStore == nil {
+		return nil
 	}
-	_, ok := ge.ExtendedProperties.Private[syncPlaceholderMarker]
-	return ok
+
+	stored, err := filterStore.List(ctx, userID, true)
+	if err != nil {
+		log.Printf("[SYNC] failed to load ingestion filters for user %s, nothing will be suppressed: %v", userID, err)
+		return nil
+	}
+
+	filters := make([]classification.IngestionFilter, 0, len(stored))
+	for _, f := range stored {
+		filters = append(filters, classification.IngestionFilter{
+			ID:    f.ID.String(),
+			Name:  f.Name,
+			Query: f.Query,
+		})
+	}
+
+	set, invalid := classification.NewIngestionFilterSet(filters)
+	for _, f := range invalid {
+		log.Printf("[SYNC] ingestion filter %q has an invalid query and was skipped: %s", f.Name, f.Query)
+	}
+	return set
 }
 
 // ExtendedPropertiesToStore copies Google's extendedProperties into the store
@@ -339,7 +351,6 @@ func GoogleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUI
 		Title:                ge.Summary,
 		ClassificationStatus: store.StatusPending,
 		ExtendedProperties:   ExtendedPropertiesToStore(ge),
-		IsSuppressed:         IsSyncPlaceholder(ge),
 	}
 
 	if ge.Description != "" {

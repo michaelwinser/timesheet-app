@@ -38,7 +38,13 @@ import type {
 	ConfigExport,
 	ConfigImport,
 	ConfigImportResult,
-	ClassificationExplanation
+	ClassificationExplanation,
+	IngestionFilter,
+	IngestionFilterCreate,
+	IngestionFilterUpdate,
+	IngestionFilterWithEffect,
+	SuppressionEffect,
+	SuppressedEventsResponse
 } from './types';
 
 const API_BASE = '/api';
@@ -229,6 +235,27 @@ class ApiClient {
 
 	async deleteRule(id: string): Promise<void> {
 		return this.request('DELETE', `/rules/${id}`);
+	}
+
+	// Ingestion filters (issue #110)
+	async listIngestionFilters(): Promise<IngestionFilter[]> {
+		return this.request('GET', '/ingestion-filters');
+	}
+
+	async createIngestionFilter(data: IngestionFilterCreate): Promise<IngestionFilterWithEffect> {
+		return this.request('POST', '/ingestion-filters', data);
+	}
+
+	async updateIngestionFilter(id: string, data: IngestionFilterUpdate): Promise<IngestionFilterWithEffect> {
+		return this.request('PATCH', `/ingestion-filters/${id}`, data);
+	}
+
+	async deleteIngestionFilter(id: string): Promise<SuppressionEffect> {
+		return this.request('DELETE', `/ingestion-filters/${id}`);
+	}
+
+	async listSuppressedEvents(limit = 50): Promise<SuppressedEventsResponse> {
+		return this.request('GET', `/ingestion-filters/suppressed-events?limit=${limit}`);
 	}
 
 	async previewRule(data: RulePreviewRequest): Promise<RulePreviewResponse> {

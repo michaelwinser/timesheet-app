@@ -1055,6 +1055,186 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   # Classification Rules endpoints
+  /api/ingestion-filters:
+    get:
+      operationId: listIngestionFilters
+      tags: [ingestion-filters]
+      summary: List ingestion filters
+      description: |
+        Ingestion filters hide events before they reach classification. They are
+        not classification rules: there is no scoring, no confidence and no
+        winner. A matching event is stored but suppressed, so it appears in no
+        view and contributes no time.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of filters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/IngestionFilter'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      operationId: createIngestionFilter
+      tags: [ingestion-filters]
+      summary: Create an ingestion filter
+      description: |
+        Creating a filter re-evaluates suppression across all stored events, so
+        matching events are hidden immediately rather than only from the next
+        sync onwards.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestionFilterCreate'
+      responses:
+        '201':
+          description: Filter created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionFilterWithEffect'
+        '400':
+          description: Invalid request (bad query syntax)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/ingestion-filters/{id}:
+    patch:
+      operationId: updateIngestionFilter
+      tags: [ingestion-filters]
+      summary: Update an ingestion filter
+      description: |
+        Suppression is re-evaluated, so disabling a filter restores the events it
+        was hiding.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IngestionFilterUpdate'
+      responses:
+        '200':
+          description: Filter updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionFilterWithEffect'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Filter not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: deleteIngestionFilter
+      tags: [ingestion-filters]
+      summary: Delete an ingestion filter
+      description: |
+        Suppression is re-evaluated, so the events this filter was hiding are
+        restored unless another filter also matches them.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Filter deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuppressionEffect'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Filter not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/ingestion-filters/suppressed-events:
+    get:
+      operationId: listSuppressedEvents
+      tags: [ingestion-filters]
+      summary: List events currently hidden by ingestion filters
+      description: |
+        Lets a user see what their filters are hiding. Without this, suppressed
+        events are invisible everywhere, which makes an over-broad filter
+        impossible to notice.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Suppressed events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuppressedEventsResponse'
+        '401':
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /api/rules:
     get:
       operationId: listRules
@@ -2863,6 +3043,104 @@ components:
           minimum: 0
         is_enabled:
           type: boolean
+
+    IngestionFilter:
+      type: object
+      required: [id, name, query, is_enabled, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        query:
+          type: string
+          description: Query using the standard search syntax
+        is_enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    IngestionFilterCreate:
+      type: object
+      required: [name, query]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        query:
+          type: string
+          minLength: 1
+        is_enabled:
+          type: boolean
+          default: true
+
+    IngestionFilterUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        query:
+          type: string
+        is_enabled:
+          type: boolean
+
+    SuppressionEffect:
+      type: object
+      required: [evaluated, now_hidden, now_visible]
+      properties:
+        evaluated:
+          type: integer
+          description: Events re-evaluated
+        now_hidden:
+          type: integer
+          description: Events newly hidden by this change
+        now_visible:
+          type: integer
+          description: Events restored because no filter matches them any more
+        invalid_filters:
+          type: array
+          description: Filters skipped because their query does not parse
+          items:
+            type: string
+
+    IngestionFilterWithEffect:
+      type: object
+      required: [filter, effect]
+      properties:
+        filter:
+          $ref: '#/components/schemas/IngestionFilter'
+        effect:
+          $ref: '#/components/schemas/SuppressionEffect'
+
+    SuppressedEvent:
+      type: object
+      required: [id, title, start_time]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+
+    SuppressedEventsResponse:
+      type: object
+      required: [total, events]
+      properties:
+        total:
+          type: integer
+          description: Total suppressed events, which may exceed those returned
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/SuppressedEvent'
 
     RulePreviewRequest:
       type: object

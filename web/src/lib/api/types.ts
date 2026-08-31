@@ -460,3 +460,49 @@ export interface RuleEvaluation {
 	source?: 'rule' | 'fingerprint';
 	matched: boolean;
 }
+
+// Ingestion filters hide events before they reach classification (issue #110).
+// They are not classification rules: no scoring, no confidence, no winner.
+export interface IngestionFilter {
+	id: string;
+	name: string;
+	query: string;
+	is_enabled: boolean;
+	created_at: string;
+	updated_at: string;
+}
+
+export interface IngestionFilterCreate {
+	name: string;
+	query: string;
+	is_enabled?: boolean;
+}
+
+export interface IngestionFilterUpdate {
+	name?: string;
+	query?: string;
+	is_enabled?: boolean;
+}
+
+export interface SuppressionEffect {
+	evaluated: number;
+	now_hidden: number;
+	now_visible: number;
+	invalid_filters?: string[];
+}
+
+export interface IngestionFilterWithEffect {
+	filter: IngestionFilter;
+	effect: SuppressionEffect;
+}
+
+export interface SuppressedEvent {
+	id: string;
+	title: string;
+	start_time: string;
+}
+
+export interface SuppressedEventsResponse {
+	total: number;
+	events: SuppressedEvent[];
+}

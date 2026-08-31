@@ -140,6 +140,91 @@ func (s *CalendarEventStore) Upsert(ctx context.Context, event *CalendarEvent) (
 	return event, nil
 }
 
+// ListForFilterEvaluation returns every non-orphaned event for a user,
+// including suppressed ones. Unlike List it deliberately does not filter on
+// is_suppressed: re-evaluating ingestion filters has to be able to see what is
+// currently hidden in order to unhide it.
+// See: https://github.com/michaelwinser/timesheet-app/issues/110
+func (s *CalendarEventStore) ListForFilterEvaluation(ctx context.Context, userID uuid.UUID) ([]*CalendarEvent, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, title, description, start_time, end_time, attendees, is_recurring,
+		       is_all_day, response_status, transparency, is_suppressed, extended_properties
+		FROM calendar_events
+		WHERE user_id = $1 AND is_orphaned = false
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []*CalendarEvent
+	for rows.Next() {
+		e := &CalendarEvent{UserID: userID}
+		var attendeesJSON, extendedJSON []byte
+		if err := rows.Scan(
+			&e.ID, &e.Title, &e.Description, &e.StartTime, &e.EndTime, &attendeesJSON,
+			&e.IsRecurring, &e.IsAllDay, &e.ResponseStatus, &e.Transparency,
+			&e.IsSuppressed, &extendedJSON,
+		); err != nil {
+			return nil, err
+		}
+		if attendeesJSON != nil {
+			json.Unmarshal(attendeesJSON, &e.Attendees)
+		}
+		decodeExtendedProperties(e, extendedJSON)
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
+// ListSuppressed returns the events currently hidden by ingestion filters,
+// most recent first, along with the total count.
+func (s *CalendarEventStore) ListSuppressed(ctx context.Context, userID uuid.UUID, limit int) ([]*CalendarEvent, int, error) {
+	var total int
+	if err := s.pool.QueryRow(ctx,
+		`SELECT count(*) FROM calendar_events WHERE user_id = $1 AND is_suppressed = true AND is_orphaned = false`,
+		userID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id, title, start_time
+		FROM calendar_events
+		WHERE user_id = $1 AND is_suppressed = true AND is_orphaned = false
+		ORDER BY start_time DESC
+		LIMIT $2
+	`, userID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var events []*CalendarEvent
+	for rows.Next() {
+		e := &CalendarEvent{UserID: userID}
+		if err := rows.Scan(&e.ID, &e.Title, &e.StartTime); err != nil {
+			return nil, 0, err
+		}
+		events = append(events, e)
+	}
+	return events, total, rows.Err()
+}
+
+// SetSuppressedBulk sets is_suppressed for a set of the user's events.
+func (s *CalendarEventStore) SetSuppressedBulk(ctx context.Context, userID uuid.UUID, ids []uuid.UUID, suppressed bool) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE calendar_events SET is_suppressed = $3, updated_at = NOW()
+		WHERE user_id = $1 AND id = ANY($2)
+	`, userID, ids, suppressed)
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
+}
+
 // decodeExtendedProperties populates e.ExtendedProperties from scanned JSONB.
 // A NULL column, or one holding no properties, leaves the field nil.
 func decodeExtendedProperties(e *CalendarEvent, raw []byte) {
