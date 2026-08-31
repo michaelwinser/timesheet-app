@@ -212,6 +212,10 @@ func (w *JobWorker) processJob(ctx context.Context, job *store.SyncJob) error {
 	// Track external IDs for orphaning
 	externalIDs := make([]string, 0, len(result.Events))
 
+	// Suppressed events are hidden from every view until #110 provides a way to
+	// reveal them, so report the count rather than letting them vanish silently.
+	suppressed := 0
+
 	// Upsert events
 	for _, ge := range result.Events {
 		if ge.Status == "cancelled" {
@@ -230,9 +234,16 @@ func (w *JobWorker) processJob(ctx context.Context, job *store.SyncJob) error {
 
 		externalIDs = append(externalIDs, ge.Id)
 		event := googleEventToStore(ge, conn.ID, cal.ID, cal.UserID)
+		if event.IsSuppressed {
+			suppressed++
+		}
 		if _, err := w.eventStore.Upsert(ctx, event); err != nil {
 			return err
 		}
+	}
+
+	if suppressed > 0 {
+		log.Printf("Job worker: suppressed %d sync placeholder event(s) on calendar %s", suppressed, cal.ID)
 	}
 
 	// Mark events within the synced range as orphaned if not in the result
@@ -272,6 +283,47 @@ func (w *JobWorker) processJob(ctx context.Context, job *store.SyncJob) error {
 	return nil
 }
 
+// syncPlaceholderMarker is the private extended property that the upstream
+// calendar sync tool sets on the placeholder events it writes to represent busy
+// time from another calendar. Those are not meetings, they are input noise, and
+// they must never reach classification.
+//
+// Matching is on the presence of the key, deliberately not on its value. The
+// value is versioned ("v1" at the time of writing) and gating on it would mean
+// a version bump silently stopped matching, letting the noise back in with no
+// error and nothing to connect the symptom to the cause.
+//
+// This is a hard-coded stopgap. Issue #110 replaces it with user-managed
+// ingestion filters; keeping it as one named predicate makes that a deletion
+// rather than an excavation.
+// See: https://github.com/michaelwinser/timesheet-app/issues/108
+const syncPlaceholderMarker = "calendarSyncMarker"
+
+// isSyncPlaceholder reports whether a Google event is a sync placeholder.
+func isSyncPlaceholder(ge *gcal.Event) bool {
+	if ge.ExtendedProperties == nil {
+		return false
+	}
+	_, ok := ge.ExtendedProperties.Private[syncPlaceholderMarker]
+	return ok
+}
+
+// extendedPropertiesToStore copies Google's extendedProperties into the store
+// model, returning nil when the event carries none.
+func extendedPropertiesToStore(ge *gcal.Event) *store.EventExtendedProperties {
+	if ge.ExtendedProperties == nil {
+		return nil
+	}
+	props := &store.EventExtendedProperties{
+		Private: ge.ExtendedProperties.Private,
+		Shared:  ge.ExtendedProperties.Shared,
+	}
+	if props.IsEmpty() {
+		return nil
+	}
+	return props
+}
+
 // googleEventToStore converts Google Calendar event to store model
 func googleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUID) *store.CalendarEvent {
 	event := &store.CalendarEvent{
@@ -281,6 +333,8 @@ func googleEventToStore(ge *gcal.Event, connID, calID uuid.UUID, userID uuid.UUI
 		ExternalID:           ge.Id,
 		Title:                ge.Summary,
 		ClassificationStatus: store.StatusPending,
+		ExtendedProperties:   extendedPropertiesToStore(ge),
+		IsSuppressed:         isSyncPlaceholder(ge),
 	}
 
 	if ge.Description != "" {

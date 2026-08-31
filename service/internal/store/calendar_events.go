@@ -27,25 +27,41 @@ const (
 	SourceLLM         ClassificationSource = "llm"
 )
 
+// EventExtendedProperties mirrors Google Calendar's extendedProperties. Both
+// namespaces are kept: private properties are visible only on this copy of the
+// event, shared ones travel to other attendees' calendars.
+type EventExtendedProperties struct {
+	Private map[string]string `json:"private,omitempty"`
+	Shared  map[string]string `json:"shared,omitempty"`
+}
+
+// IsEmpty reports whether there is nothing worth storing.
+func (p *EventExtendedProperties) IsEmpty() bool {
+	return p == nil || (len(p.Private) == 0 && len(p.Shared) == 0)
+}
+
 // CalendarEvent represents a synced calendar event
 type CalendarEvent struct {
-	ID                       uuid.UUID
-	ConnectionID             uuid.UUID
-	CalendarID               *uuid.UUID // Reference to calendars table
-	UserID                   uuid.UUID
-	ExternalID               string
-	Title                    string
-	Description              *string
-	StartTime                time.Time
-	EndTime                  time.Time
-	Attendees                []string
-	IsRecurring              bool
-	IsAllDay                 bool
-	ResponseStatus           *string
-	Transparency             *string
-	IsOrphaned   bool
-	IsSuppressed bool
-	IsSkipped    bool // Skip rules: exclude from time entries
+	ID             uuid.UUID
+	ConnectionID   uuid.UUID
+	CalendarID     *uuid.UUID // Reference to calendars table
+	UserID         uuid.UUID
+	ExternalID     string
+	Title          string
+	Description    *string
+	StartTime      time.Time
+	EndTime        time.Time
+	Attendees      []string
+	IsRecurring    bool
+	IsAllDay       bool
+	ResponseStatus *string
+	Transparency   *string
+	IsOrphaned     bool
+	IsSuppressed   bool
+	IsSkipped      bool // Skip rules: exclude from time entries
+	// ExtendedProperties holds Google Calendar extendedProperties. Nil when the
+	// event carries none.
+	ExtendedProperties       *EventExtendedProperties
 	ClassificationStatus     ClassificationStatus
 	ClassificationSource     *ClassificationSource
 	ClassificationConfidence *float64
@@ -73,6 +89,13 @@ func NewCalendarEventStore(pool *pgxpool.Pool) *CalendarEventStore {
 // Upsert creates or updates an event by external_id
 func (s *CalendarEventStore) Upsert(ctx context.Context, event *CalendarEvent) (*CalendarEvent, error) {
 	attendeesJSON, _ := json.Marshal(event.Attendees)
+
+	// Stored as SQL NULL rather than an empty object when there is nothing to keep
+	var extendedJSON []byte
+	if !event.ExtendedProperties.IsEmpty() {
+		extendedJSON, _ = json.Marshal(event.ExtendedProperties)
+	}
+
 	now := time.Now().UTC()
 	newID := uuid.New()
 
@@ -81,8 +104,8 @@ func (s *CalendarEventStore) Upsert(ctx context.Context, event *CalendarEvent) (
 			id, connection_id, calendar_id, user_id, external_id, title, description,
 			start_time, end_time, attendees, is_recurring, is_all_day, response_status,
 			transparency, is_orphaned, is_suppressed, classification_status,
-			classification_source, project_id, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+			classification_source, project_id, created_at, updated_at, extended_properties
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 		ON CONFLICT (connection_id, external_id) DO UPDATE SET
 			calendar_id = EXCLUDED.calendar_id,
 			title = EXCLUDED.title,
@@ -95,6 +118,11 @@ func (s *CalendarEventStore) Upsert(ctx context.Context, event *CalendarEvent) (
 			response_status = EXCLUDED.response_status,
 			transparency = EXCLUDED.transparency,
 			is_orphaned = false,
+			extended_properties = EXCLUDED.extended_properties,
+			-- Suppression is derived from the event's properties on every sync, so
+			-- a re-synced event picks up (or loses) it. Nothing else writes this
+			-- column for calendar events.
+			is_suppressed = EXCLUDED.is_suppressed,
 			updated_at = EXCLUDED.updated_at
 		RETURNING id, created_at, updated_at
 	`,
@@ -102,7 +130,7 @@ func (s *CalendarEventStore) Upsert(ctx context.Context, event *CalendarEvent) (
 		event.Title, event.Description, event.StartTime, event.EndTime,
 		attendeesJSON, event.IsRecurring, event.IsAllDay, event.ResponseStatus,
 		event.Transparency, false, event.IsSuppressed, event.ClassificationStatus,
-		event.ClassificationSource, event.ProjectID, now, now,
+		event.ClassificationSource, event.ProjectID, now, now, extendedJSON,
 	).Scan(&event.ID, &event.CreatedAt, &event.UpdatedAt)
 
 	if err != nil {
@@ -110,6 +138,21 @@ func (s *CalendarEventStore) Upsert(ctx context.Context, event *CalendarEvent) (
 	}
 
 	return event, nil
+}
+
+// decodeExtendedProperties populates e.ExtendedProperties from scanned JSONB.
+// A NULL column, or one holding no properties, leaves the field nil.
+func decodeExtendedProperties(e *CalendarEvent, raw []byte) {
+	if len(raw) == 0 {
+		return
+	}
+	var props EventExtendedProperties
+	if err := json.Unmarshal(raw, &props); err != nil {
+		return
+	}
+	if !props.IsEmpty() {
+		e.ExtendedProperties = &props
+	}
 }
 
 // MarkOrphanedExcept marks events as orphaned if not in the given external IDs (legacy, uses connection_id)
@@ -214,7 +257,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 	query := `
 		SELECT ce.id, ce.connection_id, ce.calendar_id, ce.user_id, ce.external_id, ce.title, ce.description,
 		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.is_all_day, ce.response_status,
-		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_skipped,
+		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_skipped, ce.extended_properties,
 		       ce.classification_status, ce.classification_source, ce.classification_confidence, ce.needs_review,
 		       ce.project_id, ce.created_at, ce.updated_at,
 		       p.id, p.user_id, p.name, p.short_code, p.client, p.color, p.is_billable, p.is_archived,
@@ -224,6 +267,10 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		LEFT JOIN projects p ON ce.project_id = p.id
 		LEFT JOIN calendars c ON ce.calendar_id = c.id
 		WHERE ce.user_id = $1 AND ce.is_orphaned = false AND c.is_selected = true
+		  -- Suppressed events are system-hidden input noise (sync placeholders and
+		  -- the like). They must not reach classification, time entries, or any
+		  -- view. See: https://github.com/michaelwinser/timesheet-app/issues/108
+		  AND ce.is_suppressed = false
 	`
 	args := []interface{}{userID}
 	argNum := 2
@@ -262,7 +309,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 	var events []*CalendarEvent
 	for rows.Next() {
 		e := &CalendarEvent{}
-		var attendeesJSON []byte
+		var attendeesJSON, extendedJSON []byte
 		var pID, pUserID *uuid.UUID
 		var pName, pShortCode, pClient, pColor *string
 		var pIsBillable, pIsArchived, pIsHidden, pNoAccum *bool
@@ -271,7 +318,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		err := rows.Scan(
 			&e.ID, &e.ConnectionID, &e.CalendarID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
 			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.IsAllDay, &e.ResponseStatus,
-			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsSkipped,
+			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsSkipped, &extendedJSON,
 			&e.ClassificationStatus, &e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 			&pID, &pUserID, &pName, &pShortCode, &pClient, &pColor, &pIsBillable, &pIsArchived,
@@ -283,6 +330,7 @@ func (s *CalendarEventStore) List(ctx context.Context, userID uuid.UUID, startDa
 		}
 
 		json.Unmarshal(attendeesJSON, &e.Attendees)
+		decodeExtendedProperties(e, extendedJSON)
 
 		if pID != nil {
 			e.Project = &Project{
@@ -349,7 +397,7 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 	query := `
 		SELECT ce.id, ce.connection_id, ce.calendar_id, ce.user_id, ce.external_id, ce.title, ce.description,
 		       ce.start_time, ce.end_time, ce.attendees, ce.is_recurring, ce.is_all_day, ce.response_status,
-		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_skipped,
+		       ce.transparency, ce.is_orphaned, ce.is_suppressed, ce.is_skipped, ce.extended_properties,
 		       ce.classification_status, ce.classification_source, ce.classification_confidence, ce.needs_review,
 		       ce.project_id, ce.created_at, ce.updated_at,
 		       p.id, p.user_id, p.name, p.short_code, p.client, p.color, p.is_billable, p.is_archived,
@@ -360,6 +408,7 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 		LEFT JOIN calendars c ON ce.calendar_id = c.id
 		WHERE ce.user_id = $1
 		  AND ce.is_orphaned = false
+		  AND ce.is_suppressed = false
 		  AND c.is_selected = true
 		  AND ce.classification_status = 'classified'
 		  AND ce.classification_source IN ('rule', 'fingerprint')
@@ -389,7 +438,7 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 	var events []*CalendarEvent
 	for rows.Next() {
 		e := &CalendarEvent{}
-		var attendeesJSON []byte
+		var attendeesJSON, extendedJSON []byte
 		var project Project
 		var projectID, projectUserID *uuid.UUID
 		var projectName, projectShortCode, projectClient, projectColor *string
@@ -400,7 +449,7 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 		err := rows.Scan(
 			&e.ID, &e.ConnectionID, &e.CalendarID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
 			&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.IsAllDay, &e.ResponseStatus,
-			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsSkipped,
+			&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsSkipped, &extendedJSON,
 			&e.ClassificationStatus, &e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 			&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 			&projectID, &projectUserID, &projectName, &projectShortCode, &projectClient, &projectColor,
@@ -412,6 +461,7 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 			return nil, err
 		}
 
+		decodeExtendedProperties(e, extendedJSON)
 		if attendeesJSON != nil {
 			json.Unmarshal(attendeesJSON, &e.Attendees)
 		}
@@ -467,12 +517,12 @@ func (s *CalendarEventStore) ListForReclassification(ctx context.Context, userID
 // GetByID retrieves an event by ID
 func (s *CalendarEventStore) GetByID(ctx context.Context, userID, eventID uuid.UUID) (*CalendarEvent, error) {
 	e := &CalendarEvent{}
-	var attendeesJSON []byte
+	var attendeesJSON, extendedJSON []byte
 
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, connection_id, user_id, external_id, title, description,
 		       start_time, end_time, attendees, is_recurring, is_all_day, response_status,
-		       transparency, is_orphaned, is_suppressed, is_skipped,
+		       transparency, is_orphaned, is_suppressed, is_skipped, extended_properties,
 		       classification_status, classification_source, classification_confidence, needs_review,
 		       project_id, created_at, updated_at
 		FROM calendar_events
@@ -480,7 +530,7 @@ func (s *CalendarEventStore) GetByID(ctx context.Context, userID, eventID uuid.U
 	`, eventID, userID).Scan(
 		&e.ID, &e.ConnectionID, &e.UserID, &e.ExternalID, &e.Title, &e.Description,
 		&e.StartTime, &e.EndTime, &attendeesJSON, &e.IsRecurring, &e.IsAllDay, &e.ResponseStatus,
-		&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsSkipped,
+		&e.Transparency, &e.IsOrphaned, &e.IsSuppressed, &e.IsSkipped, &extendedJSON,
 		&e.ClassificationStatus, &e.ClassificationSource, &e.ClassificationConfidence, &e.NeedsReview,
 		&e.ProjectID, &e.CreatedAt, &e.UpdatedAt,
 	)
@@ -493,6 +543,7 @@ func (s *CalendarEventStore) GetByID(ctx context.Context, userID, eventID uuid.U
 	}
 
 	json.Unmarshal(attendeesJSON, &e.Attendees)
+	decodeExtendedProperties(e, extendedJSON)
 	return e, nil
 }
 

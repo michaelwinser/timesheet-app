@@ -609,4 +609,18 @@ var migrations = []migration{
 			  AND invoice_id IS NULL;
 		`,
 	},
+	{
+		version: 9,
+		sql: `
+			-- =============================================================================
+			-- EXTENDED PROPERTIES: store Google Calendar extendedProperties on events
+			-- Custom properties written by other tools - such as a calendar sync tool
+			-- marking its placeholder events - are a more durable signal than the event
+			-- title, which those tools are free to change at any time.
+			-- See: https://github.com/michaelwinser/timesheet-app/issues/108
+			-- =============================================================================
+
+			ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS extended_properties JSONB;
+		`,
+	},
 }
