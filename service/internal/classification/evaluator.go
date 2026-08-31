@@ -264,15 +264,26 @@ func evaluateTimeOfDay(t time.Time, value string) bool {
 		timeStr = value
 	}
 
-	// Parse HH:MM
+	// Parse HH:MM, or a bare hour (">17" means ">17:00"). Accepting the bare
+	// hour keeps the near-miss form from silently matching nothing.
+	// See: https://github.com/michaelwinser/timesheet-app/issues/104
 	parts := strings.Split(timeStr, ":")
-	if len(parts) != 2 {
+	if len(parts) == 1 {
+		parts = append(parts, "00")
+	}
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		return false
 	}
 
 	var targetHour, targetMin int
-	_, err := parseTimeComponents(parts[0], parts[1], &targetHour, &targetMin)
-	if err != nil {
+	// parseTimeComponents reports non-numeric components via its bool result,
+	// not an error - discarding it let "time-of-day:>abc" match everything.
+	valid, err := parseTimeComponents(parts[0], parts[1], &targetHour, &targetMin)
+	if err != nil || !valid {
+		return false
+	}
+
+	if targetHour > 23 || targetMin > 59 {
 		return false
 	}
 

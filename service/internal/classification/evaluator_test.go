@@ -2,6 +2,7 @@ package classification
 
 import (
 	"testing"
+	"time"
 )
 
 func TestTokenize(t *testing.T) {
@@ -373,6 +374,54 @@ func TestEvaluate_SymbolOnlyTerms(t *testing.T) {
 			result := Evaluate(ast, tt.props)
 			if result != tt.expected {
 				t.Errorf("Evaluate(%q) against %+v = %v, want %v", tt.query, tt.props, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestEvaluate_TimeOfDay is a regression test for issue #104: values containing a
+// colon were split by the tokenizer, so the documented time-of-day:>17:00 syntax
+// never parsed, and the bare-hour form parsed but silently matched nothing.
+func TestEvaluate_TimeOfDay(t *testing.T) {
+	at := func(hour, minute int) *EventProperties {
+		return &EventProperties{StartTime: time.Date(2026, 8, 31, hour, minute, 0, 0, time.UTC)}
+	}
+
+	tests := []struct {
+		name     string
+		query    string
+		props    *EventProperties
+		expected bool
+	}{
+		{"after 17:00 matches evening event", "time-of-day:>17:00", at(18, 30), true},
+		{"after 17:00 excludes morning event", "time-of-day:>17:00", at(9, 0), false},
+		{"before 09:00 matches early event", "time-of-day:<09:00", at(8, 30), true},
+		{"before 09:00 excludes later event", "time-of-day:<09:00", at(9, 30), false},
+		{"greater-or-equal is inclusive", "time-of-day:>=17:00", at(17, 0), true},
+		{"less-or-equal is inclusive", "time-of-day:<=09:00", at(9, 0), true},
+		{"exact time matches", "time-of-day:17:00", at(17, 0), true},
+		{"exact time excludes other times", "time-of-day:17:00", at(17, 1), false},
+		{"bare hour means top of the hour", "time-of-day:>17", at(18, 0), true},
+		{"bare hour excludes earlier event", "time-of-day:>17", at(16, 0), false},
+		{"quoted value still works", `time-of-day:">17:00"`, at(18, 0), true},
+		{"parenthesised group", "(time-of-day:>17:00)", at(18, 0), true},
+		{"combined with another condition", "time-of-day:>17:00 title:sync",
+			&EventProperties{Title: "sync", StartTime: time.Date(2026, 8, 31, 18, 0, 0, 0, time.UTC)}, true},
+		{"out of range hour matches nothing", "time-of-day:>99:99", at(18, 0), false},
+		{"non-numeric value matches nothing", "time-of-day:>abc", at(18, 0), false},
+		{"partially numeric value matches nothing", "time-of-day:>1a:00", at(18, 0), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ast, err := Parse(tt.query)
+			if err != nil {
+				t.Fatalf("Parse(%q) error: %v", tt.query, err)
+			}
+			result := Evaluate(ast, tt.props)
+			if result != tt.expected {
+				t.Errorf("Evaluate(%q) at %s = %v, want %v",
+					tt.query, tt.props.StartTime.Format("15:04"), result, tt.expected)
 			}
 		})
 	}

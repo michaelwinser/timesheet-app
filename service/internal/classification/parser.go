@@ -81,11 +81,39 @@ func Parse(query string) (QueryNode, error) {
 	return p.parse()
 }
 
+// isValueBreak reports whether ch terminates an unquoted value token.
+// Note that ':' is absent: a value may contain colons (time-of-day:>17:00).
+func isValueBreak(ch byte) bool {
+	return unicode.IsSpace(rune(ch)) || ch == '(' || ch == ')' || ch == '"'
+}
+
+// lastTokenType returns the type of the most recently emitted token,
+// or tokenEOF when nothing has been emitted yet.
+func (p *Parser) lastTokenType() tokenType {
+	if len(p.tokens) == 0 {
+		return tokenEOF
+	}
+	return p.tokens[len(p.tokens)-1].typ
+}
+
 func (p *Parser) tokenize() error {
 	p.tokens = nil
 
 	for p.pos < len(p.input) {
 		ch := p.input[p.pos]
+
+		// Directly after "property:", read the rest as a single value token so
+		// values containing colons survive tokenization. Without this,
+		// time-of-day:>17:00 splits at the second colon and fails to parse.
+		// See: https://github.com/michaelwinser/timesheet-app/issues/104
+		if p.lastTokenType() == tokenColon && !isValueBreak(ch) {
+			start := p.pos
+			for p.pos < len(p.input) && !isValueBreak(p.input[p.pos]) {
+				p.pos++
+			}
+			p.tokens = append(p.tokens, token{tokenValue, p.input[start:p.pos], start})
+			continue
+		}
 
 		switch {
 		case unicode.IsSpace(rune(ch)):
